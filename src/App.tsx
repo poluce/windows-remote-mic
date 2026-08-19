@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import "./App.css";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking...");
 
   useEffect(() => {
+    if (!isTauri()) {
+      setBackendStatus("浏览器预览模式 — 请运行桌面应用以调用 Rust 后端");
+      return;
+    }
+
     invoke<string>("ping")
       .then(setBackendStatus)
       .catch((err) => setBackendStatus(`backend error: ${err}`));
