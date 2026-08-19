@@ -18,3 +18,10 @@ pub enum AudioError {
 
 /// Convenient result alias.
 pub type Result<T> = std::result::Result<T, AudioError>;
+
+#[cfg(windows)]
+impl From<windows::core::Error> for AudioError {
+    fn from(err: windows::core::Error) -> Self {
+        AudioError::Windows(err.to_string())
+    }
+}

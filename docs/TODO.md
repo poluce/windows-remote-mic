@@ -58,7 +58,7 @@
 ## 3. 核心模块：音频
 
 - [ ] `core-audio`
-  - [ ] WASAPI 音频端点枚举（当前为端点模型 + 占位）
+  - [x] WASAPI 音频端点枚举（windows-rs / IMMDeviceEnumerator，待 Windows 真机验证）
   - [ ] 用户选择输出端点并持久化
   - [x] 16kHz → 48kHz 重采样
   - [x] +10dB 增益 / 20Hz DC 阻挡

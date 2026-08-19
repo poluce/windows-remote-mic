@@ -4,6 +4,9 @@
 //! into the destination format (48 kHz / stereo / gain / DC-block), and write
 //! it to the user-selected output endpoint (e.g. VB-CABLE's CABLE Input).
 
+#[cfg(target_os = "windows")]
+mod wasapi;
+
 pub mod dsp;
 pub mod endpoint;
 pub mod error;

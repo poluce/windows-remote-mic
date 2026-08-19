@@ -38,20 +38,17 @@ pub fn placeholder_output() -> AudioEndpoint {
 
 /// List output endpoints the app can write voice into.
 ///
-/// Windows: enumerate WASAPI playback endpoints and keep the one the user has
-/// chosen as a virtual sound card (VB-CABLE's CABLE Input).
+/// Windows: enumerate WASAPI playback endpoints and expose the ones the user
+/// can pick as a virtual sound card (VB-CABLE's CABLE Input).
 /// Non-Windows: return a single placeholder so the UI can be previewed.
 pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(vec![placeholder_output()])
-    }
-
     #[cfg(target_os = "windows")]
     {
-        // TODO(windows): enumerate WASAPI playback endpoints via
-        // windows-rs (IMMDeviceEnumerator / IMMDeviceCollection) and map them
-        // to `AudioEndpoint`. Until then we expose the default placeholder.
+        crate::wasapi::list_output_endpoints()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
         Ok(vec![placeholder_output()])
     }
 }
