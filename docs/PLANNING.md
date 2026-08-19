@@ -1,0 +1,266 @@
+# Windows 无线麦（Remote Mic）规划文档
+
+> 状态：初稿 / 技术选型阶段  
+> 目标平台：Windows 10 1809+ / Windows 11，64 位  
+> 目标设备：小米蓝牙遥控器 2 Pro / RC003（后续可扩展 RC001 等同协议设备）
+
+---
+
+## 1. 背景与目标
+
+“把小米蓝牙语音遥控器变成电脑无线麦”的完整思路已经得到验证：
+
+- 蓝牙连接遥控器
+- 通过 ATVV 协议接收 16kHz IMA-ADPCM 语音
+- 解码后写入虚拟麦克风
+- 普通按键通过 HID 捕获，并映射为 Windows 键盘/系统动作
+- 语音键触发系统语音输入（优先 Windows 自带 Win+H，后续再兼容豆包/微信）
+
+本项目的目标是在 Windows 上实现一个**可长期维护、接近产品级**的版本。
+采用更稳、更原生、更适合底层硬件交互的技术栈自研核心。
+协议行为以真机采集与公开蓝牙规范为准，独立整理实现，不复制任何既有项目代码。
+
+---
+
+## 2. 技术栈选型结论
+
+### 总体选型
+
+| 层 | 技术 | 理由 |
+| --- | --- | --- |
+| 核心后端 | **Rust** | 适合 BLE/GATT、HID、ATVV、ADPCM、音频、常驻后台、低内存；可安全调用 WinRT/Win32 |
+| 桌面 UI | **Tauri 2** | Rust 后端 + 系统 WebView，体积小、内存低；前端开发效率高 |
+| 前端 | **TypeScript + React** | 设置页、按键映射、诊断页等 UI 开发效率高 |
+| 蓝牙 | Rust + `windows-rs` / WinRT | 直接调用 `Windows.Devices.Bluetooth` / GATT，支持 `UNCACHED` 模式 |
+| 音频输出 | Rust + WASAPI / `cpal` | 低延迟 WASAPI 输出，便于写入虚拟声卡端点 |
+| 按键注入 | Rust + Win32 / `SendInput` | 原生按键注入；通过 `windows-rs` 调用 |
+| HID 捕获 | Rust + Raw Input / 低层键盘钩子 | 捕获遥控器普通键；必要时配合辅助进程处理 WUDFHost/HID-over-GATT |
+| 构建/打包 | Rust `cargo` + Tauri CLI + NSIS/MSIX | 生成安装器、便携版、自动更新包 |
+| 测试 | Rust 单元/集成测试 + Playwright/Vitest（前端） | 协议层、动作层、UI 层分别自动化 |
+| CI | GitHub Actions（`windows-latest`） | Rust 构建、前端构建、测试、打包、发布 |
+
+### 为什么不选“纯 TypeScript / Electron”
+
+- Windows BLE GATT、Raw Input、低层键盘钩子、`SendInput` 在 Node/Electron 生态较薄弱。
+- 常驻托盘工具用 Electron 太重（打包体积、内存占用）。
+- Frida/WUDFHost 这类系统级旁路，TypeScript 只能做外围，不适合做核心。
+- TypeScript 适合 UI，因此放在 Tauri 前端层。
+
+### 为什么核心不用解释型脚本语言
+
+- 解释型脚本语言开发快，适合快速验证协议。
+- 但打包体积大、常驻内存高、性能一般，且依赖额外运行时。
+- 系统级 BLE、HID、音频读写和低资源常驻更适合原生二进制实现。
+
+---
+
+## 3. 架构设计
+
+### 3.1 进程模型
+
+```
+┌──────────────────────────────────────────────┐
+│ Tauri 设置窗口（UI）                          │
+│  TypeScript + React                          │
+└──────────────┬───────────────────────────────┘
+               │ Tauri IPC / 本地命令
+┌──────────────▼───────────────────────────────┐
+│ Rust 核心进程（单实例常驻）                    │
+│  - BLE/GATT 连接监督                          │
+│  - ATVV 协议解码                              │
+│  - HID/Raw Input 捕获                         │
+│  - 按键映射 / 动作执行                        │
+│  - 音频输出（WASAPI→虚拟声卡）               │
+│  - 配置/日志/统计                             │
+└──────┬──────────────┬──────────────┬─────────┘
+       │              │              │
+       │ BLE          │ HID          │ 音频
+       ▼              ▼              ▼
+  RC003 遥控器   Windows Raw Input  VB-CABLE / 虚拟声卡
+                 / WUDFHost 旁路     → 输入法/语音识别
+```
+
+### 3.2 核心模块
+
+| 模块 | 职责 |
+| --- | --- |
+| `core-ble` | WinRT BLE 扫描、连接、GATT `UNCACHED` 枚举、重连、断线处理 |
+| `core-atvv` | ATVV 能力协商、MIC/STREAM 会话控制、16kHz IMA/DVI ADPCM 解码 |
+| `core-audio` | WASAPI 端点枚举、16k→48k 插值、增益、DC 阻挡、输出到虚拟声卡 |
+| `core-hid` | Raw Input 捕获、RC003 HID usage 识别、低层钩子、双触发抑制 |
+| `core-input` | `SendInput` 按键注入、快捷键动作、打开应用、音量控制 |
+| `core-mapping` | 单击/双击/长按手势、按键映射配置、热加载 |
+| `core-ime` | Windows 自带语音输入（Win+H）为基础；豆包/微信作为可选 IME 兼容层，语音键触发快捷键 |
+| `core-config` | 原子化 JSON 配置、迁移、热加载 |
+| `core-diagnostics` | BLE 检测、音频端点检测、按键采集/回放、日志 |
+| `ui` | Tauri + React 设置界面 |
+
+### 3.3 数据流：语音
+
+```
+RC003 麦克风键按下
+  → BLE ATVV STREAM_START
+  → 接收 AUDIO 帧
+  → IMA/DVI ADPCM 解码 → PCM
+  → 16k→48k 插值 → 增益/滤波
+  → WASAPI 写入用户选择的虚拟声卡端点（如 CABLE Input）
+  → Windows 语音键入/输入法麦克风选 CABLE Output → 语音出字
+  → 松开麦克风键 → STREAM_STOP
+```
+
+### 3.4 数据流：按键
+
+```
+RC003 普通按键
+  → Raw Input / WUDFHost 旁路
+  → 识别物理 HID usage
+  → 手势判定（单击/双击/长按/按住重复）
+  → 根据用户映射执行动作
+  → SendInput 注入键盘/系统动作
+```
+
+---
+
+## 4. 功能规划
+
+### MVP（第一阶段）
+
+- RC003 配对、连接、自动重连
+- 12 个普通键单次触发
+- 返回键 / 音量键可用（必要时接入 WUDFHost/HID 旁路）
+- 语音链路：按住说话、松开结束，输出到虚拟声卡
+- Windows 自带语音输入（Win+H）作为默认语音识别目标
+- 设置页：连接、按键映射、语音输出、诊断
+- 安装器/便携版 + SHA256 校验
+
+### P2（产品化）
+
+- 单击/双击/长按/按住重复手势
+- 自定义快捷键、打开应用、系统音量/播放控制
+- 豆包 / 微信输入法等第三方 IME 兼容（可选）
+- VB-CABLE 显式安装引导（UAC + SHA-256 校验）
+- 本地按键统计、日志诊断、问题反馈
+
+### P3（功能对齐/扩展）
+
+- RC001 等更多同协议设备
+- 多套键位方案、按 App 自动切换
+- 手机/网页遥控扩展（可复用 TypeScript 技术栈）
+- 自动更新、签名发布
+- 麦克风音质调优、低延迟优化
+
+---
+
+## 5. 技术栈依赖清单
+
+### Rust 核心
+
+| 依赖 | 用途 |
+| --- | --- |
+| `windows-rs` / `windows-sys` | WinRT BLE、Win32 API、Raw Input、SendInput、托盘 |
+| `tokio` | 异步 BLE/音频生命周期 |
+| `cpal` 或 `wasapi` | Windows 音频输出 |
+| `serde` / `serde_json` | 配置、协议数据 |
+| `tracing` / `tracing-subscriber` | 日志 |
+| `parking_lot` / `dashmap` | 并发状态管理 |
+| 自有 `atvv` crate | ATVV 协议与 ADPCM 解码（根据真机采集与公开协议资料独立实现） |
+
+### Tauri / 前端
+
+| 依赖 | 用途 |
+| --- | --- |
+| Tauri 2 | 桌面外壳、系统托盘、IPC |
+| React + TypeScript | 设置界面 |
+| Vite | 前端构建 |
+| Zustand / TanStack Query | 状态管理、异步数据 |
+| Playwright / Vitest | 前端测试 |
+
+### 打包/发布
+
+| 工具 | 用途 |
+| --- | --- |
+| Tauri Bundle | 生成 NSIS 安装器 / 便携版 |
+| WiX / MSIX（可选） | 更正式的 Windows 包 |
+| GitHub Actions | Windows CI、构建、测试、发布 |
+| 自签 Authenticode / 未来公共 CA | 安装包签名 |
+
+---
+
+## 6. 目录结构建议
+
+```text
+windows-remote-mic/
+├── Cargo.toml                  # Rust workspace
+├── crates/
+│   ├── core-ble/               # BLE/GATT
+│   ├── core-atvv/              # ATVV 协议 + ADPCM
+│   ├── core-audio/             # WASAPI 音频输出
+│   ├── core-hid/               # Raw Input / HID 旁路
+│   ├── core-input/             # 按键注入/动作执行
+│   ├── core-mapping/           # 按键映射/手势
+│   ├── core-config/            # 配置持久化
+│   ├── core-diagnostics/       # 诊断/按键采集
+│   └── app/                    # Tauri 后端入口
+├── src/                        # Tauri React 前端源码
+│   ├── pages/
+│   ├── components/
+│   └── hooks/
+├── docs/
+│   ├── PLANNING.md
+│   ├── PROTOCOL.md
+│   └── ACCEPTANCE.md
+├── scripts/
+│   ├── build.ps1
+│   ├── fetch-frida-gadget.ps1  # 如仍需可选 HID 旁路
+│   └── fetch-vb-cable.ps1      # 可选虚拟声卡引导
+└── .github/workflows/
+    └── windows-ci.yml
+```
+
+---
+
+## 7. 关键风险与对策
+
+| 风险 | 影响 | 对策 |
+| --- | --- | --- |
+| Windows Raw Input 收不到返回/音量 HID usage | 普通键不完整 | 先验证 Frida/WUDFHost 旁路可行性；长期评估自定义驱动或 HID 采样方案 |
+| 虚拟声卡安装体验差 | 语音无法出字 | 提供 VB-CABLE 显式安装引导；后续可评估自研/打包虚拟音频驱动 |
+| 输入法各不相同 | 语音触发不通用 | 先以 Windows 自带 Win+H 为基础链路，再扩展豆包/微信；抽象 IME 层 |
+| 未签名导致 SmartScreen/杀软拦截 | 用户不敢装 | 发布免费自签 + 明确 SHA256 校验；后续争取公共 CA 签名 |
+| WinRT BLE 枚举缓存 | 找不到特征/服务 | 强制 `BluetoothCacheMode.UNCACHED` |
+| 按键双触发 | 体验差 | 事件去重、低层钩子吞噬原生键、只注入一次 |
+| GPL/第三方许可 | 法律风险 | 核心自研按 GPL-3.0 兼容；第三方组件单独声明 |
+| 真机硬件验收缺失 | 协议假设错误 | 必须准备真实 RC003/RC001，建立硬件验收清单 |
+
+---
+
+## 8. 里程碑建议
+
+| 里程碑 | 内容 | 验收标准 |
+| --- | --- | --- |
+| M0 | 协议与基线复验 | 真机采集并确认按键+语音链路行为 |
+| M1 | Rust 核心骨架 | BLE 连接、配置、日志、托盘、UI 壳 |
+| M2 | 按键链路 | 真机 12 键单次触发，无双触发 |
+| M3 | 语音链路 | 真机麦克风键 → Windows 自带语音输入出字 |
+| M4 | 产品化 | 安装器、签名策略、诊断页、文档 |
+| M5 | 扩展 | RC001、更多第三方输入法、统计、自动更新 |
+
+---
+
+## 9. 待确认事项
+
+- [ ] 是否长期保留 Frida/WUDFHost 旁路，还是投入资源做更干净的 HID 方案
+- [ ] 虚拟声卡：采用 VB-CABLE 引导，还是自研虚拟音频驱动
+- [ ] 签名：免费自签起步，还是直接购买代码签名证书
+- [ ] 是否同步支持 RC001 作为首发设备矩阵
+- [ ] 是否需要手机/网页遥控作为 Windows 版能力的一部分
+- [ ] 项目许可证与商标、品牌资产使用范围
+
+---
+
+## 10. 结论
+
+- 技术栈确定：**Rust 核心 + Tauri/TypeScript 界面**
+- 核心难点是 Windows BLE/HID/音频链路，而不是 UI
+- 按真机协议行为，用更合适的工程栈重新实现并产品化
+- 下一步：先完成 M0 真机复验，再搭建 Rust workspace 和 Tauri 骨架
