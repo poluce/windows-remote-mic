@@ -3,8 +3,8 @@
     sans-serif;
   font-size: 15px;
   line-height: 1.6;
-  color: #e6edf3;
-  background: #0d1117;
+  color: #24292f;
+  background: #f6f8fa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -39,8 +39,8 @@ button {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: #161b22;
-  border-right: 1px solid #30363d;
+  background: #ffffff;
+  border-right: 1px solid #d0d7de;
   padding: 18px 12px;
 }
 
@@ -49,7 +49,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 4px 8px 18px;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid #d0d7de;
   margin-bottom: 16px;
 }
 
@@ -60,11 +60,12 @@ button {
 .brand-name {
   font-weight: 700;
   font-size: 16px;
+  color: #1f2328;
 }
 
 .brand-sub {
   font-size: 12px;
-  color: #8b949e;
+  color: #57606a;
 }
 
 .nav {
@@ -81,7 +82,7 @@ button {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #c9d1d9;
+  color: #24292f;
   font-size: 14px;
   cursor: pointer;
   text-align: left;
@@ -89,7 +90,7 @@ button {
 }
 
 .nav-item:hover {
-  background: #21262d;
+  background: #f3f4f6;
 }
 
 .nav-item.active {
@@ -107,9 +108,9 @@ button {
   align-items: center;
   gap: 6px;
   padding: 10px 12px;
-  color: #8b949e;
+  color: #57606a;
   font-size: 13px;
-  border-top: 1px solid #30363d;
+  border-top: 1px solid #d0d7de;
 }
 
 /* ---------- Main ---------- */
@@ -125,13 +126,14 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 18px 28px;
-  border-bottom: 1px solid #30363d;
-  background: #0d1117;
+  border-bottom: 1px solid #d0d7de;
+  background: #f6f8fa;
 }
 
 .topbar h1 {
   margin: 0;
   font-size: 20px;
+  color: #1f2328;
 }
 
 .backend-status {
@@ -139,14 +141,14 @@ button {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #8b949e;
+  color: #57606a;
 }
 
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2ea043;
+  background: #2da44e;
   display: inline-block;
 }
 
@@ -160,17 +162,18 @@ button {
 .page h2 {
   margin: 0 0 4px;
   font-size: 22px;
+  color: #1f2328;
 }
 
 .page-sub {
   margin: 0 0 20px;
-  color: #8b949e;
+  color: #57606a;
   font-size: 14px;
 }
 
 .card {
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
   border-radius: 12px;
   padding: 18px;
   margin-bottom: 16px;
@@ -179,6 +182,7 @@ button {
 .card-title {
   font-weight: 600;
   margin-bottom: 12px;
+  color: #1f2328;
 }
 
 /* ---------- Connection ---------- */
@@ -200,11 +204,12 @@ button {
 
 .device-name {
   font-weight: 600;
+  color: #1f2328;
 }
 
 .device-model {
   font-size: 13px;
-  color: #8b949e;
+  color: #57606a;
 }
 
 .brief-grid {
@@ -216,18 +221,19 @@ button {
 .brief {
   border-radius: 10px;
   padding: 12px;
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
 }
 
 .brief-value {
   font-size: 15px;
   font-weight: 600;
+  color: #1f2328;
 }
 
 .brief-label {
   font-size: 12px;
-  color: #8b949e;
+  color: #57606a;
 }
 
 /* ---------- Badges ---------- */
@@ -238,18 +244,18 @@ button {
 }
 
 .badge-ok {
-  background: rgba(46, 160, 67, 0.15);
-  color: #3fb950;
+  background: rgba(45, 164, 78, 0.12);
+  color: #1a7f37;
 }
 
 .badge-warn {
-  background: rgba(210, 153, 34, 0.15);
-  color: #d29922;
+  background: rgba(210, 153, 34, 0.14);
+  color: #9a6700;
 }
 
 .badge-err {
-  background: rgba(248, 81, 73, 0.15);
-  color: #f85149;
+  background: rgba(248, 81, 73, 0.12);
+  color: #cf222e;
 }
 
 /* ---------- Mapping ---------- */
@@ -263,7 +269,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid #d0d7de;
 }
 
 .mapping-row:last-child {
@@ -273,11 +279,12 @@ button {
 .mapping-key {
   width: 84px;
   font-weight: 600;
+  color: #24292f;
 }
 
 .mapping-action {
   flex: 1;
-  color: #c9d1d9;
+  color: #57606a;
 }
 
 /* ---------- Voice ---------- */
@@ -297,14 +304,14 @@ button {
   padding: 16px;
   min-width: 150px;
   border-radius: 12px;
-  background: #0d1117;
-  border: 1px solid #30363d;
-  color: #8b949e;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  color: #57606a;
 }
 
 .route-node.active {
   border-color: #1f6feb;
-  color: #c9d1d9;
+  color: #24292f;
 }
 
 .route-node span {
@@ -312,13 +319,13 @@ button {
 }
 
 .route-node small {
-  color: #8b949e;
+  color: #57606a;
   font-size: 12px;
 }
 
 .route-arrow {
   font-size: 22px;
-  color: #8b949e;
+  color: #8c959f;
 }
 
 /* ---------- Diagnostics ---------- */
@@ -332,7 +339,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid #d0d7de;
 }
 
 .check-row:last-child {
@@ -348,15 +355,15 @@ button {
 .btn {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid #30363d;
-  background: #21262d;
-  color: #e6edf3;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #24292f;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: #8b949e;
+  border-color: #8c959f;
 }
 
 .btn.primary {
@@ -383,7 +390,7 @@ button {
   width: 100%;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #30363d;
-  background: #0d1117;
-  color: #e6edf3;
+  border: 1px solid #d0d7de;
+  background: #ffffff;
+  color: #24292f;
 }
