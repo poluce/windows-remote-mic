@@ -1,36 +1,63 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Sidebar, type PageId } from "./components/Sidebar";
+import { ConnectionPage } from "./pages/ConnectionPage";
+import { MappingPage } from "./pages/MappingPage";
+import { VoicePage } from "./pages/VoicePage";
+import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import "./App.css";
 
 function App() {
-  const [backendStatus, setBackendStatus] = useState("checking...");
+  const [page, setPage] = useState<PageId>("connection");
+  const [backend, setBackend] = useState("检查后端…");
 
   useEffect(() => {
     if (!isTauri()) {
-      setBackendStatus("浏览器预览模式 — 请运行桌面应用以调用 Rust 后端");
+      setBackend("浏览器预览模式");
       return;
     }
-
     invoke<string>("ping")
-      .then(setBackendStatus)
-      .catch((err) => setBackendStatus(`backend error: ${err}`));
+      .then(setBackend)
+      .catch(() => setBackend("后端不可用"));
   }, []);
 
   return (
-    <main className="container">
-      <h1>Remote Mic</h1>
-      <p>Windows 无线麦 — 把小米蓝牙语音遥控器变成无线麦克风。</p>
+    <div className="app-shell">
+      <Sidebar page={page} onChange={setPage} />
 
-      <div className="status-card">
-        <strong>Backend Status</strong>
-        <span>{backendStatus}</span>
-      </div>
+      <main className="main">
+        <header className="topbar">
+          <div>
+            <h1>{pageTitle(page)}</h1>
+          </div>
+          <div className="backend-status">
+            <span className="dot" />
+            Backend: {backend}
+          </div>
+        </header>
 
-      <p className="hint">
-        Rust 后端 / Tauri 2 / TypeScript + React 框架已搭建。
-      </p>
-    </main>
+        <div className="content">
+          {page === "connection" && <ConnectionPage />}
+          {page === "mapping" && <MappingPage />}
+          {page === "voice" && <VoicePage />}
+          {page === "diagnostics" && <DiagnosticsPage />}
+        </div>
+      </main>
+    </div>
   );
+}
+
+function pageTitle(page: PageId): string {
+  switch (page) {
+    case "connection":
+      return "Remote Mic";
+    case "mapping":
+      return "按键映射";
+    case "voice":
+      return "语音";
+    case "diagnostics":
+      return "诊断";
+  }
 }
 
 export default App;
