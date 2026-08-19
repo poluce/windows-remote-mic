@@ -22,8 +22,8 @@
 
 ## 1. 工程初始化
 
-- [ ] 初始化 Git 仓库并推送到 `windows-remote-mic`
-- [ ] 创建 Rust workspace
+- [x] 初始化 Git 仓库并推送到 `windows-remote-mic`
+- [x] 创建 Rust workspace（已含 core-* crates 骨架）
   - [ ] `crates/core-ble`
   - [ ] `crates/core-atvv`
   - [ ] `crates/core-audio`
@@ -33,7 +33,7 @@
   - [ ] `crates/core-config`
   - [ ] `crates/core-diagnostics`
   - [ ] `crates/app`
-- [ ] 初始化 Tauri 2 + React + TypeScript 前端
+- [x] 初始化 Tauri 2 + React + TypeScript 前端（前后端 ping 通）
 - [ ] 配置 `cargo fmt` / `clippy` / `rustfmt` 基础规范
 - [ ] 配置 GitHub Actions：Rust build + test + Tauri bundle
 - [ ] 建立日志目录与统一错误上报结构

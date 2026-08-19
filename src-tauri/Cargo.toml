@@ -1,0 +1,34 @@
+[package]
+name = "remote-mic"
+version.workspace = true
+description = "Windows Remote Mic — turn Xiaomi Bluetooth voice remote into a wireless microphone"
+authors = ["poluce"]
+edition.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "remote_mic_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+core-ble = { path = "../crates/core-ble" }
+core-atvv = { path = "../crates/core-atvv" }
+core-audio = { path = "../crates/core-audio" }
+core-hid = { path = "../crates/core-hid" }
+core-input = { path = "../crates/core-input" }
+core-mapping = { path = "../crates/core-mapping" }
+core-config = { path = "../crates/core-config" }
+core-diagnostics = { path = "../crates/core-diagnostics" }
+

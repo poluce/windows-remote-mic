@@ -16,11 +16,41 @@
 - 蓝牙：WinRT BLE
 - 音频：WASAPI
 
+## 项目结构
+
+```text
+remote-mic/
+├── src/                     # 前端（TypeScript + React）
+├── src-tauri/               # Tauri 桌面壳（Rust）
+├── crates/
+│   ├── core-ble/            # 蓝牙 BLE/GATT
+│   ├── core-atvv/           # ATVV 协议 + ADPCM 解码
+│   ├── core-audio/          # 音频输出（WASAPI）
+│   ├── core-hid/            # HID / Raw Input
+│   ├── core-input/          # 按键注入 / 动作执行
+│   ├── core-mapping/        # 按键映射
+│   ├── core-config/         # 配置持久化
+│   └── core-diagnostics/    # 诊断
+└── docs/                    # 规划与任务文档
+```
+
+## 开发
+
+```bash
+# 安装前端依赖
+npm install
+
+# 启动前端（仅浏览器预览）
+npm run dev
+
+# 启动 Tauri 桌面应用
+npm run tauri dev
+
+# 构建发布包
+npm run tauri build
+```
+
 ## 文档
 
 - [规划文档](docs/PLANNING.md)
 - [ToDo / 任务清单](docs/TODO.md)
-
-## 状态
-
-早期规划阶段。
