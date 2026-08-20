@@ -1,4 +1,31 @@
+import { useEffect, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+
+type Endpoint = {
+  id: string;
+  name: string;
+  kind: "Output" | "Input";
+};
+
+const FALLBACK_ENDPOINTS: Endpoint[] = [
+  { id: "cable-input", name: "CABLE Input (VB-CABLE)", kind: "Output" },
+];
+
 export function VoicePage() {
+  const [endpoints, setEndpoints] = useState<Endpoint[]>(FALLBACK_ENDPOINTS);
+  const [selected, setSelected] = useState("");
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke<Endpoint[]>("list_audio_endpoints")
+      .then((list) => {
+        setEndpoints(list.length ? list : FALLBACK_ENDPOINTS);
+        setSelected((prev) => prev || list[0]?.id || "");
+        return null;
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="page">
       <h2>语音</h2>
@@ -18,17 +45,28 @@ export function VoicePage() {
           <div className="route-node">
             <span>🎧</span>
             <div>虚拟声卡</div>
-            <small>CABLE Output</small>
+            <small>{selected || "CABLE Output"}</small>
           </div>
         </div>
       </section>
 
       <section className="card">
-        <div className="card-title">输出端点</div>
-        <select className="select" defaultValue="cable-input" disabled>
-          <option value="cable-input">CABLE Input (VB-CABLE)</option>
-          <option value="default">系统默认输出</option>
+        <div className="card-title">输出端点（来自 Rust 后端）</div>
+        <select
+          className="select"
+          value={selected}
+          onChange={(e) => setSelected(e.currentTarget.value)}
+          disabled={!isTauri()}
+        >
+          {endpoints.map((ep) => (
+            <option key={ep.id} value={ep.id}>
+              {ep.name}
+            </option>
+          ))}
         </select>
+        {!isTauri() && (
+          <p className="hint">浏览器预览：显示占位端点；桌面应用内会列出真实 WASAPI 设备。</p>
+        )}
       </section>
 
       <section className="card actions">

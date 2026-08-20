@@ -518,6 +518,13 @@ version = "0.1.0"
 [[package]]
 name = "core-config"
 version = "0.1.0"
+dependencies = [
+ "core-mapping",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "core-diagnostics"
@@ -574,6 +581,10 @@ version = "0.1.0"
 [[package]]
 name = "core-mapping"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "cpufeatures"
