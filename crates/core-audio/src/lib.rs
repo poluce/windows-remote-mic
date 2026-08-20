@@ -7,9 +7,13 @@
 #[cfg(target_os = "windows")]
 mod wasapi;
 
+#[cfg(target_os = "windows")]
+pub mod playback;
+
 pub mod dsp;
 pub mod endpoint;
 pub mod error;
+pub mod test_tone;
 
 pub use error::{AudioError, Result};
 
@@ -19,6 +23,11 @@ pub const REMOTE_AUDIO_CHANNELS: u16 = 1;
 pub const OUTPUT_CHANNELS: u16 = 2;
 /// Default output gain in dB applied before sending to the endpoint.
 pub const DEFAULT_GAIN_DB: f32 = 10.0;
+
+/// Generate a default 1 s / 1 kHz / stereo test tone.
+pub fn default_test_tone() -> Vec<f32> {
+    test_tone::default_test_tone()
+}
 
 /// Builds a full output frame from raw mono 16 kHz samples.
 ///

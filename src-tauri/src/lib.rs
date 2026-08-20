@@ -33,6 +33,23 @@ struct MappingEntry {
     action: String,
 }
 
+/// Play a 1 s test tone into the selected output endpoint (fuzzy name match).
+#[tauri::command]
+fn play_test_tone(device_name: Option<String>) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        match core_audio::playback::play_test_tone(device_name.as_deref()) {
+            Ok(()) => "测试音已播放".to_string(),
+            Err(e) => format!("测试音播放失败: {e}"),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = device_name;
+        "测试音播放仅在 Windows 可用".to_string()
+    }
+}
+
 /// Return the default 13-key single-click mapping.
 #[tauri::command]
 fn default_mapping() -> Vec<MappingEntry> {
@@ -86,7 +103,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             list_audio_endpoints,
-            default_mapping
+            default_mapping,
+            play_test_tone
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
