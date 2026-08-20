@@ -35,7 +35,7 @@
   - [ ] `crates/app`
 - [x] 初始化 Tauri 2 + React + TypeScript 前端（前后端 ping 通）
 - [ ] 配置 `cargo fmt` / `clippy` / `rustfmt` 基础规范
-- [ ] 配置 GitHub Actions：Rust build + test + Tauri bundle
+- [x] 配置 GitHub Actions：Windows CI（core crates test + 前端 build + Tauri check）
 - [ ] 建立日志目录与统一错误上报结构
 - [ ] 建立配置目录 `%LOCALAPPDATA%\RemoteMic\RC003`
 
