@@ -1,10 +1,11 @@
-//! Windows WASAPI output endpoint enumeration.
+//! Windows WASAPI endpoint enumeration (playback + capture).
 //!
 //! Only compiled and used on `target_os = "windows"`.
 
 use windows::core::PWSTR;
 use windows::Win32::Media::Audio::{
-    eRender, DEVICE_STATE_ACTIVE, IMMDeviceEnumerator, MMDeviceEnumerator,
+    eCapture, eRender, DEVICE_STATE_ACTIVE, EDataFlow, IMMDeviceEnumerator,
+    IMMDeviceCollection, MMDeviceEnumerator,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, STGM_READ,
@@ -17,20 +18,28 @@ use crate::endpoint::{AudioEndpoint, EndpointKind};
 use crate::error::Result;
 
 /// Enumerate currently-active WASAPI playback (render) endpoints.
-///
-/// Each endpoint is exposed to the app as `AudioEndpoint{id, name, Output}`.
-/// The `id` is the Windows WASAPI device id, which is what we persist so the
-/// chosen virtual sound card survives restarts.
 pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
+    unsafe { list_endpoints(eRender, EndpointKind::Output) }
+}
+
+/// Enumerate currently-active WASAPI capture (microphone) endpoints.
+pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
+    unsafe { list_endpoints(eCapture, EndpointKind::Input) }
+}
+
+unsafe fn list_endpoints(
+    dataflow: EDataFlow,
+    kind: EndpointKind,
+) -> Result<Vec<AudioEndpoint>> {
     unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
-        let collection = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)?;
+        let collection = enumerator.EnumAudioEndpoints(dataflow, DEVICE_STATE_ACTIVE)?;
         let count = collection.GetCount()?;
 
         let mut out = Vec::with_capacity(count as usize);
         for i in 0..count {
-            if let Some(endpoint) = collect_endpoint(i, &collection)? {
+            if let Some(endpoint) = collect_endpoint(i, &collection, kind)? {
                 out.push(endpoint);
             }
         }
@@ -40,7 +49,8 @@ pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
 
 unsafe fn collect_endpoint(
     index: u32,
-    collection: &windows::Win32::Media::Audio::IMMDeviceCollection,
+    collection: &IMMDeviceCollection,
+    kind: EndpointKind,
 ) -> Result<Option<AudioEndpoint>> {
     unsafe {
         let device = collection.Item(index)?;
@@ -49,24 +59,16 @@ unsafe fn collect_endpoint(
         let id = id_pw.to_string().map_err(|e| {
             crate::error::AudioError::Windows(format!("bad device id: {e}"))
         })?;
-        // IMMDevice::GetId allocates with CoTaskMemAlloc — the caller frees it.
         CoTaskMemFree(Some(id_pw.as_ptr() as *const core::ffi::c_void));
 
         let store = device.OpenPropertyStore(STGM_READ)?;
         let mut pv: PROPVARIANT = store.GetValue(&PKEY_Device_FriendlyName)?;
         let name = propvar_to_string(&pv);
-        let result = PropVariantClear(&mut pv);
-        if result.is_err() {
-            // Clearing failure is not fatal; we still take what we read.
-        }
+        let _ = PropVariantClear(&mut pv);
 
         let name = if name.is_empty() { id.clone() } else { name };
 
-        Ok(Some(AudioEndpoint {
-            id,
-            name,
-            kind: EndpointKind::Output,
-        }))
+        Ok(Some(AudioEndpoint { id, name, kind }))
     }
 }
 

@@ -394,3 +394,22 @@ button {
   background: #ffffff;
   color: #24292f;
 }
+
+/* ---------- Diagnostics endpoint lists ---------- */
+.endpoint-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.endpoint-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.endpoint-list li:last-child {
+  border-bottom: none;
+}

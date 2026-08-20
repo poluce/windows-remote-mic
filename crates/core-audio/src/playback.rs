@@ -65,6 +65,22 @@ pub fn play_test_tone(device_name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Play the test tone several times with a short gap between each run.
+pub fn play_test_tone_loop(
+    device_name: Option<&str>,
+    repetitions: u32,
+    gap_ms: u64,
+) -> Result<()> {
+    let repetitions = repetitions.clamp(1, 20);
+    for i in 0..repetitions {
+        play_test_tone(device_name)?;
+        if i + 1 < repetitions && gap_ms > 0 {
+            std::thread::sleep(Duration::from_millis(gap_ms));
+        }
+    }
+    Ok(())
+}
+
 fn pick_output_device(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
     if let Some(name) = name {
         let name = name.trim();

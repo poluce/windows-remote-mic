@@ -33,6 +33,31 @@ struct MappingEntry {
     action: String,
 }
 
+/// Run audio diagnostics: endpoints + VB-CABLE presence.
+#[tauri::command]
+fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
+    core_audio::diagnostics::run()
+}
+
+/// Loop the test tone several times into the selected endpoint.
+#[tauri::command]
+fn play_test_tone_loop(device_name: Option<String>, repetitions: Option<u32>) -> String {
+    let reps = repetitions.unwrap_or(3).clamp(1, 10);
+    #[cfg(target_os = "windows")]
+    {
+        match core_audio::playback::play_test_tone_loop(device_name.as_deref(), reps, 500) {
+            Ok(()) => format!("已循环播放 {reps} 次"),
+            Err(e) => format!("播放失败: {e}"),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = device_name;
+        let _ = reps;
+        "测试音循环仅在 Windows 可用".to_string()
+    }
+}
+
 /// Play a 1 s test tone into the selected output endpoint (fuzzy name match).
 #[tauri::command]
 fn play_test_tone(device_name: Option<String>) -> String {
@@ -104,7 +129,9 @@ pub fn run() {
             ping,
             list_audio_endpoints,
             default_mapping,
-            play_test_tone
+            play_test_tone,
+            play_test_tone_loop,
+            audio_diagnostics
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

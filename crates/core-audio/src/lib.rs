@@ -13,6 +13,7 @@ pub mod playback;
 pub mod dsp;
 pub mod endpoint;
 pub mod error;
+pub mod diagnostics;
 pub mod test_tone;
 
 pub use error::{AudioError, Result};

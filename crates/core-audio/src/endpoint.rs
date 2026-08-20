@@ -53,6 +53,22 @@ pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
     }
 }
 
+/// List capture endpoints (virtual microphone side, e.g. CABLE Output).
+///
+/// Windows: enumerate WASAPI capture endpoints.
+/// Non-Windows: return an empty list so diagnostics stay honest in preview.
+pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::wasapi::list_input_endpoints()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
 /// Find the endpoint with the given persisted id.
 pub fn find_endpoint_by_id(id: &str) -> Result<AudioEndpoint> {
     list_output_endpoints()?
