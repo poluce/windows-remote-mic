@@ -636,6 +636,11 @@ dependencies = [
 [[package]]
 name = "core-hid"
 version = "0.1.0"
+dependencies = [
+ "core-mapping",
+ "serde",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "core-input"

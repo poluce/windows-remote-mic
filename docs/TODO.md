@@ -75,7 +75,7 @@
 - [ ] `core-hid`
   - [ ] Raw Input 捕获 RC003 键盘事件
   - [ ] HID 路径校验，避免同型号多设备串扰
-  - [ ] RC003 物理 usage 映射表（方向/OK/Home/Menu/TV/Power/返回/音量/语音键）
+  - [x] RC003 物理 usage 映射表 + Raw Input 报告解析（纯逻辑）
   - [ ] Windows Raw Input 缺失键（返回 `0xF1`、音量 `0x80/0x81`）旁路方案
   - [ ] 可选：Frida/WUDFHost 旁路可行性验证
   - [ ] 记录按键采集与回放工具
