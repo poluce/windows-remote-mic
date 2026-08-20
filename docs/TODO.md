@@ -48,12 +48,12 @@
   - [ ] 连接、断开、自动重连、超时处理
   - [ ] 单实例 / 并发连接保护
 - [ ] `core-atvv`
-  - [ ] ATVV 能力协商
-  - [ ] MIC_OPEN / STREAM_START / STREAM_STOP 会话控制
-  - [ ] MIC_EXTEND / 长时间语音租期处理
-  - [ ] 16kHz IMA/DVI ADPCM 解码
-  - [ ] 同步包 / predictor / step index 重置
-  - [ ] 停止后 0.3 秒尾部数据丢弃策略
+  - [ ] ATVV 能力协商（结构已建，原始字节解析待真机确认）
+  - [x] MIC_OPEN / STREAM_START / STREAM_STOP 会话状态机（语义事件；原始 opcode 待真机确认）
+  - [ ] MIC_EXTEND / 长时间语音租期处理（事件已接收，逻辑待真机确认）
+  - [x] 16kHz IMA/DVI ADPCM 解码（含合成码流 round-trip 测试）
+  - [x] 同步包 / predictor / step index 重置
+  - [x] 停止后 0.3 秒尾部数据丢弃策略
 
 ## 3. 核心模块：音频
 
