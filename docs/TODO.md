@@ -41,10 +41,10 @@
 
 ## 2. 核心模块：BLE / ATVV
 
-- [ ] `core-ble`
-  - [ ] WinRT BLE 扫描并精确匹配 RC003 设备名
+- [x] `core-ble`
+  - [x] WinRT BLE 扫描 + 精确名称匹配（待真机验证）
   - [ ] GATT 枚举使用 `BluetoothCacheMode.UNCACHED`
-  - [ ] ATVV Service/Characteristic UUID 常量定义
+  - [x] ATVV Service/Characteristic UUID 常量定义（在 core-atvv）
   - [ ] 连接、断开、自动重连、超时处理
   - [ ] 单实例 / 并发连接保护
 - [ ] `core-atvv`

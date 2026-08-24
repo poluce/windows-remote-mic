@@ -31,6 +31,12 @@ struct MappingEntry {
     action: String,
 }
 
+/// Scan for the RC003 remote over Bluetooth LE (Windows only).
+#[tauri::command]
+fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
+    core_ble::scan_for_rc003().map_err(|e| e.to_string())
+}
+
 /// Run audio diagnostics: endpoints + VB-CABLE presence.
 #[tauri::command]
 fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
@@ -125,6 +131,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ping,
+            scan_for_rc003,
             list_audio_endpoints,
             default_mapping,
             play_test_tone,
