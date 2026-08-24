@@ -12,15 +12,15 @@ const FALLBACK_MAPPING: MappingEntry[] = [
   { button: "down", name: "下", action: "↓" },
   { button: "left", name: "左", action: "←" },
   { button: "right", name: "右", action: "→" },
-  { button: "ok", name: "确定", action: "Enter" },
-  { button: "back", name: "返回", action: "Backspace" },
-  { button: "home", name: "主页", action: "显示桌面 Win+D" },
-  { button: "menu", name: "菜单", action: "上下文菜单" },
-  { button: "tv", name: "TV", action: "应用切换 Alt+Tab" },
-  { button: "power", name: "电源", action: "Esc" },
+  { button: "ok", name: "确定", action: "回车（Enter）" },
+  { button: "back", name: "返回", action: "删除（退格）" },
+  { button: "home", name: "主页", action: "显示桌面（Win+D）" },
+  { button: "menu", name: "菜单", action: "右键菜单（上下文菜单）" },
+  { button: "tv", name: "TV", action: "切换应用（Alt+Tab）" },
+  { button: "power", name: "电源", action: "取消（Esc）" },
   { button: "volume_up", name: "音量 +", action: "音量 +" },
   { button: "volume_down", name: "音量 −", action: "音量 −" },
-  { button: "mic", name: "麦克风", action: "语音输入 Win+H" },
+  { button: "mic", name: "麦克风", action: "语音输入（Win+H）" },
 ];
 
 export function MappingPage() {

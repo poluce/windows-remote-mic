@@ -84,11 +84,11 @@ export function DiagnosticsPage() {
           </div>
           <div className={`brief ${data.cable_input_present ? "ok" : "warn"}`}>
             <div className="brief-value">{data.cable_input_present ? "有" : "无"}</div>
-            <div className="brief-label">CABLE Input</div>
+            <div className="brief-label">CABLE 输入</div>
           </div>
           <div className={`brief ${data.cable_output_present ? "ok" : "warn"}`}>
             <div className="brief-value">{data.cable_output_present ? "有" : "无"}</div>
-            <div className="brief-label">CABLE Output（麦克风）</div>
+            <div className="brief-label">CABLE 输出（麦克风）</div>
           </div>
         </div>
       </section>
@@ -102,7 +102,7 @@ export function DiagnosticsPage() {
             {data.output_endpoints.map((ep) => (
               <li key={ep.id}>
                 <span>{ep.name}</span>
-                <span className="badge badge-ok">{ep.kind}</span>
+                <span className="badge badge-ok">输出</span>
               </li>
             ))}
           </ul>
@@ -118,7 +118,7 @@ export function DiagnosticsPage() {
             {data.input_endpoints.map((ep) => (
               <li key={ep.id}>
                 <span>{ep.name}</span>
-                <span className="badge badge-warn">{ep.kind}</span>
+                <span className="badge badge-warn">输入</span>
               </li>
             ))}
           </ul>

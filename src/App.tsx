@@ -32,7 +32,7 @@ function App() {
           </div>
           <div className="backend-status">
             <span className="dot" />
-            Backend: {backend}
+            后端状态：{backend}
           </div>
         </header>
 

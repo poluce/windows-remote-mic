@@ -11,9 +11,7 @@ use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
 fn ping() -> String {
     let mut decoder = ImaAdpcmDecoder::new();
     let _ = decoder.decode_bytes(&[0x00, 0x11]);
-    format!(
-        "pong from remote-mic backend (atvv samples decoded ok, adpcm ready)"
-    )
+    "后端已连接（ATVV 解码正常，ADPCM 就绪）".to_string()
 }
 
 /// List output endpoints exposed to the settings UI.
@@ -102,22 +100,22 @@ fn action_label(action: &ActionKind) -> String {
     match action {
         ActionKind::Disabled => "禁用".into(),
         ActionKind::KeyCombo(keys) => keys.join("+"),
-        ActionKind::Escape => "Esc".into(),
-        ActionKind::Return => "Enter".into(),
+        ActionKind::Escape => "取消（Esc）".into(),
+        ActionKind::Return => "回车（Enter）".into(),
         ActionKind::ArrowUp => "↑".into(),
         ActionKind::ArrowDown => "↓".into(),
         ActionKind::ArrowLeft => "←".into(),
         ActionKind::ArrowRight => "→".into(),
-        ActionKind::DeleteBackward => "Backspace".into(),
-        ActionKind::ShowDesktop => "显示桌面 Win+D".into(),
-        ActionKind::ContextMenu => "上下文菜单".into(),
-        ActionKind::AppSwitcher => "应用切换 Alt+Tab".into(),
+        ActionKind::DeleteBackward => "删除（退格）".into(),
+        ActionKind::ShowDesktop => "显示桌面（Win+D）".into(),
+        ActionKind::ContextMenu => "右键菜单（上下文菜单）".into(),
+        ActionKind::AppSwitcher => "切换应用（Alt+Tab）".into(),
         ActionKind::SystemVolumeUp => "音量 +".into(),
         ActionKind::SystemVolumeDown => "音量 −".into(),
         ActionKind::SystemVolumeMute => "静音".into(),
         ActionKind::PlayPause => "播放/暂停".into(),
-        ActionKind::Voice => "语音输入 Win+H".into(),
-        ActionKind::OpenApp(name) => format!("打开 {name}"),
+        ActionKind::Voice => "语音输入（Win+H）".into(),
+        ActionKind::OpenApp(name) => format!("打开应用：{name}"),
     }
 }
 

@@ -8,12 +8,12 @@ type Endpoint = {
 };
 
 const FALLBACK_ENDPOINTS: Endpoint[] = [
-  { id: "cable-input", name: "CABLE Input (VB-CABLE)", kind: "Output" },
+  { id: "cable-input", name: "CABLE 输入（VB-CABLE）", kind: "Output" },
 ];
 
 export function VoicePage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>(FALLBACK_ENDPOINTS);
-  const [selected, setSelected] = useState("CABLE Input (VB-CABLE)");
+  const [selected, setSelected] = useState("CABLE 输入（VB-CABLE）");
   const [toneResult, setToneResult] = useState("");
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export function VoicePage() {
           <div className="route-node">
             <span>🎧</span>
             <div>虚拟声卡</div>
-            <small>{selected || "CABLE Output"}</small>
+            <small>{selected || "CABLE 输出（麦克风）"}</small>
           </div>
         </div>
       </section>
