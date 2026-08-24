@@ -23,13 +23,31 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "poluce",
+    "category": "Utility",
+    "shortDescription": "将小米蓝牙语音遥控器变成 Windows 无线麦克风",
+    "longDescription": "把小米蓝牙语音遥控器变成 Windows 无线麦克风：优先使用 Windows 自带语音输入（Win+H），支持按键映射、虚拟声卡输出与诊断。",
+    "windows": {
+      "webviewInstallMode": "downloadBootstrapper",
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Remote Mic"
+      }
+    }
   }
 }

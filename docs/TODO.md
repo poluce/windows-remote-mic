@@ -131,8 +131,8 @@
 
 ## 8. 打包 / 签名 / 发布
 
-- [ ] Tauri Bundle 配置
-  - [ ] 安装器（NSIS）
+- [x] Tauri Bundle 配置
+  - [x] 安装器（NSIS，中文/English，currentUser）
   - [ ] 便携版 ZIP
   - [ ] SHA256SUMS.txt
 - [ ] 签名方案
@@ -140,7 +140,7 @@
   - [ ] SmartScreen 提示文档
   - [ ] 可选：公共 CA / EV 签名评估
 - [ ] 自动更新方案（WinSparkle / 自更新 / 手动下载）
-- [ ] GitHub Release 自动化发布
+- [x] GitHub Actions 自动构建 Windows 安装包（tag / 手动触发）
 - [ ] 卸载后配置/日志保留策略说明
 
 ## 9. 测试与真机验收
