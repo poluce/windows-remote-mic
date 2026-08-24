@@ -31,6 +31,25 @@ struct MappingEntry {
     action: String,
 }
 
+/// Start the real-device voice bridge (Windows only). Runs on a worker thread.
+#[tauri::command]
+fn start_voice_bridge(device_id: String, output_device: String) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        std::thread::spawn(move || {
+            if let Err(e) = core_voice::run_bridge(&device_id, &output_device) {
+                eprintln!("voice bridge error: {e}");
+            }
+        });
+        "语音桥已启动（监听 ATVV Audio → CABLE 输出）".to_string()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (device_id, output_device);
+        "语音桥仅在 Windows 可用".to_string()
+    }
+}
+
 /// Decode a batch of ATVV audio bytes through the voice engine (self-test).
 #[tauri::command]
 fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
@@ -154,6 +173,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            start_voice_bridge,
             scan_for_rc003,
             connect_rc003,
             list_audio_endpoints,

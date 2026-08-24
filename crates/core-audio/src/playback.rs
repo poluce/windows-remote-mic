@@ -81,6 +81,10 @@ pub fn play_test_tone_loop(
     Ok(())
 }
 
+pub(crate) fn pick_output_device_public(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
+    pick_output_device(host, name)
+}
+
 fn pick_output_device(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
     if let Some(name) = name {
         let name = name.trim();

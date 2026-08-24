@@ -17,6 +17,8 @@ pub struct VoiceChunk {
     pub pcm_samples: usize,
     pub output_samples: usize,
     pub dropped_bytes: usize,
+    /// 48 kHz stereo float frames ready to be written to the output device.
+    pub output: Vec<f32>,
 }
 
 /// Orchestrates the remote->system voice path for one session.
@@ -83,6 +85,7 @@ impl VoiceEngine {
             // Keep any adaptive gain modest for now (unit-level; value verified later).
             let frame_out = core_audio::build_output_frame(&mono_f32, core_audio::DEFAULT_GAIN_DB);
             chunk.output_samples += frame_out.len();
+            chunk.output.extend_from_slice(&frame_out);
             let _ = &mut mono_f32;
         }
 
@@ -131,3 +134,9 @@ mod tests {
         assert_eq!(chunk.pcm_samples, 0);
     }
 }
+
+#[cfg(target_os = "windows")]
+pub mod bridge;
+
+#[cfg(target_os = "windows")]
+pub use bridge::run_bridge;

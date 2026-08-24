@@ -651,6 +651,11 @@ dependencies = [
 [[package]]
 name = "core-input"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.20",
+ "windows 0.62.2",
+]
 
 [[package]]
 name = "core-mapping"
@@ -666,6 +671,8 @@ version = "0.1.0"
 dependencies = [
  "core-atvv",
  "core-audio",
+ "core-ble",
+ "core-input",
  "serde",
  "thiserror 2.0.20",
 ]
@@ -3094,6 +3101,7 @@ dependencies = [
  "core-hid",
  "core-input",
  "core-mapping",
+ "core-voice",
  "serde",
  "serde_json",
  "tauri",

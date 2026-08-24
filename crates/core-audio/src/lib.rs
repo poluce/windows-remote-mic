@@ -9,6 +9,8 @@ mod wasapi;
 
 #[cfg(target_os = "windows")]
 pub mod playback;
+#[cfg(target_os = "windows")]
+pub mod sink;
 
 pub mod dsp;
 pub mod endpoint;
