@@ -1,10 +1,10 @@
 export type PageId = "connection" | "mapping" | "voice" | "diagnostics";
 
-const NAV_ITEMS: { id: PageId; label: string; icon: string }[] = [
-  { id: "connection", label: "连接", icon: "🔌" },
-  { id: "mapping", label: "按键映射", icon: "🎛️" },
-  { id: "voice", label: "语音", icon: "🎙️" },
-  { id: "diagnostics", label: "诊断", icon: "🩺" },
+const NAV_ITEMS: { id: PageId; label: string }[] = [
+  { id: "connection", label: "连接" },
+  { id: "mapping", label: "按键映射" },
+  { id: "voice", label: "语音" },
+  { id: "diagnostics", label: "诊断" },
 ];
 
 export function Sidebar({
@@ -31,7 +31,6 @@ export function Sidebar({
             className={page === item.id ? "nav-item active" : "nav-item"}
             onClick={() => onChange(item.id)}
           >
-            <span className="nav-icon">{item.icon}</span>
             <span>{item.label}</span>
           </button>
         ))}
