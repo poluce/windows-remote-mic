@@ -47,6 +47,7 @@
   - [x] ATVV Service/Characteristic UUID 常量定义（在 core-atvv）
   - [ ] 断开、自动重连、超时处理（连接已实现：FromIdAsync）
   - [ ] 单实例 / 并发连接保护
+  - [x] ATVV 传输层：订阅 Audio 特征 + Control 写入 + 事件回调（待真机验证）
 - [ ] `core-atvv`
   - [ ] ATVV 能力协商（结构已建，原始字节解析待真机确认）
   - [x] MIC_OPEN / STREAM_START / STREAM_STOP 会话状态机（语义事件；原始 opcode 待真机确认）
