@@ -10,11 +10,8 @@ $ErrorActionPreference = "Stop"
 $hashFile = Join-Path $PSScriptRoot "vb-cable.sha256"
 $expectedHash = ""
 if (Test-Path $hashFile) {
-    $expectedHash = (
-        Get-Content -Path $hashFile |
-            Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' } |
-            Join-String
-    ).Trim()
+    $lines = Get-Content -Path $hashFile
+    $expectedHash = (($lines | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' }) -join '').Trim()
 }
 
 if (-not $expectedHash) {
