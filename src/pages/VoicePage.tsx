@@ -7,6 +7,12 @@ type Endpoint = {
   kind: "Output" | "Input";
 };
 
+type VbCableStatus = {
+  input: boolean;
+  output: boolean;
+  ready: boolean;
+};
+
 const FALLBACK_ENDPOINTS: Endpoint[] = [
   { id: "cable-input", name: "CABLE 输入（VB-CABLE）", kind: "Output" },
 ];
@@ -15,6 +21,20 @@ export function VoicePage() {
   const [endpoints, setEndpoints] = useState<Endpoint[]>(FALLBACK_ENDPOINTS);
   const [selected, setSelected] = useState("CABLE 输入（VB-CABLE）");
   const [toneResult, setToneResult] = useState("");
+  const [vbCable, setVbCable] = useState<VbCableStatus | null>(null);
+  const [vbMsg, setVbMsg] = useState("");
+  const [installing, setInstalling] = useState(false);
+
+  async function refreshVbStatus() {
+    if (!isTauri()) return;
+    try {
+      setVbCable(await invoke<VbCableStatus>("vb_cable_status"));
+      return null;
+    } catch {
+      setVbCable(null);
+      return null;
+    }
+  }
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -26,7 +46,25 @@ export function VoicePage() {
         return null;
       })
       .catch(() => {});
+    refreshVbStatus();
   }, []);
+
+  async function installVbCable() {
+    if (!isTauri()) return;
+    setInstalling(true);
+    setVbMsg("正在安装…请留意 UAC 弹窗确认");
+    try {
+      const msg = await invoke<string>("install_vb_cable");
+      setVbMsg(msg);
+      await refreshVbStatus();
+      return null;
+    } catch (err) {
+      setVbMsg(`安装流程失败：${err}`);
+      return null;
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   async function sendTestTone() {
     setToneResult("播放中…");
@@ -80,6 +118,33 @@ export function VoicePage() {
         </select>
         {!isTauri() && (
           <p className="hint">浏览器预览：显示占位端点；桌面应用内会列出真实 WASAPI 设备。</p>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="card-title">虚拟声卡（VB-CABLE）</div>
+        {!isTauri() ? (
+          <p className="hint">浏览器预览：请在桌面应用内检测/安装。</p>
+        ) : vbCable === null ? (
+          <p className="hint">检测中…</p>
+        ) : vbCable.ready ? (
+          <p>✅ 已安装（CABLE 输入 / 输出就绪）</p>
+        ) : (
+          <div>
+            <p>
+              未检测到 VB-CABLE（输入={vbCable.input ? "有" : "无"}，
+              输出={vbCable.output ? "有" : "无"}）。请安装虚拟声卡后，语音才能进入系统听写。
+            </p>
+            <div className="actions">
+              <button className="btn primary" onClick={installVbCable} disabled={installing}>
+                {installing ? "正在安装…" : "安装 VB-CABLE"}
+              </button>
+              <button className="btn" onClick={refreshVbStatus}>
+                重新检测
+              </button>
+            </div>
+            {vbMsg && <p className="hint">{vbMsg}</p>}
+          </div>
         )}
       </section>
 

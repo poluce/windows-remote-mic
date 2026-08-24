@@ -259,6 +259,71 @@ fn get_stats_summary_inner() -> StatsSummary {
     }
 }
 
+/// VB-CABLE installed status.
+#[derive(serde::Serialize)]
+struct VbCableStatus {
+    input: bool,
+    output: bool,
+    ready: bool,
+}
+
+#[tauri::command]
+fn vb_cable_status() -> VbCableStatus {
+    let d = core_audio::diagnostics::run();
+    VbCableStatus {
+        input: d.cable_input_present,
+        output: d.cable_output_present,
+        ready: d.has_vb_cable,
+    }
+}
+
+/// One-click VB-CABLE install: runs the official installer helper.
+#[tauri::command]
+fn install_vb_cable() -> String {
+    let d = core_audio::diagnostics::run();
+    if d.has_vb_cable {
+        return "已安装 VB-CABLE，无需重复安装".to_string();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = std::env::current_dir()
+            .ok()
+            .map(|c| c.join("scripts/install-vb-cable.ps1"));
+        let script = match script {
+            Some(s) if s.exists() => s,
+            _ => {
+                return "找不到安装脚本（scripts/install-vb-cable.ps1）".to_string();
+            }
+        };
+
+        match std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script.to_str().unwrap_or_default(),
+            ])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            }
+            Ok(out) => format!(
+                "安装失败：{}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => format!("无法启动安装程序：{e}"),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = ();
+        "VB-CABLE 安装仅在 Windows 上可用".to_string()
+    }
+}
+
 /// Run audio diagnostics: endpoints + VB-CABLE presence.
 #[tauri::command]
 fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
@@ -354,6 +419,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            vb_cable_status,
+            install_vb_cable,
             run_self_test,
             demo_record_key,
             get_stats_summary,
