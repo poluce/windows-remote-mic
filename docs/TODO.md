@@ -69,7 +69,7 @@
   - [ ] 输出设备失配/断开时失败关闭
 - [ ] 虚拟声卡方案
   - [x] 检测未装 → 设置页「安装 VB-CABLE」按钮（官方包下载 + UAC 安装）
-  - [ ] 固定 VB-CABLE 官方包 SHA-256（scripts/vb-cable.sha256 当前为空，填实前安装按钮会拒绝执行）
+  - [x] 固定 VB-CABLE 官方包 SHA-256（已写入 scripts/vb-cable.sha256，含来源/日期）
   - [ ] 可选：随包提供官方 VB-CABLE + SHA-256 校验 + UAC 安装
   - [ ] 可选：评估自研虚拟音频驱动可行性
 
