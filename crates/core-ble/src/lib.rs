@@ -37,4 +37,17 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
 }
 
 #[cfg(target_os = "windows")]
+pub mod gatt;
+
+#[cfg(target_os = "windows")]
+pub use gatt::{discover_atvv, AtvvEndpoints};
+#[cfg(target_os = "windows")]
 mod winrt;
+
+/// Scan for the RC003 then discover its ATVV endpoints (Windows only).
+#[cfg(target_os = "windows")]
+pub fn scan_and_connect() -> Result<(BleDevice, AtvvEndpoints)> {
+    let device = scan_for_rc003()?;
+    let endpoints = discover_atvv(&device.id)?;
+    Ok((device, endpoints))
+}

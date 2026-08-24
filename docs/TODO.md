@@ -43,9 +43,9 @@
 
 - [x] `core-ble`
   - [x] WinRT BLE 扫描 + 精确名称匹配（待真机验证）
-  - [ ] GATT 枚举使用 `BluetoothCacheMode.UNCACHED`
+  - [x] GATT 枚举使用 `UNCACHED`（ATVV 服务 + TX/Audio/Control 特征发现）
   - [x] ATVV Service/Characteristic UUID 常量定义（在 core-atvv）
-  - [ ] 连接、断开、自动重连、超时处理
+  - [ ] 断开、自动重连、超时处理（连接已实现：FromIdAsync）
   - [ ] 单实例 / 并发连接保护
 - [ ] `core-atvv`
   - [ ] ATVV 能力协商（结构已建，原始字节解析待真机确认）

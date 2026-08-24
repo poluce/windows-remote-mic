@@ -37,6 +37,20 @@ fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
     core_ble::scan_for_rc003().map_err(|e| e.to_string())
 }
 
+/// Connect to the RC003 and report whether the ATVV service is present.
+#[derive(serde::Serialize)]
+struct Rc003Connection {
+    device: core_ble::BleDevice,
+    endpoints: core_ble::gatt::AtvvEndpoints,
+}
+
+#[tauri::command]
+fn connect_rc003() -> Result<Rc003Connection, String> {
+    core_ble::scan_and_connect()
+        .map(|(device, endpoints)| Rc003Connection { device, endpoints })
+        .map_err(|e| e.to_string())
+}
+
 /// Run audio diagnostics: endpoints + VB-CABLE presence.
 #[tauri::command]
 fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
@@ -132,6 +146,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             scan_for_rc003,
+            connect_rc003,
             list_audio_endpoints,
             default_mapping,
             play_test_tone,
