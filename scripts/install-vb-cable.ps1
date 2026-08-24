@@ -18,7 +18,7 @@ if (Test-Path $hashFile) {
 }
 
 if (-not $expectedHash) {
-    throw "VB-CABLE 官方包 SHA-256 尚未固定（scripts/vb-cable.sha256 为空），已拒绝安装以防止供应链攻击。"
+    throw "VB-CABLE SHA-256 is not pinned (scripts/vb-cable.sha256 is empty). Refusing to install."
 }
 
 $local = Join-Path $env:LOCALAPPDATA "RemoteMic\RC003"
@@ -27,16 +27,16 @@ New-Item -ItemType Directory -Force -Path $local | Out-Null
 $zip = Join-Path $local "VBCABLE_Driver_Pack45.zip"
 $extract = Join-Path $local "vbcable"
 
-Write-Output "downloading $VbCableUrl ..."
+Write-Output "Downloading $VbCableUrl ..."
 Invoke-WebRequest -Uri $VbCableUrl -OutFile $zip
 
-Write-Output "verifying SHA-256 ..."
+Write-Output "Verifying SHA-256 ..."
 $actualHash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
 if ($actualHash -ne $expectedHash.ToLowerInvariant()) {
     Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue
-    throw "SHA-256 校验失败！实际 $actualHash，期望 $expectedHash。已删除下载文件，请勿运行该包。"
+    throw "SHA-256 mismatch. Actual=$actualHash Expected=$expectedHash. Deleted downloaded file."
 }
-Write-Output "hash OK."
+Write-Output "Hash OK."
 
 if (Test-Path $extract) { Remove-Item -Recurse -Force $extract }
 Expand-Archive -Path $zip -DestinationPath $extract -Force
@@ -44,6 +44,6 @@ Expand-Archive -Path $zip -DestinationPath $extract -Force
 $setup = Get-ChildItem -Path $extract -Recurse -Filter "VBCABLE_Setup_x64.exe" | Select-Object -First 1
 if (-not $setup) { throw "VBCABLE_Setup_x64.exe not found in archive" }
 
-Write-Output "starting official installer (confirm UAC)..."
+Write-Output "Starting official installer (confirm UAC)..."
 Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Verb RunAs
-Write-Output "launched installer; once finished, click 重新检测 in the app."
+Write-Output "Installer launched. When it finishes, click Re-detect in the app."
