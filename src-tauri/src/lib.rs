@@ -7,6 +7,41 @@ use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpo
 use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
 use core_mapping::gesture::GestureDetector;
 
+#[cfg(target_os = "windows")]
+fn find_install_script() -> Option<std::path::PathBuf> {
+    fn ancestors(start: std::path::PathBuf, max: usize) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        let mut cur = start;
+        for _ in 0..max {
+            out.push(cur.clone());
+            if !cur.pop() {
+                break;
+            }
+        }
+        out
+    }
+
+    let mut starts = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        starts.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(p) = exe.parent() {
+            starts.push(p.to_path_buf());
+        }
+    }
+
+    for start in starts {
+        for dir in ancestors(start, 8) {
+            let cand = dir.join("scripts").join("install-vb-cable.ps1");
+            if cand.exists() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
 /// Simple command used to verify the frontend <-> backend bridge works.
 #[tauri::command]
 fn ping() -> String {
@@ -287,13 +322,13 @@ fn install_vb_cable() -> String {
 
     #[cfg(target_os = "windows")]
     {
-        let script = std::env::current_dir()
-            .ok()
-            .map(|c| c.join("scripts/install-vb-cable.ps1"));
-        let script = match script {
-            Some(s) if s.exists() => s,
-            _ => {
-                return "找不到安装脚本（scripts/install-vb-cable.ps1）".to_string();
+        let script = match find_install_script() {
+            Some(s) => s,
+            None => {
+                return format!(
+                    "找不到安装脚本（从 {} 向上搜索 scripts/install-vb-cable.ps1 均失败）",
+                    std::env::current_dir().map(|c| c.display().to_string()).unwrap_or_default()
+                );
             }
         };
 
