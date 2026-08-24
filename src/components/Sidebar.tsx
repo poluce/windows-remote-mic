@@ -1,10 +1,12 @@
-export type PageId = "connection" | "mapping" | "voice" | "diagnostics";
+export type PageId = "connection" | "mapping" | "voice" | "diagnostics" | "guidance" | "stats";
 
 const NAV_ITEMS: { id: PageId; label: string }[] = [
   { id: "connection", label: "连接" },
   { id: "mapping", label: "按键映射" },
   { id: "voice", label: "语音" },
   { id: "diagnostics", label: "诊断" },
+  { id: "guidance", label: "引导" },
+  { id: "stats", label: "统计" },
 ];
 
 export function Sidebar({

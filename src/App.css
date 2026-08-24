@@ -471,3 +471,46 @@ button {
   font-size: 12px;
   margin: 10px 0 0;
 }
+
+/* ---------- Onboarding ---------- */
+.onboarding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: step;
+}
+
+.onboarding-list li {
+  display: flex;
+  gap: 14px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.onboarding-list li:last-child {
+  border-bottom: none;
+}
+
+.step-no {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.step-detail {
+  color: var(--text-3);
+  font-size: 13px;
+}

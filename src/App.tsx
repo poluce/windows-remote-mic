@@ -5,6 +5,8 @@ import { ConnectionPage } from "./pages/ConnectionPage";
 import { MappingPage } from "./pages/MappingPage";
 import { VoicePage } from "./pages/VoicePage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { StatsPage } from "./pages/StatsPage";
 import "./App.css";
 
 function App() {
@@ -41,6 +43,8 @@ function App() {
           {page === "mapping" && <MappingPage />}
           {page === "voice" && <VoicePage />}
           {page === "diagnostics" && <DiagnosticsPage />}
+          {page === "guidance" && <OnboardingPage />}
+          {page === "stats" && <StatsPage />}
         </div>
       </main>
     </div>
@@ -57,6 +61,10 @@ function pageTitle(page: PageId): string {
       return "语音";
     case "diagnostics":
       return "诊断";
+    case "guidance":
+      return "引导";
+    case "stats":
+      return "统计";
   }
 }
 

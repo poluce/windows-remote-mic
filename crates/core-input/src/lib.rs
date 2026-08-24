@@ -19,3 +19,25 @@ pub fn press_win_h() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 mod hotkey;
+
+/// Send a keyboard shortcut from tokens, e.g. ["win","d"] or ["ctrl","space"].
+#[cfg(target_os = "windows")]
+pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
+    crate::hotkey::send_key_combo(tokens)
+}
+
+/// Open an app / file by launching it through the shell (Windows only).
+#[cfg(target_os = "windows")]
+pub fn open_app(name: &str) -> Result<()> {
+    crate::hotkey::open_app(name)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn send_key_combo(_tokens: &[&str]) -> Result<()> {
+    Err(InputError::Windows("key injection only on Windows".to_string()))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn open_app(_name: &str) -> Result<()> {
+    Err(InputError::Windows("open_app only on Windows".to_string()))
+}

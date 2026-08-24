@@ -32,4 +32,5 @@ core-mapping = { path = "../crates/core-mapping" }
 core-config = { path = "../crates/core-config" }
 core-diagnostics = { path = "../crates/core-diagnostics" }
 core-voice = { path = "../crates/core-voice" }
+core-stats = { path = "../crates/core-stats" }
 

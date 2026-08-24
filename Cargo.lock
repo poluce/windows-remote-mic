@@ -666,6 +666,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-stats"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "core-voice"
 version = "0.1.0"
 dependencies = [
@@ -3101,6 +3111,7 @@ dependencies = [
  "core-hid",
  "core-input",
  "core-mapping",
+ "core-stats",
  "core-voice",
  "serde",
  "serde_json",

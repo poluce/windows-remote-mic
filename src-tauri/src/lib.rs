@@ -78,6 +78,43 @@ fn connect_rc003() -> Result<Rc003Connection, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Local statistics summary (key presses + voice time).
+#[derive(serde::Serialize)]
+struct StatsSummary {
+    today_key_presses: u64,
+    today_voice_seconds: u64,
+    total_key_presses: u64,
+    total_voice_seconds: u64,
+}
+
+#[tauri::command]
+fn get_stats_summary() -> StatsSummary {
+    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let store = core_stats::StatsStore::new(std::path::Path::new(&base).join("RemoteMic/RC003"));
+    let mut today_key = 0;
+    let mut today_voice = 0;
+    let mut total_key = 0;
+    let mut total_voice = 0;
+    if let Ok(store) = store {
+        if let Ok(stats) = store.load() {
+            for (_, day) in &stats {
+                total_key += day.key_presses.values().sum::<u64>();
+                total_voice += day.voice_seconds;
+            }
+            if let Some(day) = stats.get(&core_stats::StatsStore::date_key_now()) {
+                today_key = day.key_presses.values().sum::<u64>();
+                today_voice = day.voice_seconds;
+            }
+        }
+    }
+    StatsSummary {
+        today_key_presses: today_key,
+        today_voice_seconds: today_voice,
+        total_key_presses: total_key,
+        total_voice_seconds: total_voice,
+    }
+}
+
 /// Run audio diagnostics: endpoints + VB-CABLE presence.
 #[tauri::command]
 fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
@@ -173,6 +210,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            get_stats_summary,
             start_voice_bridge,
             scan_for_rc003,
             connect_rc003,

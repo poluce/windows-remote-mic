@@ -1,5 +1,7 @@
 //! core-mapping — RC003 13-button key mapping and gesture rules.
 
+pub mod gesture;
+
 use serde::{Deserialize, Serialize};
 
 /// The 13 physical buttons on the RC003.
