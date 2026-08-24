@@ -31,6 +31,14 @@ struct MappingEntry {
     action: String,
 }
 
+/// Decode a batch of ATVV audio bytes through the voice engine (self-test).
+#[tauri::command]
+fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
+    let mut engine = core_voice::VoiceEngine::new();
+    let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
+    engine.feed(&bytes)
+}
+
 /// Scan for the RC003 remote over Bluetooth LE (Windows only).
 #[tauri::command]
 fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
@@ -145,6 +153,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             ping,
+            decode_atvv_preview,
             scan_for_rc003,
             connect_rc003,
             list_audio_endpoints,
