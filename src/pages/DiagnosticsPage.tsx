@@ -23,10 +23,17 @@ const EMPTY: Diagnostics = {
   cable_output_present: false,
 };
 
+type SelfTestItem = {
+  name: string;
+  status: "pass" | "fail" | "skip";
+  detail: string;
+};
+
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
   const [looping, setLooping] = useState(false);
+  const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
 
   async function runCheck() {
     if (!isTauri()) {
@@ -44,6 +51,20 @@ export function DiagnosticsPage() {
   useEffect(() => {
     runCheck();
   }, []);
+
+  async function runSelfTest() {
+    if (!isTauri()) {
+      setStatus("浏览器预览：请在桌面应用内运行自检");
+      return;
+    }
+    try {
+      setStatus("正在运行自检…");
+      setSelfTests(await invoke<SelfTestItem[]>("run_self_test"));
+      setStatus("自检完成");
+    } catch (err) {
+      setStatus(`自检失败: ${err}`);
+    }
+  }
 
   async function loopTone() {
     if (!isTauri()) {
@@ -130,9 +151,33 @@ export function DiagnosticsPage() {
         <p>{status}</p>
       </section>
 
+      <section className="card">
+        <div className="card-title">能力自检（PASS/FAIL）</div>
+        {!selfTests ? (
+          <p className="hint">点击下方「运行自检」验证各真实模块。</p>
+        ) : (
+          <div className="check-list">
+            {selfTests.map((t) => (
+              <div key={t.name} className="check-row">
+                <span>{t.name}</span>
+                <div>
+                  <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
+                    {t.status.toUpperCase()}
+                  </span>
+                  {t.detail && <span className="hint"> {t.detail}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="card actions">
         <button className="btn primary" onClick={runCheck}>
           运行检查
+        </button>
+        <button className="btn primary" onClick={runSelfTest}>
+          运行自检
         </button>
         <button className="btn" onClick={loopTone} disabled={looping}>
           {looping ? "循环播放中…" : "循环播放测试音（3 次）"}

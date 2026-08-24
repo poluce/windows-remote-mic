@@ -5,6 +5,7 @@ use serde::Serialize;
 use core_atvv::ImaAdpcmDecoder;
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
 use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
+use core_mapping::gesture::GestureDetector;
 
 /// Simple command used to verify the frontend <-> backend bridge works.
 #[tauri::command]
@@ -78,6 +79,145 @@ fn connect_rc003() -> Result<Rc003Connection, String> {
         .map_err(|e| e.to_string())
 }
 
+/// One self-test item with a PASS / FAIL / SKIP verdict.
+#[derive(serde::Serialize)]
+struct SelfTestItem {
+    name: String,
+    status: String,
+    detail: String,
+}
+
+/// Run a hardware-independent capability self-test (Windows does the audio part).
+#[tauri::command]
+fn run_self_test() -> Vec<SelfTestItem> {
+    let mut items = Vec::new();
+
+    // 1) Audio endpoints
+    match core_audio::endpoint::list_output_endpoints() {
+        Ok(list) if !list.is_empty() => items.push(SelfTestItem {
+            name: "音频端点枚举".into(),
+            status: "pass".into(),
+            detail: format!("发现 {} 个输出端点", list.len()),
+        }),
+        Ok(_) => items.push(SelfTestItem {
+            name: "音频端点枚举".into(),
+            status: "fail".into(),
+            detail: "未发现输出端点".into(),
+        }),
+        Err(e) => items.push(SelfTestItem {
+            name: "音频端点枚举".into(),
+            status: "fail".into(),
+            detail: e.to_string(),
+        }),
+    }
+
+    // 2) Voice decode preview (synthetic ATVV bytes)
+    {
+        let mut engine = core_voice::VoiceEngine::new();
+        let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
+        let chunk = engine.feed(&[0x55; 120]);
+        if chunk.output_samples > 0 && chunk.pcm_samples > 0 {
+            items.push(SelfTestItem {
+                name: "ATVV→ADPCM→输出帧".into(),
+                status: "pass".into(),
+                detail: format!("PCM {}，输出帧 {}", chunk.pcm_samples, chunk.output_samples),
+            });
+        } else {
+            items.push(SelfTestItem {
+                name: "ATVV→ADPCM→输出帧".into(),
+                status: "fail".into(),
+                detail: "解码输出为空".into(),
+            });
+        }
+    }
+
+    // 3) Gesture detection
+    {
+        let mut d = GestureDetector::new();
+        d.press(0);
+        let fired = d.release(600);
+        use core_mapping::gesture::FeedOutcome;
+        use core_mapping::Trigger;
+        match fired {
+            FeedOutcome::Fire(ev) if ev.trigger == Trigger::LongPress => {
+                items.push(SelfTestItem {
+                    name: "长按手势识别".into(),
+                    status: "pass".into(),
+                    detail: "550ms 长按被正确识别".into(),
+                });
+            }
+            other => items.push(SelfTestItem {
+                name: "长按手势识别".into(),
+                status: "fail".into(),
+                detail: format!("期望 LongPress，实际 {:?}", other),
+            }),
+        }
+    }
+
+    // 4) Local stats write/read
+    {
+        let dir = std::env::temp_dir().join("remote-mic-self-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        if let Ok(store) = core_stats::StatsStore::new(&dir) {
+            let ok = store.record_key("self_test").is_ok()
+                && store
+                    .load()
+                    .map(|m| {
+                        m.values()
+                            .any(|d| d.key_presses.get("self_test").copied().unwrap_or(0) > 0)
+                    })
+                    .unwrap_or(false);
+            items.push(SelfTestItem {
+                name: "本地统计读写".into(),
+                status: if ok { "pass" } else { "fail" }.into(),
+                detail: if ok { "统计写读一致".into() } else { "统计读写失败".into() },
+            });
+        } else {
+            items.push(SelfTestItem {
+                name: "本地统计读写".into(),
+                status: "fail".into(),
+                detail: "无法创建统计目录".into(),
+            });
+        }
+    }
+
+    // 5) Test tone playback (Windows only)
+    #[cfg(target_os = "windows")]
+    {
+        match core_audio::playback::play_test_tone(None) {
+            Ok(()) => items.push(SelfTestItem {
+                name: "测试音播放（CABLE 验证）".into(),
+                status: "pass".into(),
+                detail: "已写入默认输出端点约 1 秒".into(),
+            }),
+            Err(e) => items.push(SelfTestItem {
+                name: "测试音播放（CABLE 验证）".into(),
+                status: "fail".into(),
+                detail: e.to_string(),
+            }),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    items.push(SelfTestItem {
+        name: "测试音播放（CABLE 验证）".into(),
+        status: "skip".into(),
+        detail: "仅限 Windows".into(),
+    });
+
+    items
+}
+
+/// Simulate one key press and write it to local stats, then return the new summary.
+#[tauri::command]
+fn demo_record_key() -> StatsSummary {
+    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let store = core_stats::StatsStore::new(std::path::Path::new(&base).join("RemoteMic/RC003"));
+    if let Ok(store) = store {
+        let _ = store.record_key("demo_button");
+    }
+    get_stats_summary_inner()
+}
+
 /// Local statistics summary (key presses + voice time).
 #[derive(serde::Serialize)]
 struct StatsSummary {
@@ -89,6 +229,10 @@ struct StatsSummary {
 
 #[tauri::command]
 fn get_stats_summary() -> StatsSummary {
+    get_stats_summary_inner()
+}
+
+fn get_stats_summary_inner() -> StatsSummary {
     let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let store = core_stats::StatsStore::new(std::path::Path::new(&base).join("RemoteMic/RC003"));
     let mut today_key = 0;
@@ -210,6 +354,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            run_self_test,
+            demo_record_key,
             get_stats_summary,
             start_voice_bridge,
             scan_for_rc003,

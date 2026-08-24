@@ -146,10 +146,6 @@ impl GestureDetector {
         })
     }
 
-    fn has_pending_single(&self) -> bool {
-        self.last_single_at.is_some()
-    }
-
 }
 
 #[cfg(test)]

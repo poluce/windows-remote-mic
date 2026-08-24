@@ -25,6 +25,15 @@ export function StatsPage() {
       .catch(() => {});
   }, []);
 
+  async function demoKey() {
+    if (!isTauri()) return;
+    try {
+      setStats(await invoke<StatsSummary>("demo_record_key"));
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   return (
     <div className="page">
       <h2>统计</h2>
@@ -56,6 +65,12 @@ export function StatsPage() {
             <div className="brief-label">语音时长</div>
           </div>
         </div>
+      </section>
+
+      <section className="card actions">
+        <button className="btn" onClick={demoKey}>
+          模拟一次按键（验证统计写入）
+        </button>
       </section>
     </div>
   );
