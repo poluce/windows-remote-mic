@@ -55,6 +55,39 @@
     font-weight: 600;
   }
 
+  .inner-circle {
+    fill: #ffffff;
+    stroke: #c9d1d9;
+    stroke-width: 1.5;
+  }
+
+  .inner-circle-text {
+    fill: #57606a;
+    font-size: 16px;
+    text-anchor: middle;
+    font-weight: 600;
+  }
+
+  .ring-buttons {
+    transition: opacity .15s;
+  }
+
+  .ring-buttons:not(.active) {
+    opacity: .35;
+  }
+
+  .outer-circle.selected,
+  .inner-circle.selected {
+    stroke: #2f6fed;
+    stroke-width: 3;
+    fill: #edf3ff;
+  }
+
+  .outer-circle.selected + text,
+  .inner-circle.selected + text {
+    fill: #2f6fed;
+  }
+
   .center-circle {
     fill: #ffffff;
     stroke: #d0d7de;
@@ -107,7 +140,7 @@
 
 
 
-      <g class="outer-ring-buttons">
+      <g id="outerRing" class="ring-buttons outer-ring active">
         <circle class="outer-circle" cx="73.0" cy="374.3" r="34" />
         <text class="outer-circle-text" x="73.0" y="379.0">1</text>
 
@@ -127,8 +160,25 @@
         <text class="outer-circle-text" x="374.3" y="77.0">6</text>
       </g>
 
-      <text class="placeholder" x="240" y="235">内环 · 工具</text>
-      <text class="placeholder-sub" x="240" y="255">（留空）</text>
+      <g id="innerRing" class="ring-buttons inner-ring">
+        <circle class="inner-circle" cx="172.1" cy="387.4" r="34" />
+        <text class="inner-circle-text" x="172.1" y="392.0">1</text>
+
+        <circle class="inner-circle" cx="189.0" cy="324.3" r="34" />
+        <text class="inner-circle-text" x="189.0" y="329.0">2</text>
+
+        <circle class="inner-circle" cx="221.7" cy="267.8" r="34" />
+        <text class="inner-circle-text" x="221.7" y="272.0">3</text>
+
+        <circle class="inner-circle" cx="267.8" cy="221.7" r="34" />
+        <text class="inner-circle-text" x="267.8" y="226.0">4</text>
+
+        <circle class="inner-circle" cx="324.3" cy="189.0" r="34" />
+        <text class="inner-circle-text" x="324.3" y="193.0">5</text>
+
+        <circle class="inner-circle" cx="387.4" cy="172.1" r="34" />
+        <text class="inner-circle-text" x="387.4" y="176.0">6</text>
+      </g>
 
       <path class="center-circle" d="M 420 420 L 220 420 A 200 200 0 0 1 420 220 Z" />
       <text class="center-title" x="320" y="325">介绍区</text>
@@ -136,5 +186,45 @@
     </svg>
     <div class="close-hint">再按菜单键关闭</div>
   </div>
+
+  <script>
+    const outerGroup = document.getElementById('outerRing');
+    const innerGroup = document.getElementById('innerRing');
+    let ring = 'outer';
+    let index = 0;
+
+    function updateSelection() {
+      outerGroup.classList.toggle('active', ring === 'outer');
+      innerGroup.classList.toggle('active', ring === 'inner');
+
+      [outerGroup, innerGroup].forEach((group) => {
+        const circles = Array.from(group.querySelectorAll('circle'));
+        const isActiveGroup = group === (ring === 'outer' ? outerGroup : innerGroup);
+        circles.forEach((circle, i) => {
+          circle.classList.toggle('selected', isActiveGroup && i === index);
+        });
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        ring = ring === 'outer' ? 'inner' : 'outer';
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        index = (index + 1) % 6;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        index = (index + 5) % 6;
+      } else {
+        return;
+      }
+      updateSelection();
+    });
+
+    document.body.tabIndex = 0;
+    document.body.focus();
+    updateSelection();
+  </script>
 </body>
 </html>
