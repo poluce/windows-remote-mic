@@ -117,9 +117,7 @@ export function VoicePage() {
   return (
     <div className="page">
       
-      <p className="page-sub">
-        优先使用 Windows 自带语音输入（Win+H），无需安装第三方输入法。
-      </p>
+      
 
       <section className="card">
         <div className="card-title">语音识别目标</div>

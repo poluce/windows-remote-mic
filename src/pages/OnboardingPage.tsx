@@ -29,7 +29,7 @@ export function OnboardingPage() {
   return (
     <div className="page">
       
-      <p className="page-sub">第一次使用：按顺序完成以下步骤。</p>
+      
 
       <section className="card">
         <div className="card-title">快捷入口</div>

@@ -54,7 +54,7 @@ export function StatsPage() {
   return (
     <div className="page">
       
-      <p className="page-sub">按键次数与语音时长仅保存在本机，不上传。</p>
+      
 
       <section className="card">
         <div className="card-title">今日</div>

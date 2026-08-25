@@ -73,9 +73,7 @@ export function ConnectionPage() {
   return (
     <div className="page">
       
-      <p className="page-sub">
-        连接小米蓝牙语音遥控器，让按键和语音进入 Windows。
-      </p>
+      
 
       <section className="card device-card">
         <div className="device-info">
