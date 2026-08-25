@@ -1,6 +1,7 @@
 //! Remote Mic Tauri application shell.
 
 use serde::Serialize;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 use core_atvv::ImaAdpcmDecoder;
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
@@ -246,6 +247,20 @@ fn save_mapping(edit: MappingEdit) -> Result<(), String> {
         });
     }
     store.save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Show/hide the bottom-right quick menu window.
+#[tauri::command]
+fn toggle_quick_menu(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("quick-menu") {
+        if win.is_visible().map_err(|e| e.to_string())? {
+            win.hide().map_err(|e| e.to_string())?;
+        } else {
+            win.show().map_err(|e| e.to_string())?;
+            win.set_focus().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// Simulate the full voice chain without a real remote.
@@ -768,6 +783,40 @@ fn action_label(action: &ActionKind) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let win_width = 420.0;
+            let win_height = 420.0;
+
+            let (x, y) = if let Ok(Some(monitor)) = app.handle().primary_monitor() {
+                let scale = monitor.scale_factor();
+                let pos = monitor.position();
+                let size = monitor.size();
+                let x = pos.x as f64 / scale + size.width as f64 / scale - win_width;
+                let y = pos.y as f64 / scale + size.height as f64 / scale - win_height;
+                (x, y)
+            } else {
+                (0.0, 0.0)
+            };
+
+            WebviewWindowBuilder::new(
+                app,
+                "quick-menu",
+                WebviewUrl::App("quick-menu.html".into()),
+            )
+            .title("Quick Menu")
+            .inner_size(win_width, win_height)
+            .position(x, y)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .shadow(false)
+            .visible(false)
+            .build()?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
@@ -790,6 +839,7 @@ pub fn run() {
             connect_rc003,
             list_audio_endpoints,
             get_mappings,
+            toggle_quick_menu,
             play_test_tone,
             play_test_tone_loop,
             audio_diagnostics

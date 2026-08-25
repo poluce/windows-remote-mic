@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Quick Menu</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    user-select: none;
+  }
+
+  .quick-menu {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+  }
+
+  .quick-menu svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 12px 32px rgba(0,0,0,0.55));
+  }
+
+  .fan-bg {
+    fill: rgba(20, 24, 30, 0.92);
+    stroke: rgba(255,255,255,0.14);
+    stroke-width: 1.5;
+  }
+
+  .ring-divider {
+    stroke: rgba(255,255,255,0.16);
+    stroke-width: 1.5;
+    fill: none;
+  }
+
+  .segment-line {
+    stroke: rgba(255,255,255,0.10);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+  }
+
+  .center-circle {
+    fill: rgba(38, 45, 55, 0.95);
+    stroke: rgba(255,255,255,0.18);
+    stroke-width: 1.5;
+  }
+
+  .placeholder {
+    fill: rgba(255,255,255,0.55);
+    font-size: 15px;
+    text-anchor: middle;
+    font-weight: 600;
+  }
+
+  .placeholder-sub {
+    fill: rgba(255,255,255,0.35);
+    font-size: 11px;
+    text-anchor: middle;
+  }
+
+  .center-title {
+    fill: rgba(255,255,255,0.75);
+    font-size: 16px;
+    text-anchor: middle;
+    font-weight: 700;
+  }
+
+  .center-desc {
+    fill: rgba(255,255,255,0.4);
+    font-size: 11px;
+    text-anchor: middle;
+  }
+
+  .close-hint {
+    position: absolute;
+    right: 18px;
+    bottom: 14px;
+    color: rgba(255,255,255,0.35);
+    font-size: 11px;
+    letter-spacing: 1px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="quick-menu">
+    <svg viewBox="0 0 420 420">
+      <path class="fan-bg" d="M 420 420 L 40 420 A 380 380 0 0 1 420 40 Z" />
+      <path class="ring-divider" d="M 170 420 A 250 250 0 0 1 420 170" />
+      <path class="ring-divider" d="M 290 420 A 130 130 0 0 1 420 290" />
+
+      <path class="segment-line" d="M 420 420 L 110 110" />
+      <path class="segment-line" d="M 420 420 L 40 250" />
+      <path class="segment-line" d="M 420 420 L 190 420" />
+
+      <path class="segment-line" d="M 420 420 L 200 200" />
+      <path class="segment-line" d="M 420 420 L 120 300" />
+
+      <text class="placeholder" x="205" y="120">外环 · 主菜单</text>
+      <text class="placeholder-sub" x="205" y="138">（留空）</text>
+
+      <text class="placeholder" x="265" y="230">内环 · 工具</text>
+      <text class="placeholder-sub" x="265" y="248">（留空）</text>
+
+      <circle class="center-circle" cx="330" cy="330" r="110" />
+      <text class="center-title" x="330" y="322">介绍区</text>
+      <text class="center-desc" x="330" y="344">当前选中项说明</text>
+    </svg>
+    <div class="close-hint">再按菜单键关闭</div>
+  </div>
+</body>
+</html>
