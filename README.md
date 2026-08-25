@@ -52,7 +52,7 @@ npm run tauri build
 
 ## 文档
 
-- [规划文档](docs/规划.md)
-- [ToDo / 任务清单](docs/任务清单.md)
-- [ATVV 协议事实表](docs/ATVV协议.md)
-- [社区参考资料](docs/社区资料/来源清单.md)
+- [规划文档](docs/项目/规划.md)
+- [ToDo / 任务清单](docs/项目/任务清单.md)
+- [ATVV 协议事实表](docs/协议/ATVV/协议.md)
+- [社区参考资料](docs/协议/ATVV/社区资料/来源清单.md)
