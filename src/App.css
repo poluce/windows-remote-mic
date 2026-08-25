@@ -552,8 +552,8 @@ button {
 }
 
 .action-grid {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
 }
@@ -561,7 +561,7 @@ button {
 .action-grid .btn {
   padding: 4px 8px;
   font-size: 12px;
-  width: auto;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
