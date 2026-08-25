@@ -169,8 +169,48 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
+}
+
+.x2pro-remote .hit-ok.active::before {
   border: 2px solid rgba(47, 111, 237, 0.95);
   box-shadow: 0 0 6px rgba(47, 111, 237, 0.7);
+}
+
+/* 上下左右：圆环上的扇形高亮 */
+.x2pro-remote .hit-up.active::before,
+.x2pro-remote .hit-down.active::before,
+.x2pro-remote .hit-left.active::before,
+.x2pro-remote .hit-right.active::before {
+  -webkit-mask: radial-gradient(circle, transparent 0 46%, #000 49%);
+  mask: radial-gradient(circle, transparent 0 46%, #000 49%);
+}
+.x2pro-remote .hit-up.active::before {
+  background: conic-gradient(
+    from -60deg,
+    rgba(47, 111, 237, 0.3) 0deg 120deg,
+    transparent 120deg
+  );
+}
+.x2pro-remote .hit-down.active::before {
+  background: conic-gradient(
+    from 120deg,
+    rgba(47, 111, 237, 0.3) 0deg 120deg,
+    transparent 120deg
+  );
+}
+.x2pro-remote .hit-left.active::before {
+  background: conic-gradient(
+    from 210deg,
+    rgba(47, 111, 237, 0.3) 0deg 120deg,
+    transparent 120deg
+  );
+}
+.x2pro-remote .hit-right.active::before {
+  background: conic-gradient(
+    from 30deg,
+    rgba(47, 111, 237, 0.3) 0deg 120deg,
+    transparent 120deg
+  );
 }
 
 .x2pro-remote .bottom-grid {
