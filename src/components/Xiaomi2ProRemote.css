@@ -181,8 +181,9 @@
 .x2pro-remote .hit-down.active::before,
 .x2pro-remote .hit-left.active::before,
 .x2pro-remote .hit-right.active::before {
-  -webkit-mask: radial-gradient(circle, transparent 0 46%, #000 49%);
-  mask: radial-gradient(circle, transparent 0 46%, #000 49%);
+  /* closest-side：半径 = 42px；确定按钮半径 20px，外环从 20px 到 42px */
+  -webkit-mask: radial-gradient(circle closest-side, transparent 0 20px, #000 22px);
+  mask: radial-gradient(circle closest-side, transparent 0 20px, #000 22px);
 }
 .x2pro-remote .hit-up.active::before {
   background: conic-gradient(
