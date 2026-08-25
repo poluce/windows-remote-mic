@@ -16,12 +16,6 @@ function App() {
       <Sidebar page={page} onChange={setPage} />
 
       <main className="main">
-        <header className="topbar">
-          <div>
-            <h1>{pageTitle(page)}</h1>
-          </div>
-        </header>
-
         <div className="content">
           {page === "connection" && <ConnectionPage />}
           {page === "mapping" && <MappingPage />}
@@ -33,23 +27,6 @@ function App() {
       </main>
     </div>
   );
-}
-
-function pageTitle(page: PageId): string {
-  switch (page) {
-    case "connection":
-      return "Remote Mic";
-    case "mapping":
-      return "按键映射";
-    case "voice":
-      return "语音";
-    case "diagnostics":
-      return "诊断";
-    case "guidance":
-      return "引导";
-    case "stats":
-      return "统计";
-  }
 }
 
 export default App;
