@@ -109,3 +109,6 @@ mod tests {
         assert_eq!(parse_keyboard_report(&[0x01, 0xFF, 0x00]), Vec::new());
     }
 }
+
+#[cfg(target_os = "windows")]
+pub mod raw_input;

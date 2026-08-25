@@ -586,3 +586,39 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Bar chart ---------- */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 150px;
+  padding-top: 8px;
+}
+
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar {
+  width: 100%;
+  max-width: 34px;
+  min-height: 4px;
+  background: var(--accent);
+  border-radius: 6px 6px 0 0;
+}
+
+.bar-day {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}

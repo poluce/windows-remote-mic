@@ -260,6 +260,71 @@ fn simulate_voice_chain(output_device: String) -> Result<core_voice::SimulatedVo
     }
 }
 
+/// One day in stats history.
+#[derive(serde::Serialize)]
+struct StatsDaySummary {
+    day: String,
+    key_presses: u64,
+    voice_seconds: u64,
+}
+
+/// Return recent daily stats (last 7 days) for simple charts.
+#[tauri::command]
+fn get_stats_history() -> Vec<StatsDaySummary> {
+    let mut out: Vec<(u64, StatsDaySummary)> = Vec::new();
+    let base = std::env::var("LOCALAPPDATA")
+        .map(|b| std::path::PathBuf::from(b).join("RemoteMic/RC003"))
+        .unwrap_or_default();
+    if let Ok(store) = core_stats::StatsStore::new(&base) {
+        if let Ok(stats) = store.load() {
+            for (day, d) in &stats {
+                if let Ok(num) = day.parse::<u64>() {
+                    out.push((
+                        num,
+                        StatsDaySummary {
+                            day: day.clone(),
+                            key_presses: d.key_presses.values().sum(),
+                            voice_seconds: d.voice_seconds,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+    out.sort_by_key(|(day, _)| *day);
+    out.into_iter()
+        .rev()
+        .take(7)
+        .map(|(_, s)| s)
+        .collect()
+}
+
+/// Open a Windows system settings page by URI.
+#[tauri::command]
+fn open_system_settings(setting: String) -> String {
+    let uri = match setting.as_str() {
+        "bluetooth" => "ms-settings:bluetooth",
+        "microphone" => "ms-settings:privacy-microphone",
+        "sound" => "ms-settings:sound",
+        _ => "ms-settings:",
+    };
+    #[cfg(target_os = "windows")]
+    {
+        match std::process::Command::new("cmd")
+            .args(["/C", "start", "", uri])
+            .spawn()
+        {
+            Ok(_) => "已打开系统设置".to_string(),
+            Err(e) => format!("打开失败：{e}"),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = uri;
+        "仅限 Windows".to_string()
+    }
+}
+
 /// One log file entry.
 #[derive(serde::Serialize)]
 struct LogFileInfo {
@@ -654,6 +719,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            get_stats_history,
+            open_system_settings,
             save_mapping,
             simulate_voice_chain,
             list_log_files,
