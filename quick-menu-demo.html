@@ -359,15 +359,18 @@
     const visual = activeVisual();
     rolling = true;
     visual.classList.remove('no-anim');
-    visual.style.transform = `rotate(${-dir * STEP_ANGLE}deg)`;
 
-    setTimeout(() => {
+    const onEnd = () => {
+      visual.removeEventListener('transitionend', onEnd);
       setRingStart(next);
       visual.classList.add('no-anim');
       visual.style.transform = 'rotate(0deg)';
       updateSelection();
       rolling = false;
-    }, 180);
+    };
+
+    visual.addEventListener('transitionend', onEnd);
+    visual.style.transform = `rotate(${-dir * STEP_ANGLE}deg)`;
   }
 
   btn.addEventListener('click', (e) => {
