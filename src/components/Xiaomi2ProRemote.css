@@ -125,40 +125,29 @@
 
 .x2pro-remote .dpad-hit {
   position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   background: transparent;
   z-index: 2;
+  border-radius: 50%;
 }
 
 .x2pro-remote .hit-up {
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 28px;
-  border-radius: 42px 42px 0 0;
+  clip-path: inset(0 10% 58% 10%);
 }
 
 .x2pro-remote .hit-down {
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 28px;
-  border-radius: 0 0 42px 42px;
+  clip-path: inset(58% 10% 0 10%);
 }
 
 .x2pro-remote .hit-left {
-  left: 0;
-  top: 0;
-  width: 28px;
-  height: 100%;
-  border-radius: 42px 0 0 42px;
+  clip-path: inset(10% 60% 10% 0);
 }
 
 .x2pro-remote .hit-right {
-  right: 0;
-  top: 0;
-  width: 28px;
-  height: 100%;
-  border-radius: 0 42px 42px 0;
+  clip-path: inset(10% 0 10% 60%);
 }
 
 .x2pro-remote .hit-ok {
@@ -168,11 +157,20 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
+  clip-path: none;
 }
 
 .x2pro-remote .dpad-hit.active {
-  background: rgba(47, 111, 237, 0.32);
-  box-shadow: inset 0 0 0 2px #2f6fed;
+  background: transparent;
+}
+
+.x2pro-remote .dpad-hit.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid rgba(47, 111, 237, 0.95);
+  box-shadow: 0 0 8px rgba(47, 111, 237, 0.8);
 }
 
 .x2pro-remote .bottom-grid {
