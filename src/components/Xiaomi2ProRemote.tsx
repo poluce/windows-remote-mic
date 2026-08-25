@@ -78,22 +78,20 @@ export function Xiaomi2ProRemote({ selected, onSelect }: Props) {
           </button>
         </div>
         <div className="right-col">
-          <button
-            type="button"
-            className={`small-btn remote-key ${selected === "volume_up" ? "active" : ""}`}
-            title="音量 +"
-            onClick={() => onSelect("volume_up")}
-          >
-            <div className="icon-vol plus" />
-          </button>
-          <button
-            type="button"
-            className={`small-btn remote-key ${selected === "volume_down" ? "active" : ""}`}
-            title="音量 −"
-            onClick={() => onSelect("volume_down")}
-          >
-            <div className="icon-vol minus" />
-          </button>
+          <div className="pill-volume">
+            <button
+              type="button"
+              className={`vol-btn plus remote-key ${selected === "volume_up" ? "active" : ""}`}
+              title="音量 +"
+              onClick={() => onSelect("volume_up")}
+            />
+            <button
+              type="button"
+              className={`vol-btn minus remote-key ${selected === "volume_down" ? "active" : ""}`}
+              title="音量 −"
+              onClick={() => onSelect("volume_down")}
+            />
+          </div>
           <button
             type="button"
             className={`small-btn remote-key ${selected === "tv" ? "active" : ""}`}

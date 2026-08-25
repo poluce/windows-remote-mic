@@ -241,13 +241,30 @@
   box-shadow: 0 -4px 0 #ddd, 0 4px 0 #ddd;
 }
 
-.x2pro-remote .icon-vol {
+.x2pro-remote .pill-volume {
+  width: 30px;
+  height: 74px;
+  background: #101010;
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0;
   position: relative;
-  width: 10px;
-  height: 10px;
 }
-.x2pro-remote .icon-vol.plus::before,
-.x2pro-remote .icon-vol.plus::after {
+
+.x2pro-remote .vol-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3c3c3c, #0d0d0d);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+
+.x2pro-remote .vol-btn.plus::before,
+.x2pro-remote .vol-btn.plus::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -255,16 +272,16 @@
   transform: translate(-50%, -50%);
   background: #ddd;
 }
-.x2pro-remote .icon-vol.plus::before {
+.x2pro-remote .vol-btn.plus::before {
   width: 10px;
   height: 2px;
 }
-.x2pro-remote .icon-vol.plus::after {
+.x2pro-remote .vol-btn.plus::after {
   width: 2px;
   height: 10px;
 }
 
-.x2pro-remote .icon-vol.minus::before {
+.x2pro-remote .vol-btn.minus::before {
   content: "";
   position: absolute;
   top: 50%;
