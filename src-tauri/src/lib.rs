@@ -114,6 +114,53 @@ fn connect_rc003() -> Result<Rc003Connection, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Persisted settings exposed to the UI.
+#[derive(serde::Serialize)]
+struct PersistedSettings {
+    selected_device_id: Option<String>,
+    output_endpoint_id: Option<String>,
+}
+
+fn config_store() -> Option<core_config::ConfigStore> {
+    let base = std::env::var("LOCALAPPDATA").ok()?;
+    core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
+}
+
+#[tauri::command]
+fn get_persisted_settings() -> PersistedSettings {
+    let cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    PersistedSettings {
+        selected_device_id: cfg.selected_device_id,
+        output_endpoint_id: cfg.output_endpoint_id,
+    }
+}
+
+#[tauri::command]
+fn save_selected_device(device_id: String) -> Result<(), String> {
+    let mut cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    cfg.selected_device_id = Some(device_id);
+    config_store()
+        .ok_or_else(|| "无法创建配置目录".to_string())?
+        .save(&cfg)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_output_endpoint(endpoint_id: String) -> Result<(), String> {
+    let mut cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    cfg.output_endpoint_id = Some(endpoint_id);
+    config_store()
+        .ok_or_else(|| "无法创建配置目录".to_string())?
+        .save(&cfg)
+        .map_err(|e| e.to_string())
+}
+
 /// One self-test item with a PASS / FAIL / SKIP verdict.
 #[derive(serde::Serialize)]
 struct SelfTestItem {
@@ -454,6 +501,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            get_persisted_settings,
+            save_selected_device,
+            save_output_endpoint,
             vb_cable_status,
             install_vb_cable,
             run_self_test,

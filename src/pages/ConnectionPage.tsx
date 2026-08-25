@@ -56,8 +56,13 @@ export function ConnectionPage() {
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       setConnectResult(
-        `已连接 ${result.device.name}；ATVV：音频=${result.endpoints.audio ? "有" : "无"}，控制=${result.endpoints.control ? "有" : "无"}`
+        `已连接 ${result.device.name}；ATVV：音频=${result.endpoints.audio ? "有" : "无"}，控制=${result.endpoints.control ? "有" : "无"}（已记住设备）`
       );
+      try {
+        await invoke("save_selected_device", { deviceId: result.device.id });
+      } catch {
+        setConnectResult(prev => `${prev}（保存设备失败）`);
+      }
     } catch (err) {
       setConnectResult(`连接失败：${err}`);
     } finally {

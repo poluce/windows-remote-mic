@@ -7,6 +7,11 @@ type Endpoint = {
   kind: "Output" | "Input";
 };
 
+type PersistedSettings = {
+  selected_device_id: string | null;
+  output_endpoint_id: string | null;
+};
+
 type VbCableStatus = {
   input: boolean;
   output: boolean;
@@ -39,10 +44,19 @@ export function VoicePage() {
   useEffect(() => {
     if (!isTauri()) return;
     invoke<Endpoint[]>("list_audio_endpoints")
-      .then((list) => {
+      .then(async (list) => {
         const eps = list.length ? list : FALLBACK_ENDPOINTS;
         setEndpoints(eps);
-        setSelected((prev) => prev || eps[0]?.name || "");
+        let initial = eps[0]?.name || "";
+        try {
+          const saved = await invoke<PersistedSettings>("get_persisted_settings");
+          if (saved.output_endpoint_id) {
+            initial = saved.output_endpoint_id;
+          }
+        } catch {
+          // ignore
+        }
+        setSelected(initial);
         return null;
       })
       .catch(() => {});
@@ -107,7 +121,13 @@ export function VoicePage() {
         <select
           className="select"
           value={selected}
-          onChange={(e) => setSelected(e.currentTarget.value)}
+          onChange={(e) => {
+            const value = e.currentTarget.value;
+            setSelected(value);
+            if (isTauri()) {
+              invoke("save_output_endpoint", { endpointId: value }).catch(() => {});
+            }
+          }}
           disabled={!isTauri()}
         >
           {endpoints.map((ep) => (

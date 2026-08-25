@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use core_atvv::protocol::{ControlEvent, RawControlEvent, GET_CAPABILITIES_V10, parse_control};
+use core_ble::capture::CaptureRecorder;
 use core_ble::gatt::AtvvLink;
 use core_input::press_win_h;
 
@@ -23,12 +24,19 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
     let sink = Arc::new(
         core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| e.to_string())?,
     );
+
+    let capture_dir = std::env::var("LOCALAPPDATA")
+        .map(|base| std::path::Path::new(&base).join("RemoteMic/RC003/captures"))
+        .unwrap_or_default();
+    let capture = CaptureRecorder::new(capture_dir);
     let engine = Arc::new(Mutex::new(VoiceEngine::new()));
 
     let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
     let engine_cb = engine.clone();
+    let capture_audio = capture.clone();
     let _audio_cookie = link
         .register_audio_handler(move |bytes| {
+            capture_audio.record("audio", &bytes);
             let mut eng = match engine_cb.lock() {
                 Ok(g) => g,
                 Err(_) => return,
@@ -41,8 +49,10 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let engine_ctrl = engine.clone();
+    let capture_ctrl = capture.clone();
     let _control_cookie = link
         .register_control_handler(move |bytes| {
+            capture_ctrl.record("control", &bytes);
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,

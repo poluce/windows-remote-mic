@@ -1,5 +1,6 @@
 //! core-ble — WinRT Bluetooth Low Energy connection for the RC003.
 
+pub mod capture;
 pub mod error;
 pub mod profile;
 
