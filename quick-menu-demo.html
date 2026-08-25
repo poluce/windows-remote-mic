@@ -102,6 +102,19 @@
     stroke-dasharray: 3 4;
   }
 
+  .outer-circle {
+    fill: #ffffff;
+    stroke: #c9d1d9;
+    stroke-width: 1.5;
+  }
+
+  .outer-circle-text {
+    fill: #57606a;
+    font-size: 14px;
+    text-anchor: middle;
+    font-weight: 600;
+  }
+
   .center-circle {
     fill: #ffffff;
     stroke: #d0d7de;
@@ -171,9 +184,26 @@
       <path class="segment-line" d="M 420 420 L 200 200" />
       <path class="segment-line" d="M 420 420 L 120 300" />
 
-      <!-- 外环占位文字 -->
-      <text class="placeholder" x="170" y="160">外环 · 主菜单</text>
-      <text class="placeholder-sub" x="170" y="180">（留空）</text>
+      <!-- 外环 6 个圆形按钮 -->
+      <g class="outer-ring-buttons">
+        <circle class="outer-circle" cx="73.0" cy="374.3" r="26" />
+        <text class="outer-circle-text" x="73.0" y="379.0">1</text>
+
+        <circle class="outer-circle" cx="96.6" cy="286.1" r="26" />
+        <text class="outer-circle-text" x="96.6" y="290.0">2</text>
+
+        <circle class="outer-circle" cx="142.3" cy="206.9" r="26" />
+        <text class="outer-circle-text" x="142.3" y="211.0">3</text>
+
+        <circle class="outer-circle" cx="206.9" cy="142.3" r="26" />
+        <text class="outer-circle-text" x="206.9" y="146.0">4</text>
+
+        <circle class="outer-circle" cx="286.1" cy="96.6" r="26" />
+        <text class="outer-circle-text" x="286.1" y="100.0">5</text>
+
+        <circle class="outer-circle" cx="374.3" cy="73.0" r="26" />
+        <text class="outer-circle-text" x="374.3" y="77.0">6</text>
+      </g>
 
       <!-- 内环占位文字 -->
       <text class="placeholder" x="240" y="235">内环 · 工具</text>
