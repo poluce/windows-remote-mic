@@ -142,9 +142,7 @@ export function MappingPage() {
         </section>
 
         <section className="card wizard-card">
-          <div className="card-title">
-            正在设置：<strong>{selectedName}</strong>
-          </div>
+          <div className="card-title">设置动作</div>
 
           <div className="wizard-group">
             <div className="wizard-label">② 触发方式</div>
