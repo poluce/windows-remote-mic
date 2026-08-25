@@ -169,8 +169,8 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 4px solid rgba(47, 111, 237, 0.95);
-  box-shadow: 0 0 8px rgba(47, 111, 237, 0.8);
+  border: 2px solid rgba(47, 111, 237, 0.95);
+  box-shadow: 0 0 6px rgba(47, 111, 237, 0.7);
 }
 
 .x2pro-remote .bottom-grid {
