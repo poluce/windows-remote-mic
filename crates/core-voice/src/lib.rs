@@ -52,6 +52,9 @@ impl VoiceEngine {
 
     /// Feed a control event (MicOpen / StreamStart / StreamStop).
     pub fn on_control(&mut self, event: ControlEvent) -> Result<(), core_atvv::AtvvError> {
+        if event == ControlEvent::StreamStart {
+            self.decoder.reset();
+        }
         self.session.on_control(event, self.now_ms)
     }
 

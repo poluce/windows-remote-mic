@@ -171,8 +171,17 @@ impl AtvvLink {
 
     /// Enable notifications on the Audio characteristic so voice data flows.
     pub fn enable_audio_notifications(&self) -> Result<()> {
+        self.enable_notifications(&self.audio)
+    }
+
+    /// Enable notifications on the Control characteristic (device events).
+    pub fn enable_control_notifications(&self) -> Result<()> {
+        self.enable_notifications(&self.control)
+    }
+
+    fn enable_notifications(&self, characteristic: &GattCharacteristic) -> Result<()> {
         let status = pollster::block_on(async {
-            self.audio
+            characteristic
                 .WriteClientCharacteristicConfigurationDescriptorAsync(
                     GattClientCharacteristicConfigurationDescriptorValue::Notify,
                 )
@@ -184,8 +193,8 @@ impl AtvvLink {
         Ok(())
     }
 
-    /// Write a control command (opcode bytes supplied by higher layer).
-    pub fn write_control(&self, bytes: &[u8]) -> Result<()> {
+    /// Host -> device command bytes are written to the TX characteristic.
+    pub fn write_tx(&self, bytes: &[u8]) -> Result<()> {
         let writer = DataWriter::new().map_err(|e| BleError::Windows(e.to_string()))?;
         writer
             .WriteBytes(bytes)
@@ -195,13 +204,18 @@ impl AtvvLink {
             .map_err(|e| BleError::Windows(e.to_string()))?;
 
         pollster::block_on(async {
-            self.control
+            self._tx
                 .WriteValueAsync(&buffer)
                 .map_err(|e| BleError::Windows(e.to_string()))?
                 .await
                 .map_err(|e| BleError::Windows(e.to_string()))
         })?;
         Ok(())
+    }
+
+    /// Backwards-compatible alias used by older callers.
+    pub fn write_control(&self, bytes: &[u8]) -> Result<()> {
+        self.write_tx(bytes)
     }
 
     /// Register a callback receiving raw Audio characteristic bytes.
@@ -239,11 +253,57 @@ impl AtvvLink {
         Ok(cookie)
     }
 
+    /// Register a callback receiving Control characteristic notification bytes.
+    pub fn register_control_handler<F>(&self, callback: F) -> Result<i64>
+    where
+        F: FnMut(Vec<u8>) + Send + 'static,
+    {
+        self.register_value_changed_handler(&self.control, callback)
+    }
+
     /// Remove a previously registered audio handler.
     pub fn remove_audio_handler(&self, cookie: i64) -> Result<()> {
         self.audio
             .RemoveValueChanged(cookie)
             .map_err(|e| BleError::Windows(e.to_string()))
+    }
+
+    fn register_value_changed_handler<F>(
+        &self,
+        characteristic: &GattCharacteristic,
+        callback: F,
+    ) -> Result<i64>
+    where
+        F: FnMut(Vec<u8>) + Send + 'static,
+    {
+        let shared = Arc::new(Mutex::new(callback));
+        let handler = shared.clone();
+
+        let event_handler: TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs> =
+            TypedEventHandler::new(
+                move |_sender: windows::core::Ref<GattCharacteristic>,
+                      args: windows::core::Ref<GattValueChangedEventArgs>| {
+                    let event_args = match args.as_ref() {
+                        Some(v) => v,
+                        None => return Ok(()),
+                    };
+                    let buffer: IBuffer = match event_args.CharacteristicValue() {
+                        Ok(b) => b,
+                        Err(_) => return Ok(()),
+                    };
+                    if let Ok(data) = buffer_to_vec(&buffer) {
+                        if let Ok(mut guard) = handler.lock() {
+                            guard(data);
+                        }
+                    }
+                    Ok(())
+                },
+            );
+
+        let cookie = characteristic
+            .ValueChanged(&event_handler)
+            .map_err(|e| BleError::Windows(e.to_string()))?;
+        Ok(cookie)
     }
 
     /// Keep the link alive until the process exits (for a standalone bridge).
