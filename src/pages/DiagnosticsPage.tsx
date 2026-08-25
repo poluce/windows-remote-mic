@@ -119,7 +119,7 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
-      <h2>诊断</h2>
+      
       <p className="page-sub">检查蓝牙、按键、虚拟声卡和系统语音链路。</p>
 
       <section className="card">

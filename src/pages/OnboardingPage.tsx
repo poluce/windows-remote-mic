@@ -28,7 +28,7 @@ export function OnboardingPage() {
 
   return (
     <div className="page">
-      <h2>引导</h2>
+      
       <p className="page-sub">第一次使用：按顺序完成以下步骤。</p>
 
       <section className="card">

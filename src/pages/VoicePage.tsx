@@ -116,7 +116,7 @@ export function VoicePage() {
 
   return (
     <div className="page">
-      <h2>语音</h2>
+      
       <p className="page-sub">
         优先使用 Windows 自带语音输入（Win+H），无需安装第三方输入法。
       </p>
