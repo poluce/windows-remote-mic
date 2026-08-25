@@ -29,6 +29,7 @@ export function VoicePage() {
   const [vbCable, setVbCable] = useState<VbCableStatus | null>(null);
   const [vbMsg, setVbMsg] = useState("");
   const [installing, setInstalling] = useState(false);
+  const [simResult, setSimResult] = useState("");
 
   async function refreshVbStatus() {
     if (!isTauri()) return;
@@ -62,6 +63,27 @@ export function VoicePage() {
       .catch(() => {});
     refreshVbStatus();
   }, []);
+
+  async function runVoiceSimulation() {
+    if (!isTauri()) {
+      setSimResult("浏览器预览：请在桌面应用内模拟");
+      return;
+    }
+    setSimResult("正在模拟：Win+H → 合成语音 → CABLE…");
+    try {
+      const ret = await invoke<{
+        frames: number;
+        pcm_samples: number;
+        output_samples: number;
+        win_h_toast: boolean;
+      }>("simulate_voice_chain", { outputDevice: selected });
+      setSimResult(
+        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，Win+H=${ret.win_h_toast}`
+      );
+    } catch (err) {
+      setSimResult(`模拟失败：${err}`);
+    }
+  }
 
   async function installVbCable() {
     if (!isTauri()) return;
@@ -172,6 +194,9 @@ export function VoicePage() {
         <button className="btn primary" onClick={sendTestTone} disabled={!isTauri()}>
           发送 1 秒测试音
         </button>
+        <button className="btn" onClick={runVoiceSimulation} disabled={!isTauri()}>
+          模拟完整语音链（无遥控器）
+        </button>
         <button className="btn" disabled>
           打开系统语音设置
         </button>
@@ -181,6 +206,13 @@ export function VoicePage() {
         <section className="card">
           <div className="card-title">测试音结果</div>
           <p>{toneResult}</p>
+        </section>
+      )}
+
+      {simResult && (
+        <section className="card">
+          <div className="card-title">模拟语音链结果</div>
+          <p>{simResult}</p>
         </section>
       )}
     </div>

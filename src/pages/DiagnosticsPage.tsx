@@ -23,6 +23,12 @@ const EMPTY: Diagnostics = {
   cable_output_present: false,
 };
 
+type LogFileInfo = {
+  name: string;
+  path: string;
+  size: number;
+};
+
 type SelfTestItem = {
   name: string;
   status: "pass" | "fail" | "skip";
@@ -34,6 +40,8 @@ export function DiagnosticsPage() {
   const [status, setStatus] = useState("请在桌面应用内运行检查");
   const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
+  const [logs, setLogs] = useState<LogFileInfo[]>([]);
+  const [logContent, setLogContent] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -50,6 +58,28 @@ export function DiagnosticsPage() {
 
   useEffect(() => {
     runCheck();
+  }, []);
+
+  async function loadLogs() {
+    if (!isTauri()) return;
+    try {
+      setLogs(await invoke<LogFileInfo[]>("list_log_files"));
+    } catch {
+      setLogs([]);
+    }
+  }
+
+  async function viewLog(path: string) {
+    if (!isTauri()) return;
+    try {
+      setLogContent(await invoke<string>("read_log_file", { path }));
+    } catch (err) {
+      setLogContent(`读取失败：${err}`);
+    }
+  }
+
+  useEffect(() => {
+    loadLogs();
   }, []);
 
   async function runSelfTest() {
@@ -169,6 +199,29 @@ export function DiagnosticsPage() {
               </div>
             ))}
           </div>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="card-title">日志 / 抓包文件</div>
+        <div className="actions">
+          <button className="btn" onClick={loadLogs}>刷新日志</button>
+        </div>
+        {logs.length === 0 ? (
+          <p className="hint">暂无日志文件。</p>
+        ) : (
+          <div className="check-list">
+            {logs.map((l) => (
+              <div key={l.path} className="check-row">
+                <button className="btn small" onClick={() => viewLog(l.path)}>
+                  {l.name} · {l.size} B
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {logContent && (
+          <pre className="log-preview">{logContent}</pre>
         )}
       </section>
 

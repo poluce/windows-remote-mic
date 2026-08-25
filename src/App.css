@@ -514,3 +514,75 @@ button {
   color: var(--text-3);
   font-size: 13px;
 }
+
+/* ---------- Log preview ---------- */
+.log-preview {
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+  background: #f6f8fa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 10px;
+}
+
+/* ---------- Mapping wizard ---------- */
+.mapping-wizard {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.remote-diagram {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.remote-btn {
+  padding: 10px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.remote-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wizard-group {
+  margin-bottom: 12px;
+}
+
+.wizard-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.wizard-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 760px) {
+  .mapping-wizard {
+    grid-template-columns: 1fr;
+  }
+}

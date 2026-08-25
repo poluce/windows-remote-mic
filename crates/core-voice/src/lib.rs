@@ -143,3 +143,9 @@ pub mod bridge;
 
 #[cfg(target_os = "windows")]
 pub use bridge::run_bridge;
+
+#[cfg(target_os = "windows")]
+pub mod simulate;
+
+#[cfg(target_os = "windows")]
+pub use simulate::{simulate_voice_chain, SimulatedVoiceResult};

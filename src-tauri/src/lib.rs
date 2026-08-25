@@ -161,6 +161,159 @@ fn save_output_endpoint(endpoint_id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Mapping edit payload from the settings UI.
+#[derive(serde::Deserialize)]
+struct MappingEdit {
+    button: String,
+    trigger: String,
+    action: String,
+}
+
+fn parse_button(s: &str) -> Option<ButtonId> {
+    match s {
+        "power" => Some(ButtonId::Power),
+        "up" => Some(ButtonId::Up),
+        "down" => Some(ButtonId::Down),
+        "left" => Some(ButtonId::Left),
+        "right" => Some(ButtonId::Right),
+        "ok" => Some(ButtonId::Ok),
+        "back" => Some(ButtonId::Back),
+        "home" => Some(ButtonId::Home),
+        "menu" => Some(ButtonId::Menu),
+        "tv" => Some(ButtonId::Tv),
+        "volume_up" => Some(ButtonId::VolumeUp),
+        "volume_down" => Some(ButtonId::VolumeDown),
+        "mic" => Some(ButtonId::Mic),
+        _ => None,
+    }
+}
+
+fn parse_trigger(s: &str) -> Option<Trigger> {
+    match s {
+        "single_click" => Some(Trigger::SingleClick),
+        "double_click" => Some(Trigger::DoubleClick),
+        "long_press" => Some(Trigger::LongPress),
+        _ => None,
+    }
+}
+
+fn parse_action(s: &str) -> Option<ActionKind> {
+    use ActionKind as A;
+    Some(match s {
+        "disabled" => A::Disabled,
+        "escape" => A::Escape,
+        "return" => A::Return,
+        "arrow_up" => A::ArrowUp,
+        "arrow_down" => A::ArrowDown,
+        "arrow_left" => A::ArrowLeft,
+        "arrow_right" => A::ArrowRight,
+        "delete_backward" => A::DeleteBackward,
+        "show_desktop" => A::ShowDesktop,
+        "context_menu" => A::ContextMenu,
+        "app_switcher" => A::AppSwitcher,
+        "system_volume_up" => A::SystemVolumeUp,
+        "system_volume_down" => A::SystemVolumeDown,
+        "system_volume_mute" => A::SystemVolumeMute,
+        "play_pause" => A::PlayPause,
+        "voice" => A::Voice,
+        _ => return None,
+    })
+}
+
+/// Save one button mapping to `config.json`.
+#[tauri::command]
+fn save_mapping(edit: MappingEdit) -> Result<(), String> {
+    let button = parse_button(&edit.button).ok_or("未知按键")?;
+    let trigger = parse_trigger(&edit.trigger).ok_or("未知触发")?;
+    let action = parse_action(&edit.action).ok_or("未知动作")?;
+
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    if let Some(binding) = cfg
+        .mapping
+        .bindings
+        .iter_mut()
+        .find(|b| b.button == button && b.trigger == trigger)
+    {
+        binding.action = action;
+    } else {
+        cfg.mapping.bindings.push(core_mapping::KeyBinding {
+            button,
+            trigger,
+            action,
+        });
+    }
+    store.save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Simulate the full voice chain without a real remote.
+#[tauri::command]
+fn simulate_voice_chain(output_device: String) -> Result<core_voice::SimulatedVoiceResult, String> {
+    #[cfg(target_os = "windows")]
+    {
+        core_voice::simulate_voice_chain(&output_device)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = output_device;
+        Err("仅限 Windows".to_string())
+    }
+}
+
+/// One log file entry.
+#[derive(serde::Serialize)]
+struct LogFileInfo {
+    name: String,
+    path: String,
+    size: u64,
+}
+
+fn list_logs_in_dir(dir: &std::path::Path, prefix: &str, out: &mut Vec<LogFileInfo>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                out.push(LogFileInfo {
+                    name: format!("{prefix}{}", entry.file_name().to_string_lossy()),
+                    path: path.display().to_string(),
+                    size,
+                });
+            }
+        }
+    }
+}
+
+/// List local log and capture files (config/logs/captures).
+#[tauri::command]
+fn list_log_files() -> Vec<LogFileInfo> {
+    let base = std::env::var("LOCALAPPDATA")
+        .map(|b| std::path::PathBuf::from(b).join("RemoteMic/RC003"))
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    list_logs_in_dir(&base, "", &mut out);
+    list_logs_in_dir(&base.join("logs"), "logs/", &mut out);
+    list_logs_in_dir(&base.join("captures"), "captures/", &mut out);
+    out
+}
+
+/// Read a text log file (truncated to a safe size for the UI).
+#[tauri::command]
+fn read_log_file(path: String) -> Result<String, String> {
+    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&data).to_string();
+    Ok(limit_text(&text, 50_000))
+}
+
+fn limit_text(text: &str, max: usize) -> String {
+    if text.len() > max {
+        format!("...（已截断）
+{}", &text[text.len() - max..])
+    } else {
+        text.to_string()
+    }
+}
+
 /// One self-test item with a PASS / FAIL / SKIP verdict.
 #[derive(serde::Serialize)]
 struct SelfTestItem {
@@ -501,6 +654,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ping,
             decode_atvv_preview,
+            save_mapping,
+            simulate_voice_chain,
+            list_log_files,
+            read_log_file,
             get_persisted_settings,
             save_selected_device,
             save_output_endpoint,
