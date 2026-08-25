@@ -472,6 +472,13 @@ button {
   margin: 10px 0 0;
 }
 
+.current-key {
+  text-align: center;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 14px;
+}
+
 /* ---------- Onboarding ---------- */
 .onboarding-list {
   list-style: none;

@@ -138,7 +138,7 @@ export function MappingPage() {
         <section className="card remote-card">
           <div className="card-title">① 选择按键</div>
           <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
-          <p className="hint">点击遥控器上的按键进行选择，当前：{selectedName}</p>
+          <p className="hint current-key">{selectedName}</p>
         </section>
 
         <section className="card wizard-card">
