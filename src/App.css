@@ -553,19 +553,16 @@ button {
 
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
   gap: 6px;
 }
 
 .action-grid .btn {
-  padding: 4px 6px;
+  padding: 4px 8px;
   font-size: 12px;
-  width: 100%;
-  max-width: 100px;
-  margin: 0 auto;
+  width: auto;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @media (max-width: 760px) {
