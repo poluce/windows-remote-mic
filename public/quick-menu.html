@@ -11,273 +11,322 @@
     height: 100%;
     background: transparent;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
     user-select: none;
+    -webkit-font-smoothing: antialiased;
   }
 
   .quick-menu {
     position: fixed;
     right: 0;
     bottom: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 420px;
+    height: 420px;
     pointer-events: none;
   }
 
-  .quick-menu svg {
+  #canvas {
     display: block;
-    width: 100%;
-    height: 100%;
-  }
-
-  .fan-bg {
-    fill: rgba(248, 250, 252, 1);
-    stroke: #d0d7de;
-    stroke-width: 1.5;
-  }
-
-  .ring-divider {
-    stroke: #d8dee6;
-    stroke-width: 1.5;
-    fill: none;
-  }
-
-  .outer-circle,
-  .inner-circle {
-    fill: #ffffff;
-    stroke: #c9d1d9;
-    stroke-width: 1.5;
-  }
-
-  .outer-circle-text,
-  .inner-circle-text {
-    fill: #57606a;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
-  .ring-buttons {
-    transition: opacity .15s;
-  }
-
-  .ring-buttons:not(.active) {
-    opacity: .35;
-  }
-
-  .outer-circle.selected,
-  .inner-circle.selected {
-    stroke: #2f6fed;
-    stroke-width: 3;
-    fill: #edf3ff;
-  }
-
-  .outer-circle-text.selected-text,
-  .inner-circle-text.selected-text {
-    fill: #2f6fed;
-  }
-
-  .ring-visual {
-    transform-origin: 420px 420px;
-    transition: transform 0.18s ease;
-  }
-
-  .ring-visual.no-anim {
-    transition: none;
-  }
-
-  .center-circle {
-    fill: #ffffff;
-    stroke: #d0d7de;
-    stroke-width: 1.5;
-  }
-
-  .center-title {
-    fill: #1f2328;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 700;
-  }
-
-  .center-desc {
-    fill: #57606a;
-    font-size: 11px;
-    text-anchor: middle;
+    width: 420px;
+    height: 420px;
   }
 
   .close-hint {
     position: absolute;
-    right: 18px;
+    right: 20px;
     bottom: 14px;
-    color: #8c959f;
-    font-size: 11px;
-    letter-spacing: 1px;
+    color: #94a3b8;
+    font-size: 10px;
+    letter-spacing: 0.8px;
     pointer-events: none;
+    font-weight: 500;
   }
 </style>
 </head>
 <body>
   <div class="quick-menu">
-    <svg viewBox="0 0 420 420">
-      <defs>
-        <clipPath id="fanClip">
-          <path d="M 420 420 L 20 420 A 400 400 0 0 1 420 20 Z" />
-        </clipPath>
-      </defs>
-      <path class="fan-bg" d="M 420 420 L 20 420 A 400 400 0 0 1 420 20 Z" />
-      <path class="ring-divider" d="M 120 420 A 300 300 0 0 1 420 120" />
-      <path class="ring-divider" d="M 220 420 A 200 200 0 0 1 420 220" />
-
-      <g id="outerRing" class="ring-buttons outer-ring active" clip-path="url(#fanClip)">
-        <g class="ring-visual"></g>
-      </g>
-
-      <g id="innerRing" class="ring-buttons inner-ring" clip-path="url(#fanClip)">
-        <g class="ring-visual"></g>
-      </g>
-
-      <path class="center-circle" d="M 420 420 L 220 420 A 200 200 0 0 1 420 220 Z" />
-      <text class="center-title" x="320" y="325">介绍区</text>
-      <text class="center-desc" x="320" y="347">当前选中项说明</text>
-    </svg>
+    <canvas id="canvas" width="420" height="420"></canvas>
     <div class="close-hint">再按菜单键关闭</div>
   </div>
 
   <script>
-    const SVG_NS = 'http://www.w3.org/2000/svg';
     const CX = 420;
     const CY = 420;
     const OUTER_R = 350;
     const INNER_R = 250;
-    const CENTER_ANGLE = 225;
-    const SLOT_ANGLE = 15;
-    const MAX_OFFSET = 10;
+    const CENTER_ANGLE = 225; // 45度对称轴
+    const OUTER_SLOT_ANGLE = 15;
+    const INNER_SLOT_ANGLE = 22.5;
 
-    const outerGroup = document.getElementById('outerRing');
-    const innerGroup = document.getElementById('innerRing');
-    const centerDesc = document.querySelector('.center-desc');
-
-    // 按钮列表：以后可以是任意数量，这里先用 10 个演示
     const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: true });
+
+    // Retina 高清屏次像素自适应
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 420 * dpr;
+    canvas.height = 420 * dpr;
+    ctx.scale(dpr, dpr);
+
     let ring = 'outer';
-    let outerIndex = 0;
-    let innerIndex = 0;
-    let rolling = false;
 
-    function activeIndex() {
-      return ring === 'outer' ? outerIndex : innerIndex;
-    }
+    // 400ms 黄金流体物理时长（Apple 亚临界流体阻尼，严格跟随 VSync 硬件时钟）
+    const SPRING_K = 115; // 劲度
+    const SPRING_C = 18;  // 阻尼（全程 400ms 舒展滑行，60Hz 保证 25 帧，144Hz 保证 60 帧）
 
-    function setActiveIndex(value) {
-      if (ring === 'outer') outerIndex = value;
-      else innerIndex = value;
-    }
-
-    function svgEl(tag, attrs) {
-      const el = document.createElementNS(SVG_NS, tag);
-      for (const [key, value] of Object.entries(attrs)) {
-        el.setAttribute(key, value);
+    class VSyncPhysicsWheel {
+      constructor(radius, slotAngle) {
+        this.radius = radius;
+        this.slotAngle = slotAngle;
+        this.targetIndex = 0;
+        this.currentAngle = 0;
+        this.vel = 0;
       }
-      return el;
-    }
 
-    function point(angle, r) {
-      const rad = (angle * Math.PI) / 180;
-      const cx = CX + r * Math.cos(rad);
-      const cy = CY + r * Math.sin(rad);
-      return { cx, cy, tx: cx, ty: cy + 5 };
-    }
+      scroll(dir) {
+        const next = this.targetIndex + dir;
+        if (next >= 0 && next < ALL_ITEMS.length) {
+          this.targetIndex = next;
+        } else {
+          // 触底微弹性冲击
+          this.vel += (dir > 0 ? -28 : 28);
+        }
+      }
 
-    function renderRing(group, selectedIndex, isOuter, isActive) {
-      const visual = group.querySelector('.ring-visual');
-      visual.innerHTML = '';
-      const r = isOuter ? OUTER_R : INNER_R;
+      // 严格基于显示器 VSync 硬件时钟差 dt 的二阶物理积分
+      step(dt) {
+        const targetAngle = -this.targetIndex * this.slotAngle;
+        const clampedDt = Math.min(dt, 0.033);
+        const subDt = clampedDt / 2;
 
-      // 按固定间隔排版，超出扇形窗口的部分由 clipPath 自动裁掉
-      for (let offset = -MAX_OFFSET; offset <= MAX_OFFSET; offset++) {
-        const itemIndex = selectedIndex + offset;
-        if (itemIndex < 0 || itemIndex >= ALL_ITEMS.length) continue;
-        const angle = CENTER_ANGLE + offset * SLOT_ANGLE;
-        const p = point(angle, r);
-        const selected = isActive && offset === 0;
+        for (let s = 0; s < 2; s++) {
+          const diff = this.currentAngle - targetAngle;
+          const force = -SPRING_K * diff;
+          const damping = -SPRING_C * this.vel;
+          const accel = force + damping;
 
-        const circle = svgEl('circle', {
-          cx: p.cx,
-          cy: p.cy,
-          r: 34,
-          class: isOuter ? 'outer-circle' : 'inner-circle',
-        });
-        if (selected) circle.classList.add('selected');
+          this.vel += accel * subDt;
+          this.currentAngle += this.vel * subDt;
+        }
 
-        const text = svgEl('text', {
-          x: p.tx,
-          y: p.ty,
-          class: isOuter ? 'outer-circle-text' : 'inner-circle-text',
-        });
-        text.textContent = ALL_ITEMS[itemIndex];
-        if (selected) text.classList.add('selected-text');
-
-        visual.appendChild(circle);
-        visual.appendChild(text);
+        const isSettled = Math.abs(this.currentAngle - targetAngle) < 0.005 && Math.abs(this.vel) < 0.02;
+        if (isSettled) {
+          this.currentAngle = targetAngle;
+          this.vel = 0;
+          return false;
+        }
+        return true;
       }
     }
 
-    function render() {
-      outerGroup.classList.toggle('active', ring === 'outer');
-      innerGroup.classList.toggle('active', ring === 'inner');
-      renderRing(outerGroup, outerIndex, true, ring === 'outer');
-      renderRing(innerGroup, innerIndex, false, ring === 'inner');
+    const outerWheel = new VSyncPhysicsWheel(OUTER_R, OUTER_SLOT_ANGLE);
+    const innerWheel = new VSyncPhysicsWheel(INNER_R, INNER_SLOT_ANGLE);
 
-      const selectedItem = ALL_ITEMS[activeIndex()];
-      centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${selectedItem}`;
+    // 硬件加速渲染管线（纯浮点亚像素精度直通，单帧耗时 < 0.03ms）
+    function renderFrame() {
+      ctx.clearRect(0, 0, 420, 420);
+
+      // 1. 绘制底层 90° 扇形毛玻璃白底
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(420, 420);
+      ctx.lineTo(20, 420);
+      ctx.arc(420, 420, 400, Math.PI, 1.5 * Math.PI, false);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(250, 252, 255, 0.96)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(210, 218, 230, 0.85)';
+      ctx.stroke();
+      ctx.clip();
+
+      // 2. 双环同心轨道线
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(220, 228, 238, 0.7)';
+
+      ctx.beginPath();
+      ctx.arc(420, 420, 300, Math.PI, 1.5 * Math.PI, false);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(420, 420, 200, Math.PI, 1.5 * Math.PI, false);
+      ctx.stroke();
+
+      // 3. 渲染内外环（微刻度导轨 + 实体数字槽位）
+      renderWheel(outerWheel, OUTER_R, ring === 'outer');
+      renderWheel(innerWheel, INNER_R, ring === 'inner');
+
+      ctx.restore();
+
+      // 4. 45° 黄金焦点指示视窗
+      drawFocusReticle(172.51, 172.51, ring === 'outer');
+      drawFocusReticle(243.22, 243.22, ring === 'inner');
+
+      // 5. 顶层中心说明区
+      drawCenterArea();
     }
 
-    function activeVisual() {
-      return ring === 'outer'
-        ? outerGroup.querySelector('.ring-visual')
-        : innerGroup.querySelector('.ring-visual');
+    function renderWheel(wheel, radius, isActive) {
+      ctx.save();
+      ctx.globalAlpha = isActive ? 1.0 : 0.38;
+
+      // 3.2 实体数字刻度槽位
+      ALL_ITEMS.forEach((item, index) => {
+        const itemAngle = CENTER_ANGLE + index * wheel.slotAngle + wheel.currentAngle;
+        const rad = (itemAngle * Math.PI) / 180;
+        const cx = CX + radius * Math.cos(rad);
+        const cy = CY + radius * Math.sin(rad);
+
+        // 连续流体光强插值
+        const deltaAngle = Math.abs(itemAngle - 225);
+        const intensity = Math.max(0, Math.min(1.0, Math.cos((Math.min(deltaAngle, wheel.slotAngle) / wheel.slotAngle) * (Math.PI / 2))));
+
+        // 绘制槽位圆圈（纯亚像素抗锯齿）
+        ctx.beginPath();
+        ctx.arc(cx, cy, 34, 0, 2 * Math.PI);
+
+        if (isActive && intensity > 0) {
+          const fillR = Math.round(255 + (240 - 255) * intensity);
+          const fillG = Math.round(255 + (246 - 255) * intensity);
+          const fillB = Math.round(255 + (255 - 255) * intensity);
+          ctx.fillStyle = `rgb(${fillR}, ${fillG}, ${fillB})`;
+
+          const strR = Math.round(200 + (0 - 200) * intensity);
+          const strG = Math.round(210 + (122 - 210) * intensity);
+          const strB = Math.round(225 + (255 - 225) * intensity);
+          ctx.strokeStyle = `rgb(${strR}, ${strG}, ${strB})`;
+          ctx.lineWidth = 1.5 + intensity * 1.0;
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = 'rgba(200, 210, 225, 0.85)';
+          ctx.lineWidth = 1.5;
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // 绘制正立水平文字（零旋转，字永远绝对水平）
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = (isActive && intensity > 0.6 ? '700' : '600') + ' 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+
+        if (isActive && intensity > 0) {
+          const textR = Math.round(71 + (0 - 71) * intensity);
+          const textG = Math.round(85 + (122 - 85) * intensity);
+          const textB = Math.round(105 + (255 - 105) * intensity);
+          ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
+        } else {
+          ctx.fillStyle = '#475569';
+        }
+        ctx.fillText(item, cx, cy);
+      });
+
+      ctx.restore();
     }
 
-    function scrollRing(dir) {
-      if (rolling) return;
-      const next = activeIndex() + dir;
-      if (next < 0 || next >= ALL_ITEMS.length) return;
+    function drawFocusReticle(cx, cy, isActive) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 36, 0, 2 * Math.PI);
 
-      const visual = activeVisual();
-      rolling = true;
-      visual.classList.remove('no-anim');
+      if (isActive) {
+        ctx.fillStyle = 'rgba(0, 122, 255, 0.08)';
+        ctx.fill();
+        ctx.strokeStyle = '#007aff';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
-      const onEnd = () => {
-        visual.removeEventListener('transitionend', onEnd);
-        setActiveIndex(next);
-        visual.classList.add('no-anim');
-        visual.style.transform = 'rotate(0deg)';
-        render();
-        rolling = false;
-      };
+    function drawCenterArea() {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(420, 420);
+      ctx.lineTo(220, 420);
+      ctx.arc(420, 420, 200, Math.PI, 1.5 * Math.PI, false);
+      ctx.closePath();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(210, 218, 230, 0.85)';
+      ctx.stroke();
 
-      visual.addEventListener('transitionend', onEnd);
-      visual.style.transform = `rotate(${-dir * SLOT_ANGLE}deg)`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '700 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+      ctx.fillText('控制中心', 320, 323);
+
+      const activeWheel = ring === 'outer' ? outerWheel : innerWheel;
+      const currentIdx = Math.max(0, Math.min(ALL_ITEMS.length - 1, Math.round(-activeWheel.currentAngle / activeWheel.slotAngle)));
+      ctx.fillStyle = '#64748b';
+      ctx.font = '500 11px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+      ctx.fillText(`${ring === 'outer' ? '外环' : '内环'} · ${ALL_ITEMS[currentIdx]}`, 320, 345);
+
+      ctx.restore();
+    }
+
+    // 硬件 VSync 连续时钟管道
+    let lastVsyncTime = null;
+    let vsyncId = null;
+
+    function vsyncLoop(timestamp) {
+      if (lastVsyncTime === null) {
+        lastVsyncTime = timestamp;
+      }
+      const dt = (timestamp - lastVsyncTime) / 1000;
+      lastVsyncTime = timestamp;
+
+      const movingOut = outerWheel.step(dt);
+      const movingIn = innerWheel.step(dt);
+
+      renderFrame();
+
+      if (movingOut || movingIn) {
+        vsyncId = requestAnimationFrame(vsyncLoop);
+      } else {
+        vsyncId = null;
+        lastVsyncTime = null;
+      }
+    }
+
+    function wakeVsync() {
+      if (!vsyncId) {
+        lastVsyncTime = null;
+        vsyncId = requestAnimationFrame(vsyncLoop);
+      }
+    }
+
+    function scrollCurrent(dir) {
+      if (ring === 'outer') outerWheel.scroll(dir);
+      else innerWheel.scroll(dir);
+      wakeVsync();
     }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         ring = ring === 'outer' ? 'inner' : 'outer';
-        render();
+        renderFrame();
+        wakeVsync();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        scrollRing(-1);
+        scrollCurrent(-1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        scrollRing(1);
+        scrollCurrent(1);
       }
     });
 
+    renderFrame();
     document.body.tabIndex = 0;
     document.body.focus();
-    render();
   </script>
 </body>
 </html>

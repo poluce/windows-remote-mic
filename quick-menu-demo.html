@@ -2,26 +2,28 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Quick Menu Demo - 右下角扇形快捷菜单</title>
+<title>Quick Menu Demo - 400ms 黄金流体物理轮盘 (Apple 风格)</title>
 <style>
   * { box-sizing: border-box; }
 
   body {
     margin: 0;
     height: 100vh;
-    background: #1e2227;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0f172a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* 模拟桌面 */
+  /* 模拟深色桌面壁纸 */
   .desktop {
     position: relative;
     width: 100%;
     height: 100%;
     background:
-      radial-gradient(circle at 20% 20%, rgba(255,255,255,0.04), transparent 40%),
-      linear-gradient(135deg, #232830 0%, #15191e 100%);
+      radial-gradient(circle at 80% 80%, rgba(0, 122, 255, 0.08), transparent 50%),
+      radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03), transparent 40%),
+      linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   }
 
   .demo-tip {
@@ -29,33 +31,35 @@
     top: 28px;
     left: 50%;
     transform: translateX(-50%);
-    color: #aab3bf;
-    font-size: 16px;
+    color: #94a3b8;
+    font-size: 15px;
     text-align: center;
     line-height: 1.8;
     pointer-events: none;
   }
 
   .demo-tip strong {
-    color: #e8edf3;
+    color: #f8fafc;
   }
 
   .open-btn {
     position: absolute;
     bottom: 90px;
     right: 90px;
-    padding: 10px 18px;
-    border: 1px solid #3a4350;
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
-    background: #2a313a;
-    color: #e8edf3;
-    font-size: 16px;
+    background: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(12px);
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 500;
     cursor: pointer;
     z-index: 5;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     transition: background .15s, transform .15s;
   }
-  .open-btn:hover { background: #37404b; transform: translateY(-1px); }
+  .open-btn:hover { background: rgba(51, 65, 85, 0.95); transform: translateY(-1px); }
 
   /* ===== 扇形快捷菜单 ===== */
   .quick-menu {
@@ -66,9 +70,9 @@
     height: 420px;
     pointer-events: none;
     opacity: 0;
-    transform: scale(0.6) translate(40px, 40px);
+    transform: scale(0.7) translate(30px, 30px);
     transform-origin: right bottom;
-    transition: opacity .18s ease, transform .22s cubic-bezier(.2,.9,.3,1.2);
+    transition: opacity .22s ease, transform .26s cubic-bezier(.16, 1, .3, 1);
     z-index: 10;
   }
 
@@ -78,213 +82,280 @@
     pointer-events: auto;
   }
 
-  .quick-menu svg {
+  #canvas {
     display: block;
-    width: 100%;
-    height: 100%;
-  }
-
-  .fan-bg {
-    fill: rgba(248, 250, 252, 1);
-    stroke: #d0d7de;
-    stroke-width: 1.5;
-  }
-
-  .ring-divider {
-    stroke: #d8dee6;
-    stroke-width: 1.5;
-    fill: none;
-  }
-
-  .outer-circle {
-    fill: #ffffff;
-    stroke: #c9d1d9;
-    stroke-width: 1.5;
-  }
-
-  .outer-circle-text {
-    fill: #57606a;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
-  .inner-circle {
-    fill: #ffffff;
-    stroke: #c9d1d9;
-    stroke-width: 1.5;
-  }
-
-  .inner-circle-text {
-    fill: #57606a;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
-  .ring-buttons {
-    transition: opacity .15s;
-  }
-
-  .ring-buttons:not(.active) {
-    opacity: .35;
-  }
-
-  .outer-circle.selected,
-  .inner-circle.selected {
-    stroke: #2f6fed;
-    stroke-width: 3;
-    fill: #edf3ff;
-  }
-
-  .outer-circle-text.selected-text,
-  .inner-circle-text.selected-text {
-    fill: #2f6fed;
-  }
-
-  .ring-visual {
-    transform-origin: 420px 420px;
-    transition: transform 0.18s ease;
-  }
-
-  .ring-visual.no-anim {
-    transition: none;
-  }
-
-  .center-circle {
-    fill: #ffffff;
-    stroke: #d0d7de;
-    stroke-width: 1.5;
-  }
-
-  .placeholder {
-    fill: #57606a;
-    font-size: 15px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
-  .placeholder-sub {
-    fill: #8c959f;
-    font-size: 11px;
-    text-anchor: middle;
-  }
-
-  .center-title {
-    fill: #1f2328;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 700;
-  }
-
-  .center-desc {
-    fill: #57606a;
-    font-size: 11px;
-    text-anchor: middle;
+    width: 420px;
+    height: 420px;
   }
 
   .close-hint {
     position: absolute;
-    right: 18px;
+    right: 20px;
     bottom: 14px;
-    color: #8c959f;
-    font-size: 11px;
-    letter-spacing: 1px;
+    color: #94a3b8;
+    font-size: 10px;
+    letter-spacing: 0.8px;
     pointer-events: none;
+    font-weight: 500;
   }
 </style>
 </head>
 <body>
 <div class="desktop">
   <div class="demo-tip">
-    模拟桌面右下角<br>
+    模拟桌面右下角 (400ms 黄金流体物理时长 · VSync 同步)<br>
     点下方按钮 = 按遥控器 <strong>菜单键</strong><br>
-    再点一次 / 点击扇形外空白 = 关闭
+    方向键：<strong>↑ / ↓</strong> 舒展流体旋转，<strong>← / →</strong> 切换双环
   </div>
 
   <button class="open-btn" id="openBtn">模拟按菜单键</button>
 
   <div class="quick-menu" id="quickMenu">
-    <svg viewBox="0 0 420 420">
-      <!-- 外环：主菜单（留空） -->
-      <path class="fan-bg" d="M 420 420 L 20 420 A 400 400 0 0 1 420 20 Z" />
-      <path class="ring-divider" d="M 120 420 A 300 300 0 0 1 420 120" />
-      <path class="ring-divider" d="M 220 420 A 200 200 0 0 1 420 220" />
-
-      <!-- 外环分界线（示意，先留空） -->
-
-      <!-- 内环分界线（示意） -->
-
-      <!-- 外环 6 个圆形按钮 -->
-      <g id="outerRing" class="ring-buttons outer-ring active">
-        <g class="ring-visual"></g>
-      </g>
-
-      <!-- 内环 6 个圆形按钮 -->
-      <g id="innerRing" class="ring-buttons inner-ring">
-        <g class="ring-visual"></g>
-      </g>
-
-      <!-- 最内部：介绍区 -->
-      <path class="center-circle" d="M 420 420 L 220 420 A 200 200 0 0 1 420 220 Z" />
-      <text class="center-title" x="320" y="325">介绍区</text>
-      <text class="center-desc" x="320" y="347">当前选中项说明</text>
-    </svg>
-
+    <canvas id="canvas" width="420" height="420"></canvas>
     <div class="close-hint">再按菜单键关闭</div>
   </div>
 </div>
 
 <script>
-  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const CX = 420;
+  const CY = 420;
+  const OUTER_R = 350;
+  const INNER_R = 250;
+  const CENTER_ANGLE = 225;
+  const OUTER_SLOT_ANGLE = 15;
+  const INNER_SLOT_ANGLE = 22.5;
+
+  const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+
   const menu = document.getElementById('quickMenu');
   const btn = document.getElementById('openBtn');
-  const outerGroup = document.getElementById('outerRing');
-  const innerGroup = document.getElementById('innerRing');
-  const centerDesc = document.querySelector('.center-desc');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: true });
 
-  // 按钮列表：以后可以是任意数量，这里先用 10 个演示滚动
-  const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
-  const VISIBLE_COUNT = 5;
-  const FRAME_INDEX = 2;
-  const STEP_ANGLE = 15;
-
-  const OUTER_POSITIONS = [
-    { cx: 329.4, cy: 81.9, tx: 329.4, ty: 86.0 },
-    { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
-    { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
-    { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
-    { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
-  ];
-
-  const INNER_POSITIONS = [
-    { cx: 355.3, cy: 178.5, tx: 355.3, ty: 183.0 },
-    { cx: 295.0, cy: 203.5, tx: 295.0, ty: 208.0 },
-    { cx: 243.2, cy: 243.2, tx: 243.2, ty: 248.0 },
-    { cx: 203.5, cy: 295.0, tx: 203.5, ty: 300.0 },
-    { cx: 178.5, cy: 355.3, tx: 178.5, ty: 360.0 },
-  ];
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = 420 * dpr;
+  canvas.height = 420 * dpr;
+  ctx.scale(dpr, dpr);
 
   let ring = 'outer';
-  let outerStart = 0;
-  let innerStart = 0;
-  let rolling = false;
 
-  function ringStart() {
-    return ring === 'outer' ? outerStart : innerStart;
-  }
+  // 400ms 黄金时长物理参数
+  const SPRING_K = 115;
+  const SPRING_C = 18;
 
-  function setRingStart(value) {
-    if (ring === 'outer') outerStart = value;
-    else innerStart = value;
-  }
-
-  function svgEl(tag, attrs) {
-    const el = document.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) {
-      el.setAttribute(key, value);
+  class VSyncPhysicsWheel {
+    constructor(radius, slotAngle) {
+      this.radius = radius;
+      this.slotAngle = slotAngle;
+      this.targetIndex = 0;
+      this.currentAngle = 0;
+      this.vel = 0;
     }
-    return el;
+
+    scroll(dir) {
+      const next = this.targetIndex + dir;
+      if (next >= 0 && next < ALL_ITEMS.length) {
+        this.targetIndex = next;
+      } else {
+        this.vel += (dir > 0 ? -28 : 28);
+      }
+    }
+
+    step(dt) {
+      const targetAngle = -this.targetIndex * this.slotAngle;
+      const clampedDt = Math.min(dt, 0.033);
+      const subDt = clampedDt / 2;
+
+      for (let s = 0; s < 2; s++) {
+        const diff = this.currentAngle - targetAngle;
+        const force = -SPRING_K * diff;
+        const damping = -SPRING_C * this.vel;
+        const accel = force + damping;
+
+        this.vel += accel * subDt;
+        this.currentAngle += this.vel * subDt;
+      }
+
+      const isSettled = Math.abs(this.currentAngle - targetAngle) < 0.005 && Math.abs(this.vel) < 0.02;
+      if (isSettled) {
+        this.currentAngle = targetAngle;
+        this.vel = 0;
+        return false;
+      }
+      return true;
+    }
+  }
+
+  const outerWheel = new VSyncPhysicsWheel(OUTER_R, OUTER_SLOT_ANGLE);
+  const innerWheel = new VSyncPhysicsWheel(INNER_R, INNER_SLOT_ANGLE);
+
+  function renderFrame() {
+    ctx.clearRect(0, 0, 420, 420);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(420, 420);
+    ctx.lineTo(20, 420);
+    ctx.arc(420, 420, 400, Math.PI, 1.5 * Math.PI, false);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(250, 252, 255, 0.96)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(210, 218, 230, 0.85)';
+    ctx.stroke();
+    ctx.clip();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(220, 228, 238, 0.7)';
+
+    ctx.beginPath();
+    ctx.arc(420, 420, 300, Math.PI, 1.5 * Math.PI, false);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(420, 420, 200, Math.PI, 1.5 * Math.PI, false);
+    ctx.stroke();
+
+    renderWheel(outerWheel, OUTER_R, ring === 'outer');
+    renderWheel(innerWheel, INNER_R, ring === 'inner');
+
+    ctx.restore();
+
+    drawFocusReticle(172.51, 172.51, ring === 'outer');
+    drawFocusReticle(243.22, 243.22, ring === 'inner');
+
+    drawCenterArea();
+  }
+
+  function renderWheel(wheel, radius, isActive) {
+    ctx.save();
+    ctx.globalAlpha = isActive ? 1.0 : 0.38;
+
+    ALL_ITEMS.forEach((item, index) => {
+      const itemAngle = CENTER_ANGLE + index * wheel.slotAngle + wheel.currentAngle;
+      const rad = (itemAngle * Math.PI) / 180;
+      const cx = CX + radius * Math.cos(rad);
+      const cy = CY + radius * Math.sin(rad);
+
+      const deltaAngle = Math.abs(itemAngle - 225);
+      const intensity = Math.max(0, Math.min(1.0, Math.cos((Math.min(deltaAngle, wheel.slotAngle) / wheel.slotAngle) * (Math.PI / 2))));
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 34, 0, 2 * Math.PI);
+
+      if (isActive && intensity > 0) {
+        const fillR = Math.round(255 + (240 - 255) * intensity);
+        const fillG = Math.round(255 + (246 - 255) * intensity);
+        const fillB = Math.round(255 + (255 - 255) * intensity);
+        ctx.fillStyle = `rgb(${fillR}, ${fillG}, ${fillB})`;
+
+        const strR = Math.round(200 + (0 - 200) * intensity);
+        const strG = Math.round(210 + (122 - 210) * intensity);
+        const strB = Math.round(225 + (255 - 225) * intensity);
+        ctx.strokeStyle = `rgb(${strR}, ${strG}, ${strB})`;
+        ctx.lineWidth = 1.5 + intensity * 1.0;
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(200, 210, 225, 0.85)';
+        ctx.lineWidth = 1.5;
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = (isActive && intensity > 0.6 ? '700' : '600') + ' 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+
+      if (isActive && intensity > 0) {
+        const textR = Math.round(71 + (0 - 71) * intensity);
+        const textG = Math.round(85 + (122 - 85) * intensity);
+        const textB = Math.round(105 + (255 - 105) * intensity);
+        ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
+      } else {
+        ctx.fillStyle = '#475569';
+      }
+      ctx.fillText(item, cx, cy);
+    });
+
+    ctx.restore();
+  }
+
+  function drawFocusReticle(cx, cy, isActive) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 36, 0, 2 * Math.PI);
+
+    if (isActive) {
+      ctx.fillStyle = 'rgba(0, 122, 255, 0.08)';
+      ctx.fill();
+      ctx.strokeStyle = '#007aff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCenterArea() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(420, 420);
+    ctx.lineTo(220, 420);
+    ctx.arc(420, 420, 200, Math.PI, 1.5 * Math.PI, false);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(210, 218, 230, 0.85)';
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '700 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+    ctx.fillText('控制中心', 320, 323);
+
+    const activeWheel = ring === 'outer' ? outerWheel : innerWheel;
+    const currentIdx = Math.max(0, Math.min(ALL_ITEMS.length - 1, Math.round(-activeWheel.currentAngle / activeWheel.slotAngle)));
+    ctx.fillStyle = '#64748b';
+    ctx.font = '500 11px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+    ctx.fillText(`${ring === 'outer' ? '外环' : '内环'} · ${ALL_ITEMS[currentIdx]}`, 320, 345);
+
+    ctx.restore();
+  }
+
+  let lastVsyncTime = null;
+  let vsyncId = null;
+
+  function vsyncLoop(timestamp) {
+    if (lastVsyncTime === null) {
+      lastVsyncTime = timestamp;
+    }
+    const dt = (timestamp - lastVsyncTime) / 1000;
+    lastVsyncTime = timestamp;
+
+    const movingOut = outerWheel.step(dt);
+    const movingIn = innerWheel.step(dt);
+
+    renderFrame();
+
+    if (movingOut || movingIn) {
+      vsyncId = requestAnimationFrame(vsyncLoop);
+    } else {
+      vsyncId = null;
+      lastVsyncTime = null;
+    }
+  }
+
+  function wakeVsync() {
+    if (!vsyncId) {
+      lastVsyncTime = null;
+      vsyncId = requestAnimationFrame(vsyncLoop);
+    }
   }
 
   function toggle(open) {
@@ -292,85 +363,15 @@
     btn.textContent = open ? '模拟再按菜单键关闭' : '模拟按菜单键';
     if (open) {
       document.body.focus();
-      updateSelection();
+      renderFrame();
+      wakeVsync();
     }
   }
 
-  function renderRing(group, start, isOuter, isActive) {
-    const visual = group.querySelector('.ring-visual');
-    visual.innerHTML = '';
-    const positions = isOuter ? OUTER_POSITIONS : INNER_POSITIONS;
-
-    for (let slot = 0; slot < VISIBLE_COUNT; slot++) {
-      const itemIndex = start + slot;
-      if (itemIndex < 0 || itemIndex >= ALL_ITEMS.length) continue;
-      const item = ALL_ITEMS[itemIndex];
-      const pos = positions[slot];
-      const selected = isActive && slot === FRAME_INDEX;
-
-      const circle = svgEl('circle', {
-        cx: pos.cx,
-        cy: pos.cy,
-        r: 34,
-        class: isOuter ? 'outer-circle' : 'inner-circle',
-      });
-      if (selected) circle.classList.add('selected');
-
-      const text = svgEl('text', {
-        x: pos.tx,
-        y: pos.ty,
-        class: isOuter ? 'outer-circle-text' : 'inner-circle-text',
-      });
-      text.textContent = item;
-      if (selected) text.classList.add('selected-text');
-
-      visual.appendChild(circle);
-      visual.appendChild(text);
-    }
-  }
-
-  function updateSelection() {
-    outerGroup.classList.toggle('active', ring === 'outer');
-    innerGroup.classList.toggle('active', ring === 'inner');
-    renderRing(outerGroup, outerStart, true, ring === 'outer');
-    renderRing(innerGroup, innerStart, false, ring === 'inner');
-
-    const selectedIndex = ringStart() + FRAME_INDEX;
-    const selectedItem = selectedIndex >= 0 && selectedIndex < ALL_ITEMS.length
-      ? ALL_ITEMS[selectedIndex]
-      : '';
-    centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${selectedItem}`;
-  }
-
-  function activeVisual() {
-    return ring === 'outer'
-      ? outerGroup.querySelector('.ring-visual')
-      : innerGroup.querySelector('.ring-visual');
-  }
-
-  function scrollRing(dir) {
-    if (rolling) return;
-    const current = ringStart();
-    const minStart = -FRAME_INDEX;
-    const maxStart = ALL_ITEMS.length - 1 - FRAME_INDEX;
-    const next = current + dir;
-    if (next < minStart || next > maxStart) return;
-
-    const visual = activeVisual();
-    rolling = true;
-    visual.classList.remove('no-anim');
-
-    const onEnd = () => {
-      visual.removeEventListener('transitionend', onEnd);
-      setRingStart(next);
-      visual.classList.add('no-anim');
-      visual.style.transform = 'rotate(0deg)';
-      updateSelection();
-      rolling = false;
-    };
-
-    visual.addEventListener('transitionend', onEnd);
-    visual.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
+  function scrollCurrent(dir) {
+    if (ring === 'outer') outerWheel.scroll(dir);
+    else innerWheel.scroll(dir);
+    wakeVsync();
   }
 
   btn.addEventListener('click', (e) => {
@@ -391,18 +392,19 @@
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       ring = ring === 'outer' ? 'inner' : 'outer';
-      updateSelection();
+      renderFrame();
+      wakeVsync();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      scrollRing(1);
+      scrollCurrent(-1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      scrollRing(-1);
+      scrollCurrent(1);
     }
   });
 
+  renderFrame();
   document.body.tabIndex = 0;
-  updateSelection();
 </script>
 </body>
 </html>
