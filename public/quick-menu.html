@@ -281,9 +281,9 @@
 
       setTimeout(() => {
         setRingStart(next);
-        render();
         visual.classList.add('no-anim');
         visual.style.transform = 'rotate(0deg)';
+        render();
         rolling = false;
       }, 180);
     }
