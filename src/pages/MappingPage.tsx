@@ -210,9 +210,6 @@ export function MappingPage() {
             <div key={b.button} className="mapping-row">
               <span className="mapping-key">{b.name}</span>
               <span className="mapping-action">{b.action}</span>
-              <button className="btn small" onClick={() => setSelected(b.button)}>
-                编辑
-              </button>
             </div>
           ))}
         </div>
