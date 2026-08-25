@@ -142,12 +142,12 @@
     fill: #2f6fed;
   }
 
-  .ring-texts {
+  .ring-visual {
     transform-origin: 420px 420px;
     transition: transform 0.18s ease;
   }
 
-  .ring-texts.no-anim {
+  .ring-visual.no-anim {
     transition: none;
   }
 
@@ -217,42 +217,12 @@
 
       <!-- 外环 6 个圆形按钮 -->
       <g id="outerRing" class="ring-buttons outer-ring active">
-        <g class="ring-circles">
-          <circle class="outer-circle" cx="81.9" cy="329.4" r="34" />
-          <circle class="outer-circle" cx="116.9" cy="245.0" r="34" />
-          <circle class="outer-circle" cx="142.3" cy="206.9" r="34" />
-          <circle class="outer-circle" cx="172.5" cy="172.5" r="34" />
-          <circle class="outer-circle" cx="245.0" cy="116.9" r="34" />
-          <circle class="outer-circle" cx="329.4" cy="81.9" r="34" />
-        </g>
-        <g class="ring-texts">
-          <text class="outer-circle-text" x="81.9" y="334.0">1</text>
-          <text class="outer-circle-text" x="116.9" y="250.0">2</text>
-          <text class="outer-circle-text" x="142.3" y="211.0">3</text>
-          <text class="outer-circle-text" x="172.5" y="177.0">4</text>
-          <text class="outer-circle-text" x="245.0" y="121.0">5</text>
-          <text class="outer-circle-text" x="329.4" y="86.0">6</text>
-        </g>
+        <g class="ring-visual"></g>
       </g>
 
       <!-- 内环 6 个圆形按钮 -->
       <g id="innerRing" class="ring-buttons inner-ring">
-        <g class="ring-circles">
-          <circle class="inner-circle" cx="178.5" cy="355.3" r="34" />
-          <circle class="inner-circle" cx="203.5" cy="295.0" r="34" />
-          <circle class="inner-circle" cx="221.7" cy="267.8" r="34" />
-          <circle class="inner-circle" cx="243.2" cy="243.2" r="34" />
-          <circle class="inner-circle" cx="295.0" cy="203.5" r="34" />
-          <circle class="inner-circle" cx="355.3" cy="178.5" r="34" />
-        </g>
-        <g class="ring-texts">
-          <text class="inner-circle-text" x="178.5" y="360.0">1</text>
-          <text class="inner-circle-text" x="203.5" y="300.0">2</text>
-          <text class="inner-circle-text" x="221.7" y="272.0">3</text>
-          <text class="inner-circle-text" x="243.2" y="248.0">4</text>
-          <text class="inner-circle-text" x="295.0" y="208.0">5</text>
-          <text class="inner-circle-text" x="355.3" y="183.0">6</text>
-        </g>
+        <g class="ring-visual"></g>
       </g>
 
       <!-- 最内部：介绍区 -->
@@ -266,34 +236,57 @@
 </div>
 
 <script>
+  const SVG_NS = 'http://www.w3.org/2000/svg';
   const menu = document.getElementById('quickMenu');
   const btn = document.getElementById('openBtn');
   const outerGroup = document.getElementById('outerRing');
   const innerGroup = document.getElementById('innerRing');
   const centerDesc = document.querySelector('.center-desc');
 
-  const MENU_ITEMS = ['1', '2', '3', '4', '5', '6'];
+  // 按钮列表：以后可以是任意数量，这里先用 10 个演示滚动
+  const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  const VISIBLE_COUNT = 6;
   const FRAME_INDEX = 3;
   const STEP_ANGLE = 15;
 
+  const OUTER_POSITIONS = [
+    { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
+    { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
+    { cx: 142.3, cy: 206.9, tx: 142.3, ty: 211.0 },
+    { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
+    { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
+    { cx: 329.4, cy: 81.9, tx: 329.4, ty: 86.0 },
+  ];
+
+  const INNER_POSITIONS = [
+    { cx: 178.5, cy: 355.3, tx: 178.5, ty: 360.0 },
+    { cx: 203.5, cy: 295.0, tx: 203.5, ty: 300.0 },
+    { cx: 221.7, cy: 267.8, tx: 221.7, ty: 272.0 },
+    { cx: 243.2, cy: 243.2, tx: 243.2, ty: 248.0 },
+    { cx: 295.0, cy: 203.5, tx: 295.0, ty: 208.0 },
+    { cx: 355.3, cy: 178.5, tx: 355.3, ty: 183.0 },
+  ];
+
   let ring = 'outer';
-  let outerOffset = 0;
-  let innerOffset = 0;
+  let outerStart = 0;
+  let innerStart = 0;
   let rolling = false;
 
-  function activeOffset() {
-    return ring === 'outer' ? outerOffset : innerOffset;
+  function ringStart() {
+    return ring === 'outer' ? outerStart : innerStart;
   }
 
-  function setActiveOffset(value) {
-    if (ring === 'outer') outerOffset = value;
-    else innerOffset = value;
+  function setRingStart(value) {
+    if (ring === 'outer') outerStart = value;
+    else innerStart = value;
   }
 
-  function activeTextsGroup() {
-    return ring === 'outer'
-      ? outerGroup.querySelector('.ring-texts')
-      : innerGroup.querySelector('.ring-texts');
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      el.setAttribute(key, value);
+    }
+    return el;
   }
 
   function toggle(open) {
@@ -305,43 +298,65 @@
     }
   }
 
+  function renderRing(group, start, isOuter, isActive) {
+    const visual = group.querySelector('.ring-visual');
+    visual.innerHTML = '';
+    const positions = isOuter ? OUTER_POSITIONS : INNER_POSITIONS;
+
+    for (let slot = 0; slot < VISIBLE_COUNT; slot++) {
+      const item = ALL_ITEMS[(start + slot) % ALL_ITEMS.length];
+      const pos = positions[slot];
+      const selected = isActive && slot === FRAME_INDEX;
+
+      const circle = svgEl('circle', {
+        cx: pos.cx,
+        cy: pos.cy,
+        r: 34,
+        class: isOuter ? 'outer-circle' : 'inner-circle',
+      });
+      if (selected) circle.classList.add('selected');
+
+      const text = svgEl('text', {
+        x: pos.tx,
+        y: pos.ty,
+        class: isOuter ? 'outer-circle-text' : 'inner-circle-text',
+      });
+      text.textContent = item;
+      if (selected) text.classList.add('selected-text');
+
+      visual.appendChild(circle);
+      visual.appendChild(text);
+    }
+  }
+
   function updateSelection() {
     outerGroup.classList.toggle('active', ring === 'outer');
     innerGroup.classList.toggle('active', ring === 'inner');
+    renderRing(outerGroup, outerStart, true, ring === 'outer');
+    renderRing(innerGroup, innerStart, false, ring === 'inner');
 
-    [
-      { group: outerGroup, offset: outerOffset, isOuter: true },
-      { group: innerGroup, offset: innerOffset, isOuter: false },
-    ].forEach(({ group, offset, isOuter }) => {
-      const texts = Array.from(group.querySelectorAll('text'));
-      const circles = Array.from(group.querySelectorAll('circle'));
-      const isActive = isOuter ? ring === 'outer' : ring === 'inner';
-
-      texts.forEach((text, i) => {
-        text.textContent = MENU_ITEMS[(i + offset) % 6];
-        text.classList.toggle('selected-text', isActive && i === FRAME_INDEX);
-      });
-      circles.forEach((circle, i) => {
-        circle.classList.toggle('selected', isActive && i === FRAME_INDEX);
-      });
-    });
-
-    const currentItem = MENU_ITEMS[(FRAME_INDEX + activeOffset()) % 6];
-    centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${currentItem}`;
+    const selectedItem = ALL_ITEMS[(ringStart() + FRAME_INDEX) % ALL_ITEMS.length];
+    centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${selectedItem}`;
   }
 
-  function scrollActiveRing(dir) {
+  function activeVisual() {
+    return ring === 'outer'
+      ? outerGroup.querySelector('.ring-visual')
+      : innerGroup.querySelector('.ring-visual');
+  }
+
+  function scrollRing(dir) {
     if (rolling) return;
-    const textsGroup = activeTextsGroup();
+    const visual = activeVisual();
     rolling = true;
-    textsGroup.classList.remove('no-anim');
-    textsGroup.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
+    visual.classList.remove('no-anim');
+    visual.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
 
     setTimeout(() => {
-      setActiveOffset((activeOffset() + (dir > 0 ? 1 : 5)) % 6);
+      setRingStart((ringStart() + (dir > 0 ? 1 : -1) + ALL_ITEMS.length) % ALL_ITEMS.length);
       updateSelection();
-      textsGroup.classList.add('no-anim');
-      textsGroup.style.transform = 'rotate(0deg)';
+      visual.classList.add('no-anim');
+      visual.style.transform = 'rotate(0deg)';
       rolling = false;
     }, 180);
   }
@@ -367,10 +382,10 @@
       updateSelection();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      scrollActiveRing(1);
+      scrollRing(1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      scrollActiveRing(-1);
+      scrollRing(-1);
     }
   });
 
