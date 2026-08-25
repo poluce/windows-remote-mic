@@ -177,11 +177,11 @@
     const STEP_ANGLE = 15;
 
     const OUTER_POSITIONS = [
-      { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
-      { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
-      { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
-      { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
       { cx: 329.4, cy: 81.9, tx: 329.4, ty: 86.0 },
+      { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
+      { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
+      { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
+      { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
     ];
 
     const INNER_POSITIONS = [
@@ -271,7 +271,7 @@
       const visual = activeVisual();
       rolling = true;
       visual.classList.remove('no-anim');
-      visual.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
+      visual.style.transform = `rotate(${-dir * STEP_ANGLE}deg)`;
 
       setTimeout(() => {
         setRingStart(next);

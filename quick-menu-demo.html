@@ -250,19 +250,19 @@
   const STEP_ANGLE = 15;
 
   const OUTER_POSITIONS = [
-    { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
-    { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
-    { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
-    { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
     { cx: 329.4, cy: 81.9, tx: 329.4, ty: 86.0 },
+    { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
+    { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
+    { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
+    { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
   ];
 
   const INNER_POSITIONS = [
-    { cx: 178.5, cy: 355.3, tx: 178.5, ty: 360.0 },
-    { cx: 203.5, cy: 295.0, tx: 203.5, ty: 300.0 },
-    { cx: 243.2, cy: 243.2, tx: 243.2, ty: 248.0 },
-    { cx: 295.0, cy: 203.5, tx: 295.0, ty: 208.0 },
     { cx: 355.3, cy: 178.5, tx: 355.3, ty: 183.0 },
+    { cx: 295.0, cy: 203.5, tx: 295.0, ty: 208.0 },
+    { cx: 243.2, cy: 243.2, tx: 243.2, ty: 248.0 },
+    { cx: 203.5, cy: 295.0, tx: 203.5, ty: 300.0 },
+    { cx: 178.5, cy: 355.3, tx: 178.5, ty: 360.0 },
   ];
 
   let ring = 'outer';
@@ -353,7 +353,7 @@
     const visual = activeVisual();
     rolling = true;
     visual.classList.remove('no-anim');
-    visual.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
+    visual.style.transform = `rotate(${-dir * STEP_ANGLE}deg)`;
 
     setTimeout(() => {
       setRingStart(next);
