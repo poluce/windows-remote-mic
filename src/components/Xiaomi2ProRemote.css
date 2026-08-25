@@ -187,30 +187,30 @@
 }
 .x2pro-remote .hit-up.active::before {
   background: conic-gradient(
-    from -60deg,
-    rgba(47, 111, 237, 0.3) 0deg 120deg,
-    transparent 120deg
+    from -45deg,
+    rgba(47, 111, 237, 0.3) 0deg 90deg,
+    transparent 90deg
   );
 }
 .x2pro-remote .hit-down.active::before {
   background: conic-gradient(
-    from 120deg,
-    rgba(47, 111, 237, 0.3) 0deg 120deg,
-    transparent 120deg
+    from 135deg,
+    rgba(47, 111, 237, 0.3) 0deg 90deg,
+    transparent 90deg
   );
 }
 .x2pro-remote .hit-left.active::before {
   background: conic-gradient(
-    from 210deg,
-    rgba(47, 111, 237, 0.3) 0deg 120deg,
-    transparent 120deg
+    from 225deg,
+    rgba(47, 111, 237, 0.3) 0deg 90deg,
+    transparent 90deg
   );
 }
 .x2pro-remote .hit-right.active::before {
   background: conic-gradient(
-    from 30deg,
-    rgba(47, 111, 237, 0.3) 0deg 120deg,
-    transparent 120deg
+    from 45deg,
+    rgba(47, 111, 237, 0.3) 0deg 90deg,
+    transparent 90deg
   );
 }
 
