@@ -789,12 +789,18 @@ pub fn run() {
             let win_width = 420.0;
             let win_height = 420.0;
 
+            let right_margin = 2.0;
+            let bottom_margin = 2.0;
             let (x, y) = if let Ok(Some(monitor)) = app.handle().primary_monitor() {
                 let scale = monitor.scale_factor();
-                let pos = monitor.position();
-                let size = monitor.size();
-                let x = pos.x as f64 / scale + size.width as f64 / scale - win_width;
-                let y = pos.y as f64 / scale + size.height as f64 / scale - win_height;
+                // 使用工作区（不含任务栏）定位，并留出很小的边距
+                let work = monitor.work_area();
+                let wx = work.position.x as f64 / scale;
+                let wy = work.position.y as f64 / scale;
+                let ww = work.size.width as f64 / scale;
+                let wh = work.size.height as f64 / scale;
+                let x = wx + ww - win_width - right_margin;
+                let y = wy + wh - win_height - bottom_margin;
                 (x, y)
             } else {
                 (0.0, 0.0)
