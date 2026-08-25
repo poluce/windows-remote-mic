@@ -163,26 +163,6 @@ button {
   color: var(--text);
 }
 
-.backend-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-3);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 12px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2da44e;
-  display: inline-block;
-}
-
 .content {
   flex: 1;
   overflow-y: auto;

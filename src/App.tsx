@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useState } from "react";
 import { Sidebar, type PageId } from "./components/Sidebar";
 import { ConnectionPage } from "./pages/ConnectionPage";
 import { MappingPage } from "./pages/MappingPage";
@@ -11,17 +10,6 @@ import "./App.css";
 
 function App() {
   const [page, setPage] = useState<PageId>("connection");
-  const [backend, setBackend] = useState("检查后端…");
-
-  useEffect(() => {
-    if (!isTauri()) {
-      setBackend("浏览器预览模式");
-      return;
-    }
-    invoke<string>("ping")
-      .then(setBackend)
-      .catch(() => setBackend("后端不可用"));
-  }, []);
 
   return (
     <div className="app-shell">
@@ -31,10 +19,6 @@ function App() {
         <header className="topbar">
           <div>
             <h1>{pageTitle(page)}</h1>
-          </div>
-          <div className="backend-status">
-            <span className="dot" />
-            后端状态：{backend}
           </div>
         </header>
 
