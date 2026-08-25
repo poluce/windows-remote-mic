@@ -532,9 +532,13 @@ button {
 /* ---------- Mapping wizard ---------- */
 .mapping-wizard {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) 1fr;
+  grid-template-columns: minmax(170px, 195px) 1fr;
   gap: 16px;
   align-items: start;
+}
+
+.remote-card {
+  padding: 16px 14px;
 }
 
 .remote-diagram {
