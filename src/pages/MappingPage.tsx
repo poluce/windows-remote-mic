@@ -149,10 +149,10 @@ export function MappingPage() {
                 <button
                   key={t.key}
                   className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
+                  title={t.desc}
                   onClick={() => setTrigger(t.key)}
                 >
                   <span className="trigger-name">{t.label}</span>
-                  <span className="trigger-desc">{t.desc}</span>
                 </button>
               ))}
             </div>
