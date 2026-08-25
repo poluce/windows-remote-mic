@@ -302,7 +302,9 @@
     const positions = isOuter ? OUTER_POSITIONS : INNER_POSITIONS;
 
     for (let slot = 0; slot < VISIBLE_COUNT; slot++) {
-      const item = ALL_ITEMS[start + slot];
+      const itemIndex = start + slot;
+      if (itemIndex < 0 || itemIndex >= ALL_ITEMS.length) continue;
+      const item = ALL_ITEMS[itemIndex];
       const pos = positions[slot];
       const selected = isActive && slot === FRAME_INDEX;
 
@@ -333,7 +335,10 @@
     renderRing(outerGroup, outerStart, true, ring === 'outer');
     renderRing(innerGroup, innerStart, false, ring === 'inner');
 
-    const selectedItem = ALL_ITEMS[ringStart() + FRAME_INDEX];
+    const selectedIndex = ringStart() + FRAME_INDEX;
+    const selectedItem = selectedIndex >= 0 && selectedIndex < ALL_ITEMS.length
+      ? ALL_ITEMS[selectedIndex]
+      : '';
     centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${selectedItem}`;
   }
 
@@ -346,9 +351,10 @@
   function scrollRing(dir) {
     if (rolling) return;
     const current = ringStart();
-    const maxStart = ALL_ITEMS.length - VISIBLE_COUNT;
+    const minStart = -FRAME_INDEX;
+    const maxStart = ALL_ITEMS.length - 1 - FRAME_INDEX;
     const next = current + dir;
-    if (next < 0 || next > maxStart) return;
+    if (next < minStart || next > maxStart) return;
 
     const visual = activeVisual();
     rolling = true;
