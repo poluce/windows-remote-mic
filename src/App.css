@@ -557,6 +557,17 @@ button {
   gap: 6px;
 }
 
+.action-grid .btn {
+  padding: 4px 6px;
+  font-size: 12px;
+  width: 100%;
+  max-width: 110px;
+  margin: 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 760px) {
   .mapping-wizard {
     grid-template-columns: 1fr;
@@ -675,6 +686,11 @@ button {
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+}
+
+.category-tabs .btn {
+  padding: 3px 8px;
+  font-size: 12px;
 }
 
 .preview-box {
