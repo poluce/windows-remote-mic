@@ -129,9 +129,6 @@ export function MappingPage() {
 
   return (
     <div className="page">
-      
-      
-
       <div className="mapping-wizard">
         <section className="card remote-card">
           <div className="card-title">① 选择按键</div>
@@ -140,8 +137,6 @@ export function MappingPage() {
         </section>
 
         <section className="card wizard-card">
-          
-
           <div className="wizard-group">
             <div className="wizard-label">② 触发方式</div>
             <div className="trigger-options">
