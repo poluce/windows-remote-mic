@@ -622,3 +622,99 @@ button {
   font-weight: 600;
   color: var(--text);
 }
+
+/* ---------- Mapping v2 ---------- */
+.remote-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-top {
+  display: flex;
+  gap: 12px;
+}
+
+.remote-cross {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left ok right"
+    ". down .";
+  gap: 8px;
+}
+
+.cross-up { grid-area: up; }
+.cross-left { grid-area: left; }
+.cross-ok { grid-area: ok; }
+.cross-right { grid-area: right; }
+.cross-down { grid-area: down; }
+
+.remote-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trigger-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.trigger-btn {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.trigger-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.trigger-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.trigger-desc {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.category-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.preview-box {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preview-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.preview-value {
+  font-weight: 600;
+  color: var(--text);
+}
