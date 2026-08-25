@@ -42,25 +42,14 @@
     fill: none;
   }
 
-  .outer-circle {
-    fill: #ffffff;
-    stroke: #c9d1d9;
-    stroke-width: 1.5;
-  }
-
-  .outer-circle-text {
-    fill: #57606a;
-    font-size: 16px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
+  .outer-circle,
   .inner-circle {
     fill: #ffffff;
     stroke: #c9d1d9;
     stroke-width: 1.5;
   }
 
+  .outer-circle-text,
   .inner-circle-text {
     fill: #57606a;
     font-size: 16px;
@@ -103,19 +92,6 @@
     stroke-width: 1.5;
   }
 
-  .placeholder {
-    fill: #57606a;
-    font-size: 15px;
-    text-anchor: middle;
-    font-weight: 600;
-  }
-
-  .placeholder-sub {
-    fill: #8c959f;
-    font-size: 11px;
-    text-anchor: middle;
-  }
-
   .center-title {
     fill: #1f2328;
     font-size: 16px;
@@ -143,17 +119,20 @@
 <body>
   <div class="quick-menu">
     <svg viewBox="0 0 420 420">
+      <defs>
+        <clipPath id="fanClip">
+          <path d="M 420 420 L 20 420 A 400 400 0 0 1 420 20 Z" />
+        </clipPath>
+      </defs>
       <path class="fan-bg" d="M 420 420 L 20 420 A 400 400 0 0 1 420 20 Z" />
       <path class="ring-divider" d="M 120 420 A 300 300 0 0 1 420 120" />
       <path class="ring-divider" d="M 220 420 A 200 200 0 0 1 420 220" />
 
-
-
-      <g id="outerRing" class="ring-buttons outer-ring active">
+      <g id="outerRing" class="ring-buttons outer-ring active" clip-path="url(#fanClip)">
         <g class="ring-visual"></g>
       </g>
 
-      <g id="innerRing" class="ring-buttons inner-ring">
+      <g id="innerRing" class="ring-buttons inner-ring" clip-path="url(#fanClip)">
         <g class="ring-visual"></g>
       </g>
 
@@ -166,44 +145,33 @@
 
   <script>
     const SVG_NS = 'http://www.w3.org/2000/svg';
+    const CX = 420;
+    const CY = 420;
+    const OUTER_R = 350;
+    const INNER_R = 250;
+    const CENTER_ANGLE = 225;
+    const SLOT_ANGLE = 15;
+    const MAX_OFFSET = 10;
+
     const outerGroup = document.getElementById('outerRing');
     const innerGroup = document.getElementById('innerRing');
     const centerDesc = document.querySelector('.center-desc');
 
-    // 按钮列表：以后可以是任意数量，这里先用 10 个演示滚动
+    // 按钮列表：以后可以是任意数量，这里先用 10 个演示
     const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
-    const VISIBLE_COUNT = 5;
-    const FRAME_INDEX = 2; // 固定选中框在 45° 那个槽位
-    const STEP_ANGLE = 15;
-
-    const OUTER_POSITIONS = [
-      { cx: 329.4, cy: 81.9, tx: 329.4, ty: 86.0 },
-      { cx: 245.0, cy: 116.9, tx: 245.0, ty: 121.0 },
-      { cx: 172.5, cy: 172.5, tx: 172.5, ty: 177.0 },
-      { cx: 116.9, cy: 245.0, tx: 116.9, ty: 250.0 },
-      { cx: 81.9, cy: 329.4, tx: 81.9, ty: 334.0 },
-    ];
-
-    const INNER_POSITIONS = [
-      { cx: 178.5, cy: 355.3, tx: 178.5, ty: 360.0 },
-      { cx: 203.5, cy: 295.0, tx: 203.5, ty: 300.0 },
-      { cx: 243.2, cy: 243.2, tx: 243.2, ty: 248.0 },
-      { cx: 295.0, cy: 203.5, tx: 295.0, ty: 208.0 },
-      { cx: 355.3, cy: 178.5, tx: 355.3, ty: 183.0 },
-    ];
 
     let ring = 'outer';
-    let outerStart = 0;
-    let innerStart = 0;
+    let outerIndex = 0;
+    let innerIndex = 0;
     let rolling = false;
 
-    function ringStart() {
-      return ring === 'outer' ? outerStart : innerStart;
+    function activeIndex() {
+      return ring === 'outer' ? outerIndex : innerIndex;
     }
 
-    function setRingStart(value) {
-      if (ring === 'outer') outerStart = value;
-      else innerStart = value;
+    function setActiveIndex(value) {
+      if (ring === 'outer') outerIndex = value;
+      else innerIndex = value;
     }
 
     function svgEl(tag, attrs) {
@@ -214,32 +182,40 @@
       return el;
     }
 
-    function renderRing(group, start, isOuter, isActive) {
+    function point(angle, r) {
+      const rad = (angle * Math.PI) / 180;
+      const cx = CX + r * Math.cos(rad);
+      const cy = CY + r * Math.sin(rad);
+      return { cx, cy, tx: cx, ty: cy + 5 };
+    }
+
+    function renderRing(group, selectedIndex, isOuter, isActive) {
       const visual = group.querySelector('.ring-visual');
       visual.innerHTML = '';
-      const positions = isOuter ? OUTER_POSITIONS : INNER_POSITIONS;
+      const r = isOuter ? OUTER_R : INNER_R;
 
-      for (let slot = 0; slot < VISIBLE_COUNT; slot++) {
-        const itemIndex = start + slot;
+      // 按固定间隔排版，超出扇形窗口的部分由 clipPath 自动裁掉
+      for (let offset = -MAX_OFFSET; offset <= MAX_OFFSET; offset++) {
+        const itemIndex = selectedIndex + offset;
         if (itemIndex < 0 || itemIndex >= ALL_ITEMS.length) continue;
-        const item = ALL_ITEMS[itemIndex];
-        const pos = positions[slot];
-        const selected = isActive && slot === FRAME_INDEX;
+        const angle = CENTER_ANGLE + offset * SLOT_ANGLE;
+        const p = point(angle, r);
+        const selected = isActive && offset === 0;
 
         const circle = svgEl('circle', {
-          cx: pos.cx,
-          cy: pos.cy,
+          cx: p.cx,
+          cy: p.cy,
           r: 34,
           class: isOuter ? 'outer-circle' : 'inner-circle',
         });
         if (selected) circle.classList.add('selected');
 
         const text = svgEl('text', {
-          x: pos.tx,
-          y: pos.ty,
+          x: p.tx,
+          y: p.ty,
           class: isOuter ? 'outer-circle-text' : 'inner-circle-text',
         });
-        text.textContent = item;
+        text.textContent = ALL_ITEMS[itemIndex];
         if (selected) text.classList.add('selected-text');
 
         visual.appendChild(circle);
@@ -250,13 +226,10 @@
     function render() {
       outerGroup.classList.toggle('active', ring === 'outer');
       innerGroup.classList.toggle('active', ring === 'inner');
-      renderRing(outerGroup, outerStart, true, ring === 'outer');
-      renderRing(innerGroup, innerStart, false, ring === 'inner');
+      renderRing(outerGroup, outerIndex, true, ring === 'outer');
+      renderRing(innerGroup, innerIndex, false, ring === 'inner');
 
-      const selectedIndex = ringStart() + FRAME_INDEX;
-      const selectedItem = selectedIndex >= 0 && selectedIndex < ALL_ITEMS.length
-        ? ALL_ITEMS[selectedIndex]
-        : '';
+      const selectedItem = ALL_ITEMS[activeIndex()];
       centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${selectedItem}`;
     }
 
@@ -268,11 +241,8 @@
 
     function scrollRing(dir) {
       if (rolling) return;
-      const current = ringStart();
-      const minStart = -FRAME_INDEX;
-      const maxStart = ALL_ITEMS.length - 1 - FRAME_INDEX;
-      const next = current + dir;
-      if (next < minStart || next > maxStart) return;
+      const next = activeIndex() + dir;
+      if (next < 0 || next >= ALL_ITEMS.length) return;
 
       const visual = activeVisual();
       rolling = true;
@@ -280,7 +250,7 @@
 
       const onEnd = () => {
         visual.removeEventListener('transitionend', onEnd);
-        setRingStart(next);
+        setActiveIndex(next);
         visual.classList.add('no-anim');
         visual.style.transform = 'rotate(0deg)';
         render();
@@ -288,7 +258,7 @@
       };
 
       visual.addEventListener('transitionend', onEnd);
-      visual.style.transform = `rotate(${dir * STEP_ANGLE}deg)`;
+      visual.style.transform = `rotate(${-dir * SLOT_ANGLE}deg)`;
     }
 
     document.addEventListener('keydown', (e) => {
