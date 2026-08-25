@@ -130,9 +130,7 @@ export function MappingPage() {
   return (
     <div className="page">
       
-      <p className="page-sub">
-        第 1 步选按键，第 2 步选触发方式，第 3 步选动作，最后保存。
-      </p>
+      
 
       <div className="mapping-wizard">
         <section className="card remote-card">
