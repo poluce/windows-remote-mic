@@ -659,11 +659,11 @@ button {
 
 .trigger-name {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .trigger-desc {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-3);
 }
 
