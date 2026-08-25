@@ -5,7 +5,9 @@ import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 type MappingEntry = {
   button: string;
   name: string;
+  trigger: string;
   action: string;
+  action_key: string;
 };
 
 const REMOTE_BUTTONS = [
@@ -25,19 +27,19 @@ const REMOTE_BUTTONS = [
 ];
 
 const FALLBACK_MAPPING: MappingEntry[] = [
-  { button: "power", name: "电源", action: "取消（Esc）" },
-  { button: "up", name: "上", action: "↑" },
-  { button: "down", name: "下", action: "↓" },
-  { button: "left", name: "左", action: "←" },
-  { button: "right", name: "右", action: "→" },
-  { button: "ok", name: "确定", action: "回车（Enter）" },
-  { button: "back", name: "返回", action: "删除（退格）" },
-  { button: "home", name: "主页", action: "显示桌面（Win+D）" },
-  { button: "menu", name: "菜单", action: "右键菜单（上下文菜单）" },
-  { button: "tv", name: "TV", action: "切换应用（Alt+Tab）" },
-  { button: "volume_up", name: "音量 +", action: "音量 +" },
-  { button: "volume_down", name: "音量 −", action: "音量 −" },
-  { button: "mic", name: "麦克风", action: "语音输入（Win+H）" },
+  { button: "power", name: "电源", trigger: "single_click", action: "取消（Esc）", action_key: "escape" },
+  { button: "up", name: "上", trigger: "single_click", action: "↑", action_key: "arrow_up" },
+  { button: "down", name: "下", trigger: "single_click", action: "↓", action_key: "arrow_down" },
+  { button: "left", name: "左", trigger: "single_click", action: "←", action_key: "arrow_left" },
+  { button: "right", name: "右", trigger: "single_click", action: "→", action_key: "arrow_right" },
+  { button: "ok", name: "确定", trigger: "single_click", action: "回车（Enter）", action_key: "return" },
+  { button: "back", name: "返回", trigger: "single_click", action: "删除（退格）", action_key: "delete_backward" },
+  { button: "home", name: "主页", trigger: "single_click", action: "显示桌面（Win+D）", action_key: "show_desktop" },
+  { button: "menu", name: "菜单", trigger: "single_click", action: "右键菜单（上下文菜单）", action_key: "context_menu" },
+  { button: "tv", name: "TV", trigger: "single_click", action: "切换应用（Alt+Tab）", action_key: "app_switcher" },
+  { button: "volume_up", name: "音量 +", trigger: "single_click", action: "音量 +", action_key: "system_volume_up" },
+  { button: "volume_down", name: "音量 −", trigger: "single_click", action: "音量 −", action_key: "system_volume_down" },
+  { button: "mic", name: "麦克风", trigger: "single_click", action: "语音输入（Win+H）", action_key: "voice" },
 ];
 
 const TRIGGERS: { key: string; label: string; desc: string }[] = [
@@ -104,11 +106,27 @@ export function MappingPage() {
   const [saveMsg, setSaveMsg] = useState("");
 
   useEffect(() => {
-    if (!isTauri()) return;
-    invoke<MappingEntry[]>("default_mapping")
+    if (!isTauri()) {
+      setMapping(FALLBACK_MAPPING);
+      return;
+    }
+    invoke<MappingEntry[]>("get_mappings")
       .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
-      .catch(() => {});
+      .catch(() => setMapping(FALLBACK_MAPPING));
   }, []);
+
+  // 选中按键或切换触发方式时，右侧自动展示该按键已绑定的动作。
+  useEffect(() => {
+    const binding = mapping.find(
+      (m) => m.button === selected && m.trigger === trigger
+    );
+    const actionKey = binding?.action_key || "disabled";
+    const cat = ACTION_CATEGORIES.find((c) =>
+      c.actions.some((a) => a.key === actionKey)
+    );
+    setCategory(cat?.key || "other");
+    setAction(actionKey);
+  }, [mapping, selected, trigger]);
 
   const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
   const actionLabel =
@@ -120,6 +138,24 @@ export function MappingPage() {
     try {
       await invoke("save_mapping", {
         edit: { button: selected, trigger, action },
+      });
+      const entry: MappingEntry = {
+        button: selected,
+        name: selectedName,
+        trigger,
+        action: actionLabel,
+        action_key: action,
+      };
+      setMapping((prev) => {
+        const idx = prev.findIndex(
+          (m) => m.button === selected && m.trigger === trigger
+        );
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = entry;
+          return next;
+        }
+        return [...prev, entry];
       });
       setSaveMsg(`已保存：${selectedName} · ${TRIGGER_LABEL[trigger]} → ${actionLabel}`);
     } catch (err) {
@@ -202,8 +238,10 @@ export function MappingPage() {
         <div className="card-title">当前映射表</div>
         <div className="mapping-list">
           {mapping.map((b) => (
-            <div key={b.button} className="mapping-row">
-              <span className="mapping-key">{b.name}</span>
+            <div key={`${b.button}-${b.trigger}`} className="mapping-row">
+              <span className="mapping-key">
+                {b.name} · {TRIGGER_LABEL[b.trigger] || b.trigger}
+              </span>
               <span className="mapping-action">{b.action}</span>
             </div>
           ))}

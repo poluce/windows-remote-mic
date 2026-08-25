@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use core_atvv::ImaAdpcmDecoder;
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
-use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
+use core_mapping::{ActionKind, ButtonId, Trigger};
 use core_mapping::gesture::GestureDetector;
 
 #[cfg(target_os = "windows")]
@@ -64,7 +64,9 @@ fn list_audio_endpoints() -> Vec<AudioEndpoint> {
 struct MappingEntry {
     button: String,
     name: String,
+    trigger: String,
     action: String,
+    action_key: String,
 }
 
 /// Start the real-device voice bridge (Windows only). Runs on a worker thread.
@@ -666,27 +668,77 @@ fn play_test_tone(device_name: Option<String>) -> String {
     }
 }
 
-/// Return the default 13-key single-click mapping.
+/// Return all persisted bindings (single/double/long) for the mapping editor.
 #[tauri::command]
-fn default_mapping() -> Vec<MappingEntry> {
-    let cfg = MappingConfig::default();
-    cfg.bindings
+fn get_mappings() -> Vec<MappingEntry> {
+    let cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    cfg.mapping.bindings
         .iter()
-        .filter(|b| b.trigger == Trigger::SingleClick)
         .map(|b| MappingEntry {
-            button: serde_plain(&b.button),
+            button: button_key(&b.button),
             name: b.button.display_name().to_string(),
+            trigger: trigger_key(&b.trigger),
             action: action_label(&b.action),
+            action_key: action_key(&b.action),
         })
         .collect()
 }
 
-/// Serialize a button id into its stable string form.
-fn serde_plain(button: &ButtonId) -> String {
-    // Uses the serde serialization of the enum (lowercase variants).
-    serde_json::to_value(button)
-        .map(|v| v.as_str().unwrap_or_default().to_string())
-        .unwrap_or_default()
+/// Stable lower-case button key used by the frontend.
+fn button_key(button: &ButtonId) -> String {
+    match button {
+        ButtonId::Power => "power",
+        ButtonId::Up => "up",
+        ButtonId::Down => "down",
+        ButtonId::Left => "left",
+        ButtonId::Right => "right",
+        ButtonId::Ok => "ok",
+        ButtonId::Back => "back",
+        ButtonId::Home => "home",
+        ButtonId::Menu => "menu",
+        ButtonId::Tv => "tv",
+        ButtonId::VolumeUp => "volume_up",
+        ButtonId::VolumeDown => "volume_down",
+        ButtonId::Mic => "mic",
+    }
+    .to_string()
+}
+
+/// Stable lower-case trigger key used by the frontend.
+fn trigger_key(trigger: &Trigger) -> String {
+    match trigger {
+        Trigger::SingleClick => "single_click",
+        Trigger::DoubleClick => "double_click",
+        Trigger::LongPress => "long_press",
+    }
+    .to_string()
+}
+
+/// Stable action key used by the frontend action picker.
+fn action_key(action: &ActionKind) -> String {
+    match action {
+        ActionKind::Disabled => "disabled",
+        ActionKind::KeyCombo(_) => "key_combo",
+        ActionKind::Escape => "escape",
+        ActionKind::Return => "return",
+        ActionKind::ArrowUp => "arrow_up",
+        ActionKind::ArrowDown => "arrow_down",
+        ActionKind::ArrowLeft => "arrow_left",
+        ActionKind::ArrowRight => "arrow_right",
+        ActionKind::DeleteBackward => "delete_backward",
+        ActionKind::ShowDesktop => "show_desktop",
+        ActionKind::ContextMenu => "context_menu",
+        ActionKind::AppSwitcher => "app_switcher",
+        ActionKind::SystemVolumeUp => "system_volume_up",
+        ActionKind::SystemVolumeDown => "system_volume_down",
+        ActionKind::SystemVolumeMute => "system_volume_mute",
+        ActionKind::PlayPause => "play_pause",
+        ActionKind::Voice => "voice",
+        ActionKind::OpenApp(_) => "open_app",
+    }
+    .to_string()
 }
 
 fn action_label(action: &ActionKind) -> String {
@@ -737,7 +789,7 @@ pub fn run() {
             scan_for_rc003,
             connect_rc003,
             list_audio_endpoints,
-            default_mapping,
+            get_mappings,
             play_test_tone,
             play_test_tone_loop,
             audio_diagnostics
