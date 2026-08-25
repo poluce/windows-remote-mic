@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 
 type MappingEntry = {
   button: string;
@@ -136,46 +137,8 @@ export function MappingPage() {
       <div className="mapping-wizard">
         <section className="card remote-card">
           <div className="card-title">① 选择按键</div>
-          <div className="remote-layout">
-            <div className="remote-top">
-              {REMOTE_BUTTONS.filter((b) => ["power", "mic"].includes(b.key)).map((b) => (
-                <button
-                  key={b.key}
-                  className={`remote-btn ${selected === b.key ? "active" : ""}`}
-                  onClick={() => setSelected(b.key)}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
-            <div className="remote-cross">
-              {["up", "left", "ok", "right", "down"].map((key) => {
-                const b = REMOTE_BUTTONS.find((x) => x.key === key)!;
-                return (
-                  <button
-                    key={key}
-                    className={`remote-btn cross-${key} ${selected === key ? "active" : ""}`}
-                    onClick={() => setSelected(key)}
-                  >
-                    {b.name}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="remote-bottom">
-              {REMOTE_BUTTONS.filter((b) =>
-                ["back", "volume_up", "home", "volume_down", "menu", "tv"].includes(b.key)
-              ).map((b) => (
-                <button
-                  key={b.key}
-                  className={`remote-btn ${selected === b.key ? "active" : ""}`}
-                  onClick={() => setSelected(b.key)}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
+          <p className="hint">点击遥控器上的按键进行选择，当前：{selectedName}</p>
         </section>
 
         <section className="card wizard-card">

@@ -1,0 +1,335 @@
+.x2pro-remote {
+  width: 105px;
+  height: 345px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ececec 0%, #b8b8b8 60%, #c9c9c9 100%);
+  border: 1px solid #999;
+  box-shadow: inset 2px 2px 5px rgba(255, 255, 255, 0.9),
+    inset -2px -2px 5px rgba(0, 0, 0, 0.2), 0 10px 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 20px;
+  position: relative;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+.x2pro-remote button {
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.x2pro-remote .top-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.x2pro-remote .top-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3c3c3c, #0d0d0d);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.x2pro-remote .power-icon {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #ff4d4f;
+  border-top-color: transparent;
+  border-radius: 50%;
+  position: relative;
+  box-sizing: border-box;
+}
+.x2pro-remote .power-icon::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 7px;
+  background: #ff4d4f;
+}
+
+.x2pro-remote .mic-icon {
+  width: 8px;
+  height: 12px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  position: relative;
+  box-sizing: border-box;
+}
+.x2pro-remote .mic-icon::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 6px;
+  border: 2px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  box-sizing: border-box;
+}
+
+.x2pro-remote .dpad {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #4f4f4f, #333 60%, #1f1f1f);
+  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.3),
+    inset -2px -3px 5px rgba(0, 0, 0, 0.4), 0 5px 10px rgba(0, 0, 0, 0.2);
+  margin-bottom: 22px;
+  position: relative;
+}
+
+.x2pro-remote .dpad::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #4c4c4c, #383838 60%, #2a2a2a);
+  border: 3px solid #1a1a1a;
+  box-sizing: border-box;
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.2),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.1);
+  z-index: 0;
+}
+
+.x2pro-remote .dpad::before {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #000;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 68px 0 #000, 36px 34px 0 #000, -36px 34px 0 #000;
+  z-index: 0;
+}
+
+.x2pro-remote .dpad-hit {
+  position: absolute;
+  background: transparent;
+  z-index: 2;
+}
+
+.x2pro-remote .hit-up {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 28px;
+  border-radius: 42px 42px 0 0;
+}
+
+.x2pro-remote .hit-down {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 28px;
+  border-radius: 0 0 42px 42px;
+}
+
+.x2pro-remote .hit-left {
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 100%;
+  border-radius: 42px 0 0 42px;
+}
+
+.x2pro-remote .hit-right {
+  right: 0;
+  top: 0;
+  width: 28px;
+  height: 100%;
+  border-radius: 0 42px 42px 0;
+}
+
+.x2pro-remote .hit-ok {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.x2pro-remote .dpad-hit.active {
+  background: rgba(47, 111, 237, 0.32);
+  box-shadow: inset 0 0 0 2px #2f6fed;
+}
+
+.x2pro-remote .bottom-grid {
+  display: flex;
+  gap: 18px;
+}
+
+.x2pro-remote .left-col,
+.x2pro-remote .right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+.x2pro-remote .small-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3c3c3c, #0d0d0d);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.x2pro-remote .icon-back {
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid #ddd;
+  border-bottom: 2px solid #ddd;
+  transform: rotate(45deg);
+  margin-left: 4px;
+}
+
+.x2pro-remote .icon-home {
+  width: 12px;
+  height: 11px;
+  position: relative;
+}
+.x2pro-remote .icon-home::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 5px solid #ddd;
+}
+.x2pro-remote .icon-home::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 5px;
+  background: #ddd;
+}
+
+.x2pro-remote .icon-menu {
+  width: 12px;
+  height: 2px;
+  background: #ddd;
+  box-shadow: 0 -4px 0 #ddd, 0 4px 0 #ddd;
+}
+
+.x2pro-remote .pill-volume {
+  width: 30px;
+  height: 74px;
+  background: #101010;
+  border-radius: 15px;
+  position: relative;
+}
+
+.x2pro-remote .vol-btn {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3c3c3c, #0d0d0d);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+.x2pro-remote .vol-btn.plus {
+  top: 0;
+  left: 0;
+}
+.x2pro-remote .vol-btn.minus {
+  bottom: 0;
+  left: 0;
+}
+
+.x2pro-remote .vol-btn.plus::before,
+.x2pro-remote .vol-btn.plus::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #ddd;
+}
+.x2pro-remote .vol-btn.plus::before {
+  width: 10px;
+  height: 2px;
+}
+.x2pro-remote .vol-btn.plus::after {
+  width: 2px;
+  height: 10px;
+}
+
+.x2pro-remote .vol-btn.minus::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 2px;
+  background: #ddd;
+}
+
+.x2pro-remote .icon-source {
+  width: 12px;
+  height: 9px;
+  border: 1.5px solid #ddd;
+  position: relative;
+}
+.x2pro-remote .icon-source::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1.5px;
+  background: #ddd;
+}
+
+.x2pro-remote .logo {
+  position: absolute;
+  bottom: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  letter-spacing: 1px;
+  font-family: sans-serif;
+}
+
+.x2pro-remote .remote-key.active {
+  outline: 2px solid #2f6fed;
+  outline-offset: 2px;
+  position: relative;
+  z-index: 3;
+}
+
+.x2pro-remote .remote-key.active::after,
+.x2pro-remote .remote-key.active::before {
+  z-index: 4;
+}
