@@ -141,43 +141,43 @@
 
 
       <g id="outerRing" class="ring-buttons outer-ring active">
-        <circle class="outer-circle" cx="73.0" cy="374.3" r="34" />
-        <text class="outer-circle-text" x="73.0" y="379.0">1</text>
+        <circle class="outer-circle" cx="81.9" cy="329.4" r="34" />
+        <text class="outer-circle-text" x="81.9" y="334.0">1</text>
 
-        <circle class="outer-circle" cx="96.6" cy="286.1" r="34" />
-        <text class="outer-circle-text" x="96.6" y="290.0">2</text>
+        <circle class="outer-circle" cx="116.9" cy="245.0" r="34" />
+        <text class="outer-circle-text" x="116.9" y="250.0">2</text>
 
         <circle class="outer-circle" cx="142.3" cy="206.9" r="34" />
         <text class="outer-circle-text" x="142.3" y="211.0">3</text>
 
-        <circle class="outer-circle" cx="206.9" cy="142.3" r="34" />
-        <text class="outer-circle-text" x="206.9" y="146.0">4</text>
+        <circle class="outer-circle" cx="172.5" cy="172.5" r="34" />
+        <text class="outer-circle-text" x="172.5" y="177.0">4</text>
 
-        <circle class="outer-circle" cx="286.1" cy="96.6" r="34" />
-        <text class="outer-circle-text" x="286.1" y="100.0">5</text>
+        <circle class="outer-circle" cx="245.0" cy="116.9" r="34" />
+        <text class="outer-circle-text" x="245.0" y="121.0">5</text>
 
-        <circle class="outer-circle" cx="374.3" cy="73.0" r="34" />
-        <text class="outer-circle-text" x="374.3" y="77.0">6</text>
+        <circle class="outer-circle" cx="329.4" cy="81.9" r="34" />
+        <text class="outer-circle-text" x="329.4" y="86.0">6</text>
       </g>
 
       <g id="innerRing" class="ring-buttons inner-ring">
-        <circle class="inner-circle" cx="172.1" cy="387.4" r="34" />
-        <text class="inner-circle-text" x="172.1" y="392.0">1</text>
+        <circle class="inner-circle" cx="178.5" cy="355.3" r="34" />
+        <text class="inner-circle-text" x="178.5" y="360.0">1</text>
 
-        <circle class="inner-circle" cx="189.0" cy="324.3" r="34" />
-        <text class="inner-circle-text" x="189.0" y="329.0">2</text>
+        <circle class="inner-circle" cx="203.5" cy="295.0" r="34" />
+        <text class="inner-circle-text" x="203.5" y="300.0">2</text>
 
         <circle class="inner-circle" cx="221.7" cy="267.8" r="34" />
         <text class="inner-circle-text" x="221.7" y="272.0">3</text>
 
-        <circle class="inner-circle" cx="267.8" cy="221.7" r="34" />
-        <text class="inner-circle-text" x="267.8" y="226.0">4</text>
+        <circle class="inner-circle" cx="243.2" cy="243.2" r="34" />
+        <text class="inner-circle-text" x="243.2" y="248.0">4</text>
 
-        <circle class="inner-circle" cx="324.3" cy="189.0" r="34" />
-        <text class="inner-circle-text" x="324.3" y="193.0">5</text>
+        <circle class="inner-circle" cx="295.0" cy="203.5" r="34" />
+        <text class="inner-circle-text" x="295.0" y="208.0">5</text>
 
-        <circle class="inner-circle" cx="387.4" cy="172.1" r="34" />
-        <text class="inner-circle-text" x="387.4" y="176.0">6</text>
+        <circle class="inner-circle" cx="355.3" cy="178.5" r="34" />
+        <text class="inner-circle-text" x="355.3" y="183.0">6</text>
       </g>
 
       <path class="center-circle" d="M 420 420 L 220 420 A 200 200 0 0 1 420 220 Z" />
@@ -190,20 +190,47 @@
   <script>
     const outerGroup = document.getElementById('outerRing');
     const innerGroup = document.getElementById('innerRing');
-    let ring = 'outer';
-    let index = 0;
+    const centerDesc = document.querySelector('.center-desc');
 
-    function updateSelection() {
+    // 固定 6 个槽位，FRAME_INDEX = 45° 线上的那个位置
+    const MENU_ITEMS = ['1', '2', '3', '4', '5', '6'];
+    const FRAME_INDEX = 3;
+
+    let ring = 'outer';
+    let outerOffset = 0;
+    let innerOffset = 0;
+
+    function activeOffset() {
+      return ring === 'outer' ? outerOffset : innerOffset;
+    }
+
+    function setActiveOffset(value) {
+      if (ring === 'outer') outerOffset = value;
+      else innerOffset = value;
+    }
+
+    function render() {
       outerGroup.classList.toggle('active', ring === 'outer');
       innerGroup.classList.toggle('active', ring === 'inner');
 
-      [outerGroup, innerGroup].forEach((group) => {
+      [
+        { group: outerGroup, offset: outerOffset, isOuter: true },
+        { group: innerGroup, offset: innerOffset, isOuter: false },
+      ].forEach(({ group, offset, isOuter }) => {
+        const texts = Array.from(group.querySelectorAll('text'));
         const circles = Array.from(group.querySelectorAll('circle'));
-        const isActiveGroup = group === (ring === 'outer' ? outerGroup : innerGroup);
+        const isActive = isOuter ? ring === 'outer' : ring === 'inner';
+
+        texts.forEach((text, i) => {
+          text.textContent = MENU_ITEMS[(i + offset) % 6];
+        });
         circles.forEach((circle, i) => {
-          circle.classList.toggle('selected', isActiveGroup && i === index);
+          circle.classList.toggle('selected', isActive && i === FRAME_INDEX);
         });
       });
+
+      const currentItem = MENU_ITEMS[(FRAME_INDEX + activeOffset()) % 6];
+      centerDesc.textContent = `${ring === 'outer' ? '外环' : '内环'} · ${currentItem}`;
     }
 
     document.addEventListener('keydown', (e) => {
@@ -212,19 +239,19 @@
         ring = ring === 'outer' ? 'inner' : 'outer';
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        index = (index + 1) % 6;
+        setActiveOffset((activeOffset() + 1) % 6);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        index = (index + 5) % 6;
+        setActiveOffset((activeOffset() + 5) % 6);
       } else {
         return;
       }
-      updateSelection();
+      render();
     });
 
     document.body.tabIndex = 0;
     document.body.focus();
-    updateSelection();
+    render();
   </script>
 </body>
 </html>
