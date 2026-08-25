@@ -176,42 +176,18 @@
   box-shadow: 0 0 6px rgba(47, 111, 237, 0.7);
 }
 
-/* 上下左右：圆环上的扇形高亮 */
-.x2pro-remote .hit-up.active::before,
-.x2pro-remote .hit-down.active::before,
-.x2pro-remote .hit-left.active::before,
-.x2pro-remote .hit-right.active::before {
-  /* closest-side：半径 = 42px；确定按钮半径 20px，外环从 20px 到 42px */
-  -webkit-mask: radial-gradient(circle closest-side, transparent 0 20px, #000 22px);
-  mask: radial-gradient(circle closest-side, transparent 0 20px, #000 22px);
+/* 上下左右：90° 扇形边框（只描边，不填充中间） */
+.x2pro-remote .dpad-hit .fan-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
-.x2pro-remote .hit-up.active::before {
-  background: conic-gradient(
-    from -45deg,
-    rgba(47, 111, 237, 0.3) 0deg 90deg,
-    transparent 90deg
-  );
-}
-.x2pro-remote .hit-down.active::before {
-  background: conic-gradient(
-    from 135deg,
-    rgba(47, 111, 237, 0.3) 0deg 90deg,
-    transparent 90deg
-  );
-}
-.x2pro-remote .hit-left.active::before {
-  background: conic-gradient(
-    from 225deg,
-    rgba(47, 111, 237, 0.3) 0deg 90deg,
-    transparent 90deg
-  );
-}
-.x2pro-remote .hit-right.active::before {
-  background: conic-gradient(
-    from 45deg,
-    rgba(47, 111, 237, 0.3) 0deg 90deg,
-    transparent 90deg
-  );
+.x2pro-remote .dpad-hit .fan-frame path {
+  fill: none;
+  stroke: rgba(47, 111, 237, 0.95);
+  stroke-width: 2;
 }
 
 .x2pro-remote .bottom-grid {
