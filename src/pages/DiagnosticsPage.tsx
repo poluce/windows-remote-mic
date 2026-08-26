@@ -42,6 +42,7 @@ export function DiagnosticsPage() {
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
   const [logs, setLogs] = useState<LogFileInfo[]>([]);
   const [logContent, setLogContent] = useState("");
+  const [endpointTab, setEndpointTab] = useState<"output" | "input">("output");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -117,6 +118,11 @@ export function DiagnosticsPage() {
     }
   }
 
+  function toggleQuickMenu() {
+    if (!isTauri()) return;
+    invoke("toggle_quick_menu");
+  }
+
   return (
     <div className="page">
 
@@ -143,24 +149,45 @@ export function DiagnosticsPage() {
       </section>
 
       <section className="card">
-        <div className="card-title">输出设备（播放端点）</div>
-        {data.output_endpoints.length === 0 ? (
-          <p className="hint">暂无输出设备</p>
-        ) : (
-          <ul className="endpoint-list">
-            {data.output_endpoints.map((ep) => (
-              <li key={ep.id}>
-                <span>{ep.name}</span>
-                <span className="badge badge-ok">输出</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="card-title">快捷菜单调试</div>
+        <p className="hint">临时测试入口：显示/隐藏右下角扇形快捷菜单。</p>
+        <div className="actions">
+          <button className="btn" onClick={toggleQuickMenu}>
+            打开/关闭快捷菜单
+          </button>
+        </div>
       </section>
 
       <section className="card">
-        <div className="card-title">输入设备（录音/麦克风端点）</div>
-        {data.input_endpoints.length === 0 ? (
+        <div className="card-title">设备端点</div>
+        <div className="category-tabs">
+          <button
+            className={`btn small ${endpointTab === "output" ? "primary" : ""}`}
+            onClick={() => setEndpointTab("output")}
+          >
+            输出设备
+          </button>
+          <button
+            className={`btn small ${endpointTab === "input" ? "primary" : ""}`}
+            onClick={() => setEndpointTab("input")}
+          >
+            输入设备
+          </button>
+        </div>
+        {endpointTab === "output" ? (
+          data.output_endpoints.length === 0 ? (
+            <p className="hint">暂无输出设备</p>
+          ) : (
+            <ul className="endpoint-list">
+              {data.output_endpoints.map((ep) => (
+                <li key={ep.id}>
+                  <span>{ep.name}</span>
+                  <span className="badge badge-ok">输出</span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : data.input_endpoints.length === 0 ? (
           <p className="hint">暂无输入设备</p>
         ) : (
           <ul className="endpoint-list">
@@ -171,32 +198,6 @@ export function DiagnosticsPage() {
               </li>
             ))}
           </ul>
-        )}
-      </section>
-
-      <section className="card">
-        <div className="card-title">检测状态</div>
-        <p>{status}</p>
-      </section>
-
-      <section className="card">
-        <div className="card-title">能力自检（PASS/FAIL）</div>
-        {!selfTests ? (
-          <p className="hint">点击下方「运行自检」验证各真实模块。</p>
-        ) : (
-          <div className="check-list">
-            {selfTests.map((t) => (
-              <div key={t.name} className="check-row">
-                <span>{t.name}</span>
-                <div>
-                  <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
-                    {t.status.toUpperCase()}
-                  </span>
-                  {t.detail && <span className="hint"> {t.detail}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </section>
 
@@ -223,16 +224,34 @@ export function DiagnosticsPage() {
         )}
       </section>
 
-      <section className="card actions">
-        <button className="btn primary" onClick={runCheck}>
-          运行检查
-        </button>
-        <button className="btn primary" onClick={runSelfTest}>
-          运行自检
-        </button>
-        <button className="btn" onClick={loopTone} disabled={looping}>
-          {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
-        </button>
+      <section className="card">
+        <div className="actions">
+          <button className="btn primary" onClick={runCheck}>
+            运行检查
+          </button>
+          <button className="btn primary" onClick={runSelfTest}>
+            运行自检
+          </button>
+          <button className="btn" onClick={loopTone} disabled={looping}>
+            {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
+          </button>
+        </div>
+        {status && <p className="hint">{status}</p>}
+        {selfTests && (
+          <div className="check-list">
+            {selfTests.map((t) => (
+              <div key={t.name} className="check-row">
+                <span>{t.name}</span>
+                <div>
+                  <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
+                    {t.status.toUpperCase()}
+                  </span>
+                  {t.detail && <span className="hint"> {t.detail}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

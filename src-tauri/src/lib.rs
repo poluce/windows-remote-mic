@@ -267,12 +267,9 @@ pub fn run() {
             commands::audio::play_test_tone,
             commands::audio::play_test_tone_loop,
             commands::diagnostics::decode_atvv_preview,
-            commands::diagnostics::get_stats_history,
             commands::diagnostics::list_log_files,
             commands::diagnostics::read_log_file,
             commands::diagnostics::run_self_test,
-            commands::diagnostics::demo_record_key,
-            commands::diagnostics::get_stats_summary,
             commands::quick_menu::toggle_quick_menu,
         ])
         .run(tauri::generate_context!())

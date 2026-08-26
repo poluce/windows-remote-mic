@@ -2,23 +2,6 @@ use serde::Serialize;
 
 use core_mapping::gesture::GestureDetector;
 
-/// One day in stats history.
-#[derive(Serialize)]
-pub struct StatsDaySummary {
-    day: String,
-    key_presses: u64,
-    voice_seconds: u64,
-}
-
-/// Local statistics summary (key presses + voice time).
-#[derive(Serialize)]
-pub struct StatsSummary {
-    today_key_presses: u64,
-    today_voice_seconds: u64,
-    total_key_presses: u64,
-    total_voice_seconds: u64,
-}
-
 /// One log file entry.
 #[derive(Serialize)]
 pub struct LogFileInfo {
@@ -41,37 +24,6 @@ pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
     let mut engine = core_voice::VoiceEngine::new();
     let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
     engine.feed(&bytes)
-}
-
-/// Return recent daily stats (last 7 days) for simple charts.
-#[tauri::command]
-pub fn get_stats_history() -> Vec<StatsDaySummary> {
-    let mut out: Vec<(u64, StatsDaySummary)> = Vec::new();
-    let base = std::env::var("LOCALAPPDATA")
-        .map(|b| std::path::PathBuf::from(b).join("RemoteMic/RC003"))
-        .unwrap_or_default();
-    if let Ok(store) = core_stats::StatsStore::new(&base) {
-        if let Ok(stats) = store.load() {
-            for (day, d) in &stats {
-                if let Ok(num) = day.parse::<u64>() {
-                    out.push((
-                        num,
-                        StatsDaySummary {
-                            day: day.clone(),
-                            key_presses: d.key_presses.values().sum(),
-                            voice_seconds: d.voice_seconds,
-                        },
-                    ));
-                }
-            }
-        }
-    }
-    out.sort_by_key(|(day, _)| *day);
-    out.into_iter()
-        .rev()
-        .take(7)
-        .map(|(_, s)| s)
-        .collect()
 }
 
 fn list_logs_in_dir(dir: &std::path::Path, prefix: &str, out: &mut Vec<LogFileInfo>) {
@@ -242,45 +194,3 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
     items
 }
 
-/// Simulate one key press and write it to local stats, then return the new summary.
-#[tauri::command]
-pub fn demo_record_key() -> StatsSummary {
-    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let store = core_stats::StatsStore::new(std::path::Path::new(&base).join("RemoteMic/RC003"));
-    if let Ok(store) = store {
-        let _ = store.record_key("demo_button");
-    }
-    get_stats_summary_inner()
-}
-
-#[tauri::command]
-pub fn get_stats_summary() -> StatsSummary {
-    get_stats_summary_inner()
-}
-
-fn get_stats_summary_inner() -> StatsSummary {
-    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let store = core_stats::StatsStore::new(std::path::Path::new(&base).join("RemoteMic/RC003"));
-    let mut today_key = 0;
-    let mut today_voice = 0;
-    let mut total_key = 0;
-    let mut total_voice = 0;
-    if let Ok(store) = store {
-        if let Ok(stats) = store.load() {
-            for (_, day) in &stats {
-                total_key += day.key_presses.values().sum::<u64>();
-                total_voice += day.voice_seconds;
-            }
-            if let Some(day) = stats.get(&core_stats::StatsStore::date_key_now()) {
-                today_key = day.key_presses.values().sum::<u64>();
-                today_voice = day.voice_seconds;
-            }
-        }
-    }
-    StatsSummary {
-        today_key_presses: today_key,
-        today_voice_seconds: today_voice,
-        total_key_presses: total_key,
-        total_voice_seconds: total_voice,
-    }
-}

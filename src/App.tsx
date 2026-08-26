@@ -5,7 +5,6 @@ import { MappingPage } from "./pages/MappingPage";
 import { VoicePage } from "./pages/VoicePage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
-import { StatsPage } from "./pages/StatsPage";
 import "./App.css";
 
 function App() {
@@ -22,7 +21,6 @@ function App() {
           {page === "voice" && <VoicePage />}
           {page === "diagnostics" && <DiagnosticsPage />}
           {page === "guidance" && <OnboardingPage />}
-          {page === "stats" && <StatsPage />}
         </div>
       </main>
     </div>

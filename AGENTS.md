@@ -9,7 +9,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 - 通过蓝牙 BLE 连接 RC003
 - 解析 ATVV 协议 / IMA ADPCM 音频
 - 支持 Windows 自带语音输入（Win+H）
-- 支持按键映射、虚拟声卡（VB-CABLE）输出、统计、日志诊断
+- 支持按键映射、虚拟声卡（VB-CABLE）输出、日志诊断
 - 提供一个右下角扇形快捷菜单（由遥控器「菜单」键呼出）
 
 ## 技术栈
@@ -25,7 +25,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 .
 ├── src/                  # React 前端
 │   ├── App.tsx           # 主布局（无顶栏，左侧导航 + 内容区）
-│   ├── pages/            # 连接 / 按键映射 / 语音 / 诊断 / 引导 / 统计
+│   ├── pages/            # 连接 / 按键映射 / 语音 / 诊断 / 引导
 │   └── components/       # Sidebar、Xiaomi2ProRemote 等
 ├── src-tauri/            # Tauri 壳
 │   ├── tauri.conf.json   # 窗口、打包配置
@@ -84,7 +84,6 @@ cargo check -p remote-mic
   - 语音
   - 诊断
   - 引导
-  - 统计
 
 ### 2. 快捷菜单窗口
 - 在 `src-tauri/src/lib.rs` 的 `setup` 中创建第二个透明窗口 `quick-menu`。

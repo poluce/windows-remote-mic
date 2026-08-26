@@ -1,6 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
-
-export type PageId = "connection" | "mapping" | "voice" | "diagnostics" | "guidance" | "stats";
+export type PageId = "connection" | "mapping" | "voice" | "diagnostics" | "guidance";
 
 const NAV_ITEMS: { id: PageId; label: string }[] = [
   { id: "connection", label: "连接" },
@@ -8,7 +6,6 @@ const NAV_ITEMS: { id: PageId; label: string }[] = [
   { id: "voice", label: "语音" },
   { id: "diagnostics", label: "诊断" },
   { id: "guidance", label: "引导" },
-  { id: "stats", label: "统计" },
 ];
 
 export function Sidebar({
@@ -40,16 +37,6 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="sidebar-footer">
-        <button
-          className="btn small"
-          onClick={() => {
-            if (isTauri()) invoke("toggle_quick_menu");
-          }}
-        >
-          快捷菜单
-        </button>
-      </div>
-    </aside>
+      </aside>
   );
 }
