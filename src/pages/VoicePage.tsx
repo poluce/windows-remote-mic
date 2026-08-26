@@ -95,6 +95,9 @@ export function VoicePage() {
       setSimResult(
         `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音频 ${ret.test_audio}（${ret.test_audio_ms}ms），Win+H=${ret.win_h_toast}`
       );
+      invoke("log_message", {
+        message: `模拟结束，输入框内容=${JSON.stringify(simInputRef.current?.value ?? "")}`,
+      }).catch(() => {});
     } catch (err) {
       setSimResult(`模拟失败：${err}`);
     }

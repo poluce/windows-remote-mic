@@ -256,6 +256,7 @@ pub fn run() {
             commands::connection::save_selected_device,
             commands::connection::save_output_endpoint,
             commands::connection::open_system_settings,
+            commands::log::log_message,
             commands::mapping::save_mapping,
             commands::mapping::get_mappings,
             commands::audio::list_audio_endpoints,

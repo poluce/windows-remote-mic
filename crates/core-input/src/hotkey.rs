@@ -4,12 +4,16 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, INPUT, INPUT_0,
     INPUT_KEYBOARD, VIRTUAL_KEY, VK_H, VK_LWIN,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetClassNameW, GetForegroundWindow, GetWindowTextW,
+};
 
 use crate::Result;
 
 /// Press Win + H and release.
 pub fn press_win_h() -> Result<()> {
     crate::log_line("[input] press Win+H");
+    log_foreground_window("before");
     let down = |vk| keyboard_input(vk, false);
     let up = |vk| keyboard_input(vk, true);
 
@@ -22,6 +26,7 @@ pub fn press_win_h() -> Result<()> {
 
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
     crate::log_line(&format!("[input] SendInput returned {sent} events"));
+    log_foreground_window("after");
     if sent != inputs.len() as u32 {
         crate::log_error(&format!(
             "[input] SendInput only inserted {sent}/{} events",
@@ -47,6 +52,25 @@ fn keyboard_input(vk: VIRTUAL_KEY, up: bool) -> INPUT {
     };
     input.Anonymous = INPUT_0 { ki };
     input
+}
+
+/// Log the current foreground window title/class before/after a key press.
+fn log_foreground_window(tag: &str) {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, &mut title_buf);
+        let title = String::from_utf16_lossy(&title_buf[..title_len.max(0) as usize]);
+
+        let mut class_buf = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, &mut class_buf);
+        let class = String::from_utf16_lossy(&class_buf[..class_len.max(0) as usize]);
+
+        crate::log_line(&format!(
+            "[input] foreground {tag}: hwnd={:?}, title={:?}, class={:?}",
+            hwnd, title, class
+        ));
+    }
 }
 
 /// Play a sequence of virtual-key presses (modifiers + keys, press then release).
