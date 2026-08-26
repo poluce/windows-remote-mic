@@ -47,3 +47,23 @@ pub fn get_mappings() -> Vec<MappingEntry> {
         })
         .collect()
 }
+
+/// Save key calibrations map to `config.json`.
+#[tauri::command]
+pub fn save_key_calibrations(
+    calibrations: std::collections::HashMap<String, core_config::KeyCalibration>,
+) -> Result<(), String> {
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    cfg.key_calibrations = calibrations;
+    store.save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Get key calibrations map from `config.json`.
+#[tauri::command]
+pub fn get_key_calibrations() -> std::collections::HashMap<String, core_config::KeyCalibration> {
+    let cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    cfg.key_calibrations
+}

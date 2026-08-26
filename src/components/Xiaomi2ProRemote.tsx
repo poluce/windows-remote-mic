@@ -1,8 +1,10 @@
 import "./Xiaomi2ProRemote.css";
 
 type Props = {
-  selected: string;
-  onSelect: (key: string) => void;
+  selected?: string;
+  targetKey?: string;
+  doneKeys?: string[];
+  onSelect?: (key: string) => void;
 };
 
 const DIRECTION_HINTS: Record<string, string> = {
@@ -22,49 +24,72 @@ const FAN_PATHS: Record<string, string> = {
   left: "M 13.72 70.28 A 40 40 0 0 1 13.72 13.72 L 27.86 27.86 A 20 20 0 0 0 27.86 56.14 Z",
 };
 
-export function Xiaomi2ProRemote({ selected, onSelect }: Props) {
+export function Xiaomi2ProRemote({ selected, targetKey, doneKeys, onSelect }: Props) {
+  function getKeyClass(key: string, baseClass = "remote-key") {
+    const isSel = selected === key;
+    const isTarget = targetKey === key;
+    const isDone = doneKeys?.includes(key);
+    return `${baseClass} ${isSel ? "active" : ""} ${isTarget ? "guided-target" : ""} ${
+      isDone ? "guided-done" : ""
+    }`.trim();
+  }
+
+  function handleSelect(key: string) {
+    if (onSelect) onSelect(key);
+  }
+
   return (
     <div className="x2pro-remote">
       <div className="top-row">
         <button
           type="button"
-          className={`top-btn remote-key ${selected === "power" ? "active" : ""}`}
+          className={getKeyClass("power", "top-btn remote-key")}
           title="电源"
-          onClick={() => onSelect("power")}
+          onClick={() => handleSelect("power")}
         >
           <div className="power-icon" />
         </button>
         <button
           type="button"
-          className={`top-btn remote-key ${selected === "mic" ? "active" : ""}`}
+          className={getKeyClass("mic", "top-btn remote-key")}
           title="麦克风"
-          onClick={() => onSelect("mic")}
+          onClick={() => handleSelect("mic")}
         >
           <div className="mic-icon" />
         </button>
       </div>
 
       <div className="dpad">
-        {(["up", "left", "right", "down"] as const).map((key) => (
-          <button
-            type="button"
-            key={key}
-            className={`dpad-hit hit-${key} ${selected === key ? "active" : ""}`}
-            title={DIRECTION_HINTS[key]}
-            onClick={() => onSelect(key)}
-          >
-            {selected === key && (
-              <svg viewBox="0 0 84 84" className="fan-frame" aria-hidden="true">
-                <path d={FAN_PATHS[key]} />
-              </svg>
-            )}
-          </button>
-        ))}
+        {(["up", "left", "right", "down"] as const).map((key) => {
+          const isSel = selected === key;
+          const isTarget = targetKey === key;
+          const isDone = doneKeys?.includes(key);
+          const showFan = isSel || isTarget || isDone;
+          return (
+            <button
+              type="button"
+              key={key}
+              className={`dpad-hit hit-${key} ${isSel ? "active" : ""} ${
+                isTarget ? "guided-target" : ""
+              } ${isDone ? "guided-done" : ""}`.trim()}
+              title={DIRECTION_HINTS[key]}
+              onClick={() => handleSelect(key)}
+            >
+              {showFan && (
+                <svg viewBox="0 0 84 84" className="fan-frame" aria-hidden="true">
+                  <path d={FAN_PATHS[key]} />
+                </svg>
+              )}
+            </button>
+          );
+        })}
         <button
           type="button"
-          className={`dpad-hit hit-ok ${selected === "ok" ? "active" : ""}`}
+          className={`dpad-hit hit-ok ${selected === "ok" ? "active" : ""} ${
+            targetKey === "ok" ? "guided-target" : ""
+          } ${doneKeys?.includes("ok") ? "guided-done" : ""}`.trim()}
           title={DIRECTION_HINTS.ok}
-          onClick={() => onSelect("ok")}
+          onClick={() => handleSelect("ok")}
         />
       </div>
 
@@ -72,25 +97,25 @@ export function Xiaomi2ProRemote({ selected, onSelect }: Props) {
         <div className="left-col">
           <button
             type="button"
-            className={`small-btn remote-key ${selected === "back" ? "active" : ""}`}
+            className={getKeyClass("back", "small-btn remote-key")}
             title="返回"
-            onClick={() => onSelect("back")}
+            onClick={() => handleSelect("back")}
           >
             <div className="icon-back" />
           </button>
           <button
             type="button"
-            className={`small-btn remote-key ${selected === "home" ? "active" : ""}`}
+            className={getKeyClass("home", "small-btn remote-key")}
             title="主页"
-            onClick={() => onSelect("home")}
+            onClick={() => handleSelect("home")}
           >
             <div className="icon-home" />
           </button>
           <button
             type="button"
-            className={`small-btn remote-key ${selected === "menu" ? "active" : ""}`}
+            className={getKeyClass("menu", "small-btn remote-key")}
             title="菜单"
-            onClick={() => onSelect("menu")}
+            onClick={() => handleSelect("menu")}
           >
             <div className="icon-menu" />
           </button>
@@ -99,22 +124,22 @@ export function Xiaomi2ProRemote({ selected, onSelect }: Props) {
           <div className="pill-volume">
             <button
               type="button"
-              className={`vol-btn plus remote-key ${selected === "volume_up" ? "active" : ""}`}
+              className={getKeyClass("volume_up", "vol-btn plus remote-key")}
               title="音量 +"
-              onClick={() => onSelect("volume_up")}
+              onClick={() => handleSelect("volume_up")}
             />
             <button
               type="button"
-              className={`vol-btn minus remote-key ${selected === "volume_down" ? "active" : ""}`}
+              className={getKeyClass("volume_down", "vol-btn minus remote-key")}
               title="音量 −"
-              onClick={() => onSelect("volume_down")}
+              onClick={() => handleSelect("volume_down")}
             />
           </div>
           <button
             type="button"
-            className={`small-btn remote-key ${selected === "tv" ? "active" : ""}`}
+            className={getKeyClass("tv", "small-btn remote-key")}
             title="TV"
-            onClick={() => onSelect("tv")}
+            onClick={() => handleSelect("tv")}
           >
             <div className="icon-source" />
           </button>

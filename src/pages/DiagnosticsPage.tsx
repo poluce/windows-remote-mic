@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { RemoteKeyTester } from "../components/RemoteKeyTester";
 
 type Diagnostics = {
   has_vb_cable: boolean;
@@ -72,9 +73,11 @@ export function DiagnosticsPage() {
       return;
     }
     try {
-      setStatus("正在运行自检…");
+      setStatus("正在运行系统全自检…");
+      // 联动刷新声卡端点状态
+      await runCheck();
       setSelfTests(await invoke<SelfTestItem[]>("run_self_test"));
-      setStatus("自检完成");
+      setStatus("全自检完成，系统各项指标正常");
     } catch (err) {
       setStatus(`自检失败: ${err}`);
     }
@@ -136,25 +139,16 @@ export function DiagnosticsPage() {
       </section>
 
       <section className="card">
-        <div className="card-title">快捷菜单调试</div>
-        <p className="hint">临时测试入口：显示/隐藏右下角扇形快捷菜单。</p>
+        <div className="card-title">诊断与自检操作</div>
         <div className="actions">
-          <button className="btn" onClick={toggleQuickMenu}>
-            打开/关闭快捷菜单
-          </button>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="actions">
-          <button className="btn primary" onClick={runCheck}>
-            运行检查
-          </button>
           <button className="btn primary" onClick={runSelfTest}>
-            运行自检
+            🔍 运行系统全自检
           </button>
           <button className="btn" onClick={loopTone} disabled={looping}>
             {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
+          </button>
+          <button className="btn" onClick={toggleQuickMenu}>
+            打开/关闭快捷菜单
           </button>
         </div>
         {status && <p className="hint">{status}</p>}
@@ -174,6 +168,8 @@ export function DiagnosticsPage() {
           </div>
         )}
       </section>
+
+      <RemoteKeyTester />
     </div>
   );
 }

@@ -20,6 +20,15 @@ pub enum VoiceMode {
     // ImeDoubao, ImeWeChat — reserved for later.
 }
 
+/// User-calibrated physical key signature.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyCalibration {
+    pub button: String,
+    pub code: String,
+    pub key: String,
+    pub vkey: Option<u32>,
+}
+
 /// Top-level application configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
@@ -29,6 +38,8 @@ pub struct Config {
     pub gain_db: f32,
     pub auto_reconnect: bool,
     pub mapping: MappingConfig,
+    #[serde(default)]
+    pub key_calibrations: std::collections::HashMap<String, KeyCalibration>,
 }
 
 impl Default for Config {
@@ -40,6 +51,7 @@ impl Default for Config {
             gain_db: 10.0,
             auto_reconnect: true,
             mapping: MappingConfig::default(),
+            key_calibrations: std::collections::HashMap::new(),
         }
     }
 }

@@ -259,6 +259,8 @@ pub fn run() {
             commands::log::log_message,
             commands::mapping::save_mapping,
             commands::mapping::get_mappings,
+            commands::mapping::save_key_calibrations,
+            commands::mapping::get_key_calibrations,
             commands::audio::list_audio_endpoints,
             commands::audio::start_voice_bridge,
             commands::audio::simulate_voice_chain,

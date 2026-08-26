@@ -345,3 +345,48 @@
 .x2pro-remote .remote-key.active::before {
   z-index: 4;
 }
+
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.7);
+    outline: 2px solid rgba(47, 111, 237, 0.9);
+  }
+  50% {
+    box-shadow: 0 0 10px 4px rgba(47, 111, 237, 0.8);
+    outline: 2.5px solid #2f6fed;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.7);
+    outline: 2px solid rgba(47, 111, 237, 0.9);
+  }
+}
+
+.x2pro-remote .remote-key.guided-target {
+  animation: pulseGlow 1.2s infinite !important;
+  outline-offset: 2px;
+  z-index: 5 !important;
+}
+
+.x2pro-remote .dpad-hit.guided-target .fan-frame path {
+  stroke: #2f6fed;
+  stroke-width: 3;
+}
+
+.x2pro-remote .hit-ok.guided-target::before {
+  border: 2px solid #2f6fed;
+  animation: pulseGlow 1.2s infinite;
+}
+
+.x2pro-remote .remote-key.guided-done {
+  outline: 2px solid #22c55e !important;
+  outline-offset: 1px;
+}
+
+.x2pro-remote .dpad-hit.guided-done .fan-frame path {
+  stroke: #22c55e !important;
+  stroke-width: 2;
+}
+
+.x2pro-remote .hit-ok.guided-done::before {
+  border: 2px solid #22c55e !important;
+}
