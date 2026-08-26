@@ -5,27 +5,25 @@ pub use error::{InputError, Result};
 
 /// Append a line to `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`.
 ///
-/// This lets the desktop app record debug traces without requiring a visible
-/// terminal. Non-Windows builds treat this as a no-op.
+/// This is a thin wrapper around `core_log` so existing callers can keep using
+/// `core_input::log_line`.
 pub fn log_line(line: &str) {
-    #[cfg(target_os = "windows")]
-    {
-        use std::io::Write;
-        let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());
-        let dir = std::path::Path::new(&base).join("RemoteMic").join("RC003");
-        let _ = std::fs::create_dir_all(&dir);
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join("remote-mic.log"))
-        {
-            let _ = writeln!(file, "{line}");
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = line;
-    }
+    core_log::log_line(line);
+}
+
+/// Append a DEBUG-level line. Only written when temporary debug logging is on.
+pub fn log_debug(line: &str) {
+    core_log::log_debug(line);
+}
+
+/// Append an ERROR-level line to the shared Remote Mic log file.
+pub fn log_error(line: &str) {
+    core_log::log_error(line);
+}
+
+/// Append a WARN-level line to the shared Remote Mic log file.
+pub fn log_warn(line: &str) {
+    core_log::log_warn(line);
 }
 
 /// Press Win + H to start Windows built-in voice typing.

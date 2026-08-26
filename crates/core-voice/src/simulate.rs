@@ -53,6 +53,7 @@ pub fn simulate_voice_chain(
 
     let sink = core_audio::sink::AudioSink::new(Some(output_device))
         .map_err(|e| e.to_string())?;
+    core_input::log_debug("[simulate] audio sink created");
 
     let mut engine = VoiceEngine::new();
     engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
@@ -67,6 +68,10 @@ pub fn simulate_voice_chain(
     sink.push(&chunk.output);
 
     // Let the sink finish playing the speech sample.
+    core_input::log_debug(&format!(
+        "[simulate] sleeping {} ms for playback",
+        duration_ms + 300
+    ));
     std::thread::sleep(std::time::Duration::from_millis(duration_ms + 300));
 
     engine.on_control(ControlEvent::StreamStop).map_err(|e| e.to_string())?;

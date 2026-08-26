@@ -37,7 +37,7 @@ pub fn play_test_tone(device_name: Option<&str>) -> Result<()> {
 
     let tone_play = tone.clone();
     let pos_play = pos.clone();
-    let err_fn = |err| eprintln!("audio stream error: {err}");
+    let err_fn = |err| core_log::log_error(&format!("[audio] stream error: {err}"));
 
     let stream = device
         .build_output_stream(

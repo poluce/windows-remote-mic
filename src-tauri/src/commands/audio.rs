@@ -19,7 +19,7 @@ pub fn start_voice_bridge(device_id: String, output_device: String) -> String {
     {
         std::thread::spawn(move || {
             if let Err(e) = core_voice::run_bridge(&device_id, &output_device) {
-                eprintln!("voice bridge error: {e}");
+                core_input::log_error(&format!("[audio] voice bridge error: {e}"));
             }
         });
         "语音桥已启动（监听 ATVV Audio → CABLE 输出）".to_string()

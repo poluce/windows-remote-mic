@@ -63,13 +63,17 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
             match event {
                 RawControlEvent::Caps(caps) => {
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
-                        eprintln!("unsupported ATVV sample rate: {}", caps.sample_rate_hz);
+                        core_input::log_warn(&format!(
+                            "[bridge] unsupported ATVV sample rate: {}",
+                            caps.sample_rate_hz
+                        ));
                     }
                 }
                 RawControlEvent::MicButtonPressed => {
                     // Win+H is a toggle: one press starts system voice typing.
+                    core_input::log_line("[bridge] MicButtonPressed -> Win+H start");
                     if let Err(e) = press_win_h() {
-                        eprintln!("Win+H press failed: {e}");
+                        core_input::log_error(&format!("[bridge] Win+H start failed: {e}"));
                     }
                 }
                 RawControlEvent::AudioStarted { .. } => {
@@ -78,8 +82,9 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                 RawControlEvent::AudioStopped => {
                     let _ = eng.on_control(ControlEvent::StreamStop);
                     // Toggle off: second Win+H press.
+                    core_input::log_line("[bridge] AudioStopped -> Win+H stop");
                     if let Err(e) = press_win_h() {
-                        eprintln!("Win+H release failed: {e}");
+                        core_input::log_error(&format!("[bridge] Win+H stop failed: {e}"));
                     }
                 }
                 RawControlEvent::AudioSynced { .. } => {

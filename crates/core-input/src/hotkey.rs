@@ -20,8 +20,17 @@ pub fn press_win_h() -> Result<()> {
         up(VK_LWIN),
     ];
 
-    unsafe {
-        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    crate::log_line(&format!("[input] SendInput returned {sent} events"));
+    if sent != inputs.len() as u32 {
+        crate::log_error(&format!(
+            "[input] SendInput only inserted {sent}/{} events",
+            inputs.len()
+        ));
+        return Err(crate::error::InputError::Windows(format!(
+            "SendInput only inserted {sent}/{} events",
+            inputs.len()
+        )));
     }
     Ok(())
 }

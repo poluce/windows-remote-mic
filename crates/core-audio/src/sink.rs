@@ -40,7 +40,7 @@ impl AudioSink {
 
         let q = queue.clone();
         let started_play = started.clone();
-        let err_fn = |e| eprintln!("audio stream error: {e}");
+        let err_fn = |e| core_log::log_error(&format!("[audio] stream error: {e}"));
 
         let stream = device
             .build_output_stream(
