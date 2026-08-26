@@ -128,6 +128,7 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
+- 触发 Win+H 前会自动把系统默认输入临时切到 `CABLE Output`，语音会话结束后恢复原默认麦克风（避免用户手动改全局设置）。
 
 ### 5. 日志
 - 统一写入 `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`。

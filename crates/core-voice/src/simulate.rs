@@ -69,6 +69,8 @@ pub fn simulate_voice_chain(
 
     let mut engine = VoiceEngine::new();
     engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
+    let _default_guard = core_audio::default_device::DefaultInputGuard::switch_to_cable_output()
+        .map_err(|e| format!("切换默认麦克风失败：{e}"))?;
     core_input::log_line("[simulate] Win+H start");
     press_win_h().map_err(|e| e.to_string())?;
 

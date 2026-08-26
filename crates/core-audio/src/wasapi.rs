@@ -4,7 +4,7 @@
 
 use windows::core::PWSTR;
 use windows::Win32::Media::Audio::{
-    eCapture, eRender, DEVICE_STATE_ACTIVE, EDataFlow, IMMDeviceEnumerator,
+    eCapture, eConsole, eRender, DEVICE_STATE_ACTIVE, EDataFlow, IMMDeviceEnumerator,
     IMMDeviceCollection, MMDeviceEnumerator,
 };
 use windows::Win32::System::Com::{
@@ -25,6 +25,21 @@ pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
 /// Enumerate currently-active WASAPI capture (microphone) endpoints.
 pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     unsafe { list_endpoints(eCapture, EndpointKind::Input) }
+}
+
+/// Return the device ID of the current default capture (microphone) endpoint.
+pub(crate) fn default_input_endpoint_id() -> Result<String> {
+    unsafe {
+        let enumerator: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+        let device = enumerator.GetDefaultAudioEndpoint(eCapture, eConsole)?;
+        let id_pw = device.GetId()?;
+        let id = id_pw.to_string().map_err(|e| {
+            crate::error::AudioError::Windows(format!("bad default device id: {e}"))
+        })?;
+        CoTaskMemFree(Some(id_pw.as_ptr() as *const core::ffi::c_void));
+        Ok(id)
+    }
 }
 
 unsafe fn list_endpoints(

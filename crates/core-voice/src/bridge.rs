@@ -30,6 +30,7 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
         .unwrap_or_default();
     let capture = CaptureRecorder::new(capture_dir);
     let engine = Arc::new(Mutex::new(VoiceEngine::new()));
+    let default_guard = Arc::new(Mutex::new(None::<core_audio::default_device::DefaultInputGuard>));
 
     let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
     let engine_cb = engine.clone();
@@ -50,6 +51,7 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
 
     let engine_ctrl = engine.clone();
     let capture_ctrl = capture.clone();
+    let default_guard_ctrl = default_guard.clone();
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
@@ -72,6 +74,18 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                 RawControlEvent::MicButtonPressed => {
                     // Win+H is a toggle: one press starts system voice typing.
                     core_input::log_line("[bridge] MicButtonPressed -> Win+H start");
+                    match core_audio::default_device::DefaultInputGuard::switch_to_cable_output() {
+                        Ok(guard) => {
+                            if let Ok(mut slot) = default_guard_ctrl.lock() {
+                                *slot = Some(guard);
+                            }
+                        }
+                        Err(e) => {
+                            core_input::log_error(&format!(
+                                "[bridge] switch default mic to CABLE Output failed: {e}"
+                            ));
+                        }
+                    }
                     if let Err(e) = press_win_h() {
                         core_input::log_error(&format!("[bridge] Win+H start failed: {e}"));
                     }
@@ -85,6 +99,11 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                     core_input::log_line("[bridge] AudioStopped -> Win+H stop");
                     if let Err(e) = press_win_h() {
                         core_input::log_error(&format!("[bridge] Win+H stop failed: {e}"));
+                    }
+                    // Restore the previous default microphone now that the
+                    // voice session has ended.
+                    if let Ok(mut slot) = default_guard_ctrl.lock() {
+                        *slot = None;
                     }
                 }
                 RawControlEvent::AudioSynced { .. } => {
