@@ -260,7 +260,8 @@ export function VoicePage() {
                 )}
               </div>
             </div>
-            <p className="hint">当前音频出口：{selected}</p>
+            <p className="hint">当前音频出口：{selected}。</p>
+            <p className="hint">首次使用：按 Win+H 唤出语音条，在 ⚙️ 设置中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
           </>
         )}
       </section>

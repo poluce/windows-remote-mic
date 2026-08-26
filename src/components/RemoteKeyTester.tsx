@@ -32,6 +32,43 @@ type TriggerRecord = {
   long: boolean;
 };
 
+const INTERCEPT_CODES = new Set([
+  // 基础控制
+  "Escape",
+  "Enter",
+  "F5",
+  "Space",
+  "Tab",
+  "Backspace",
+  "ContextMenu",
+  // 方向导航
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  // 浏览器控制（重点防后退）
+  "BrowserBack",
+  "BrowserForward",
+  "BrowserHome",
+  "BrowserRefresh",
+  "BrowserSearch",
+  "BrowserFavorites",
+  "BrowserStop",
+  // 多媒体与音量
+  "AudioVolumeUp",
+  "AudioVolumeDown",
+  "AudioVolumeMute",
+  "MediaTrackNext",
+  "MediaTrackPrevious",
+  "MediaStop",
+  "MediaPlayPause",
+  // 应用快捷键
+  "LaunchApp1",
+  "LaunchApp2",
+  "LaunchMail",
+  "LaunchMediaPlayer",
+]);
+
 export function RemoteKeyTester() {
   const [mode, setMode] = useState<"live" | "guided">("live");
   const [active, setActive] = useState(false);
@@ -84,9 +121,10 @@ export function RemoteKeyTester() {
     if (!active) return;
 
     function handleKeyDown(e: KeyboardEvent) {
-      // 避免默认行为（如方向键滚动、F5刷新等）
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "F5", "Enter", "Space", "ContextMenu"].includes(e.code)) {
+      // 彻底拦截遥控器/多媒体按键的浏览器默认行为（防止网页后退、滚动、刷新等）
+      if (INTERCEPT_CODES.has(e.code) || INTERCEPT_CODES.has(e.key)) {
         e.preventDefault();
+        e.stopPropagation();
       }
 
       const now = performance.now();
@@ -112,13 +150,15 @@ export function RemoteKeyTester() {
           if (nextIdx < REMOTE_KEYS.length) {
             setGuidedIndex(nextIdx);
           } else {
-            // 全部 13 键采集完毕 ➔ 自动保存并切回快速测试
+            // 全部 13 键采集完毕 ➔ 自动保存并切回快速测试（测试按钮回到未开始状态）
             setGuidedIndex(nextIdx);
             if (isTauri()) {
               invoke("save_key_calibrations", { calibrations: nextCalibs })
                 .then(() => {
                   setTimeout(() => {
                     setMode("live");
+                    setActive(false);
+                    setCurrentKey(null);
                   }, 800);
                 })
                 .catch(() => {});
@@ -190,6 +230,12 @@ export function RemoteKeyTester() {
     };
   }, [active, mode, guidedIndex, calibrations, guidedDoneKeys]);
 
+  function switchToLive() {
+    setMode("live");
+    setActive(false);
+    setCurrentKey(null);
+  }
+
   function startGuided() {
     setMode("guided");
     setActive(true);
@@ -215,10 +261,7 @@ export function RemoteKeyTester() {
         <div className="tester-modes">
           <button
             className={`mode-tab ${mode === "live" ? "active" : ""}`}
-            onClick={() => {
-              setMode("live");
-              setActive(true);
-            }}
+            onClick={switchToLive}
           >
             快速测试
           </button>

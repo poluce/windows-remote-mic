@@ -18,7 +18,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-logo">🎤</span>
+        <img src="/app-icon.svg" alt="Remote Mic" className="brand-logo" />
         <div>
           <div className="brand-name">Remote Mic</div>
           <div className="brand-sub">Windows 无线麦</div>
