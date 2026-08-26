@@ -72,8 +72,6 @@ export function ConnectionPage() {
 
   return (
     <div className="page">
-      
-      
 
       <section className="card device-card">
         <div className="device-info">

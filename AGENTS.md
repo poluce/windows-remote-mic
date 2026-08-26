@@ -29,7 +29,14 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   └── components/       # Sidebar、Xiaomi2ProRemote 等
 ├── src-tauri/            # Tauri 壳
 │   ├── tauri.conf.json   # 窗口、打包配置
-│   └── src/lib.rs        # Tauri commands、窗口创建、业务入口
+│   └── src/
+│       ├── lib.rs        # 启动、窗口创建、共享辅助
+│       └── commands/     # 按领域拆分的 Tauri commands
+│           ├── connection.rs
+│           ├── mapping.rs
+│           ├── audio.rs
+│           ├── diagnostics.rs
+│           └── quick_menu.rs
 ├── crates/               # Rust 核心库
 │   ├── core-ble          # BLE 扫描 / GATT / 链路
 │   ├── core-atvv         # ATVV 协议 + ADPCM 解码
@@ -82,6 +89,7 @@ cargo check -p remote-mic
 ### 2. 快捷菜单窗口
 - 在 `src-tauri/src/lib.rs` 的 `setup` 中创建第二个透明窗口 `quick-menu`。
 - 使用 **工作区（work area）** 定位，避开任务栏；右侧和底部各留 2px。
+- 快捷菜单**只有 `public/quick-menu.html` 一份实现**，不要另建 demo 副本。
 - 内容为 `public/quick-menu.html`，目前是 **Canvas 2D 实现**：
   - 90° 扇形，双环（外环主菜单、内环工具、中心说明）
   - 物理滚动：弹簧 + 阻尼，VSync 驱动

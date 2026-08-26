@@ -53,8 +53,6 @@ export function StatsPage() {
 
   return (
     <div className="page">
-      
-      
 
       <section className="card">
         <div className="card-title">今日</div>

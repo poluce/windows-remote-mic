@@ -119,8 +119,6 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
-      
-      
 
       <section className="card">
         <div className="card-title">虚拟声卡（VB-CABLE）</div>

@@ -28,8 +28,6 @@ export function OnboardingPage() {
 
   return (
     <div className="page">
-      
-      
 
       <section className="card">
         <div className="card-title">快捷入口</div>

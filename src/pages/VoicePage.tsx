@@ -116,8 +116,6 @@ export function VoicePage() {
 
   return (
     <div className="page">
-      
-      
 
       <section className="card">
         <div className="card-title">语音识别目标</div>
