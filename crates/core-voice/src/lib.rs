@@ -99,6 +99,26 @@ impl VoiceEngine {
     pub fn is_streaming(&self) -> bool {
         self.session.is_streaming()
     }
+
+    /// Inject already-decoded PCM into the output stage.
+    ///
+    /// This is the extension point for adding a specified test audio after
+    /// remote-audio parsing/decoding: callers supply decoded 16-bit mono PCM
+    /// and it is converted to the same 48 kHz stereo output used by the real
+    /// bridge path.
+    pub fn feed_pcm(&mut self, samples: &[i16]) -> VoiceChunk {
+        let mut chunk = VoiceChunk {
+            bytes_fed: 0,
+            complete_frames: 0,
+            pcm_samples: samples.len(),
+            ..Default::default()
+        };
+        let mono_f32: Vec<f32> = samples.iter().map(|&s| f32::from(s) / 32768.0).collect();
+        let frame_out = core_audio::build_output_frame(&mono_f32, core_audio::DEFAULT_GAIN_DB);
+        chunk.output_samples = frame_out.len();
+        chunk.output = frame_out;
+        chunk
+    }
 }
 
 #[cfg(test)]
@@ -123,6 +143,14 @@ mod tests {
         let chunk = engine.feed(&[0x55; 120]);
         assert_eq!(chunk.complete_frames, 1);
         assert_eq!(chunk.pcm_samples, 240); // 120 bytes * 2 samples
+        assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k stereo
+    }
+
+    #[test]
+    fn feed_pcm_produces_48k_stereo_output() {
+        let mut engine = VoiceEngine::new();
+        let chunk = engine.feed_pcm(&[0i16; 240]);
+        assert_eq!(chunk.pcm_samples, 240);
         assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k stereo
     }
 

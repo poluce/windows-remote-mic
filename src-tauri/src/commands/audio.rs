@@ -35,14 +35,16 @@ pub fn start_voice_bridge(device_id: String, output_device: String) -> String {
 #[tauri::command]
 pub fn simulate_voice_chain(
     output_device: String,
+    test_tone_hz: Option<u32>,
+    test_tone_ms: Option<u64>,
 ) -> Result<core_voice::SimulatedVoiceResult, String> {
     #[cfg(target_os = "windows")]
     {
-        core_voice::simulate_voice_chain(&output_device)
+        core_voice::simulate_voice_chain(&output_device, test_tone_hz, test_tone_ms)
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = output_device;
+        let _ = (output_device, test_tone_hz, test_tone_ms);
         Err("仅限 Windows".to_string())
     }
 }
