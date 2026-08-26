@@ -30,7 +30,7 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
         .unwrap_or_default();
     let capture = CaptureRecorder::new(capture_dir);
     let engine = Arc::new(Mutex::new(VoiceEngine::new()));
-    let default_guard = Arc::new(Mutex::new(None::<core_audio::default_device::DefaultInputGuard>));
+    let is_active = Arc::new(Mutex::new(false));
 
     let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
     let engine_cb = engine.clone();
@@ -51,7 +51,7 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
 
     let engine_ctrl = engine.clone();
     let capture_ctrl = capture.clone();
-    let default_guard_ctrl = default_guard.clone();
+    let is_active_ctrl = is_active.clone();
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
@@ -72,40 +72,43 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                     }
                 }
                 RawControlEvent::MicButtonPressed => {
-                    // Win+H is a toggle: one press starts system voice typing.
-                    core_input::log_line("[bridge] MicButtonPressed -> Win+H start");
-                    // Close any stray voice typing so Win+H starts from a known state.
-                    let _ = press_escape();
-                    match core_audio::default_device::DefaultInputGuard::switch_to_cable_output() {
-                        Ok(guard) => {
-                            if let Ok(mut slot) = default_guard_ctrl.lock() {
-                                *slot = Some(guard);
-                            }
+                    // Toggle 模式：按一下开启语音输入，再次点击关闭语音输入
+                    let mut active = match is_active_ctrl.lock() {
+                        Ok(g) => g,
+                        Err(_) => return,
+                    };
+                    if !*active {
+                        *active = true;
+                        core_input::log_line("[bridge] 麦克风按键 -> 开启语音输入 (Win+H)");
+                        let _ = press_escape();
+                        std::thread::sleep(Duration::from_millis(100));
+                        if let Err(e) = press_win_h() {
+                            core_input::log_error(&format!("[bridge] Win+H 开启失败: {e}"));
                         }
-                        Err(e) => {
-                            core_input::log_error(&format!(
-                                "[bridge] switch default mic to CABLE Output failed: {e}"
-                            ));
+                        let _ = eng.on_control(ControlEvent::StreamStart);
+                    } else {
+                        *active = false;
+                        core_input::log_line("[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)");
+                        let _ = eng.on_control(ControlEvent::StreamStop);
+                        if let Err(e) = press_escape() {
+                            core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
                         }
-                    }
-                    if let Err(e) = press_win_h() {
-                        core_input::log_error(&format!("[bridge] Win+H start failed: {e}"));
                     }
                 }
                 RawControlEvent::AudioStarted { .. } => {
                     let _ = eng.on_control(ControlEvent::StreamStart);
                 }
                 RawControlEvent::AudioStopped => {
-                    let _ = eng.on_control(ControlEvent::StreamStop);
-                    // Close voice typing with Escape (more reliable than toggling).
-                    core_input::log_line("[bridge] AudioStopped -> close voice typing (Escape)");
-                    if let Err(e) = press_escape() {
-                        core_input::log_error(&format!("[bridge] close voice typing failed: {e}"));
-                    }
-                    // Restore the previous default microphone now that the
-                    // voice session has ended.
-                    if let Ok(mut slot) = default_guard_ctrl.lock() {
-                        *slot = None;
+                    // 遥控器硬件停止通知
+                    if let Ok(mut active) = is_active_ctrl.lock() {
+                        if *active {
+                            *active = false;
+                            core_input::log_line("[bridge] 遥控器 AudioStopped -> 关闭语音输入 (Escape)");
+                            let _ = eng.on_control(ControlEvent::StreamStop);
+                            if let Err(e) = press_escape() {
+                                core_input::log_error(&format!("[bridge] close voice typing failed: {e}"));
+                            }
+                        }
                     }
                 }
                 RawControlEvent::AudioSynced { .. } => {

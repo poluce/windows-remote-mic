@@ -42,7 +42,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-ble          # BLE 扫描 / GATT / 链路
 │   ├── core-atvv         # ATVV 协议 + ADPCM 解码
 │   ├── core-audio        # WASAPI 端点、DSP、播放、VB-CABLE 诊断
-│   ├── core-mapping      # 按键映射、手势识别
+│   ├── core-mapping      # 按键映射、触发条件识别
 │   ├── core-config       # 配置持久化（JSON，原子写入）
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）

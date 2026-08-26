@@ -1,6 +1,7 @@
-//! core-mapping — RC003 13-button key mapping and gesture rules.
+//! core-mapping — RC003 13-button key mapping and trigger rules.
 
-pub mod gesture;
+pub mod trigger;
+pub use trigger as gesture; // Backwards-compatible alias
 
 use serde::{Deserialize, Serialize};
 

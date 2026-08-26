@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type Rc003Device = {
@@ -17,17 +17,24 @@ type Rc003Connection = {
   endpoints: AtvvEndpoints;
 };
 
-const BRIEFS = [
-  { label: "蓝牙", value: "待连接", tone: "warn" },
-  { label: "设备", value: "RC003 / 2 Pro", tone: "ok" },
-  { label: "ATVV 语音", value: "未启用", tone: "warn" },
-];
-
 export function ConnectionPage() {
   const [scanResult, setScanResult] = useState("未开始扫描");
   const [scanning, setScanning] = useState(false);
   const [connectResult, setConnectResult] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [bridgeRunning, setBridgeRunning] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke<{ selected_device_id?: string }>("get_persisted_settings")
+      .then((cfg) => {
+        if (cfg.selected_device_id) {
+          setScanResult(`已记忆设备 ID: ${cfg.selected_device_id}`);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   async function scan() {
     if (!isTauri()) {
@@ -55,24 +62,52 @@ export function ConnectionPage() {
     setConnectResult("正在连接并枚举 GATT（UNCACHED）…");
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
+      setConnected(true);
       setConnectResult(
-        `已连接 ${result.device.name}；ATVV：音频=${result.endpoints.audio ? "有" : "无"}，控制=${result.endpoints.control ? "有" : "无"}（已记住设备）`
+        `已连接 ${result.device.name}；ATVV：音频=${result.endpoints.audio ? "有" : "无"}，控制=${result.endpoints.control ? "有" : "无"}`
       );
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
       } catch {
-        setConnectResult(prev => `${prev}（保存设备失败）`);
+        // ignore save error
+      }
+
+      // 连接成功后，自动启动后台语音桥
+      try {
+        const bridgeRes = await invoke<string>("start_voice_bridge", {
+          deviceId: result.device.id,
+          outputDevice: "CABLE Input",
+        });
+        setBridgeRunning(true);
+        setConnectResult((prev) => `${prev} · ${bridgeRes}`);
+      } catch (bridgeErr) {
+        setConnectResult((prev) => `${prev}（启动语音桥失败：${bridgeErr}）`);
       }
     } catch (err) {
+      setConnected(false);
+      setBridgeRunning(false);
       setConnectResult(`连接失败：${err}`);
     } finally {
       setConnecting(false);
     }
   }
 
+  const briefs = [
+    {
+      label: "蓝牙",
+      value: connected ? "已连接" : "待连接",
+      tone: connected ? "ok" : "warn",
+    },
+    { label: "设备", value: "RC003 / 2 Pro", tone: "ok" },
+    {
+      label: "ATVV 语音桥",
+      value: bridgeRunning ? "运行中" : "未启用",
+      tone: bridgeRunning ? "ok" : "warn",
+    },
+  ];
+
   return (
     <div className="page">
-
       <section className="card device-card">
         <div className="device-info">
           <span className="device-icon">📡</span>
@@ -81,13 +116,15 @@ export function ConnectionPage() {
             <div className="device-model">RC003 · VID 0x2717 · PID 0x32B8</div>
           </div>
         </div>
-        <span className="badge badge-warn">未连接</span>
+        <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
+          {connected ? "已连接" : "未连接"}
+        </span>
       </section>
 
       <section className="card">
         <div className="card-title">状态概览</div>
         <div className="brief-grid">
-          {BRIEFS.map((b) => (
+          {briefs.map((b) => (
             <div key={b.label} className={`brief ${b.tone}`}>
               <div className="brief-value">{b.value}</div>
               <div className="brief-label">{b.label}</div>
@@ -97,21 +134,21 @@ export function ConnectionPage() {
       </section>
 
       <section className="card">
-        <div className="card-title">扫描遥控器</div>
+        <div className="card-title">连接遥控器</div>
         <div className="actions">
-          <button className="btn primary" onClick={scan} disabled={!isTauri() || scanning}>
+          <button className="btn" onClick={scan} disabled={!isTauri() || scanning}>
             {scanning ? "扫描中…" : "扫描遥控器"}
           </button>
           <button
-            className="btn"
+            className="btn primary"
             onClick={connect}
             disabled={!isTauri() || connecting}
           >
-            {connecting ? "连接中…" : "连接并发现 ATVV"}
+            {connecting ? "连接中…" : "连接并启动语音桥"}
           </button>
         </div>
-        <p className="hint">{scanResult}</p>
-        <p className="hint">{connectResult}</p>
+        {scanResult && <p className="hint">{scanResult}</p>}
+        {connectResult && <p className="hint">{connectResult}</p>}
       </section>
     </div>
   );

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use core_mapping::gesture::GestureDetector;
+use core_mapping::trigger::TriggerDetector;
 
 /// One self-test item with a PASS / FAIL / SKIP verdict.
 #[derive(Serialize)]
@@ -62,23 +62,23 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 3) Gesture detection
+    // 3) Trigger detection
     {
-        let mut d = GestureDetector::new();
+        let mut d = TriggerDetector::new();
         d.press(0);
         let fired = d.release(600);
-        use core_mapping::gesture::FeedOutcome;
+        use core_mapping::trigger::FeedOutcome;
         use core_mapping::Trigger;
         match fired {
             FeedOutcome::Fire(ev) if ev.trigger == Trigger::LongPress => {
                 items.push(SelfTestItem {
-                    name: "长按手势识别".into(),
+                    name: "长按触发条件识别".into(),
                     status: "pass".into(),
                     detail: "550ms 长按被正确识别".into(),
                 });
             }
             other => items.push(SelfTestItem {
-                name: "长按手势识别".into(),
+                name: "长按触发条件识别".into(),
                 status: "fail".into(),
                 detail: format!("期望 LongPress，实际 {:?}", other),
             }),
