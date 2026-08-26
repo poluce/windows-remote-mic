@@ -51,6 +51,13 @@ pub fn simulate_voice_chain(
         output_device, audio_name, sample_rate, pcm.len(), duration_ms
     ));
 
+    let diag = core_audio::diagnostics::run();
+    let input_names: Vec<String> = diag.input_endpoints.iter().map(|e| e.name.clone()).collect();
+    core_input::log_line(&format!(
+        "[simulate] diagnostics: has_vb_cable={}, cable_input={}, cable_output={}, input_endpoints={:?}",
+        diag.has_vb_cable, diag.cable_input_present, diag.cable_output_present, input_names
+    ));
+
     let sink = core_audio::sink::AudioSink::new(Some(output_device))
         .map_err(|e| e.to_string())?;
     core_input::log_debug("[simulate] audio sink created");
