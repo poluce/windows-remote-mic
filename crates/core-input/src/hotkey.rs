@@ -9,7 +9,7 @@ use crate::Result;
 
 /// Press Win + H and release.
 pub fn press_win_h() -> Result<()> {
-    eprintln!("[input] press Win+H");
+    crate::log_line("[input] press Win+H");
     let down = |vk| keyboard_input(vk, false);
     let up = |vk| keyboard_input(vk, true);
 

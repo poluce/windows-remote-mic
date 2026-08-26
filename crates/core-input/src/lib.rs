@@ -3,6 +3,31 @@
 pub mod error;
 pub use error::{InputError, Result};
 
+/// Append a line to `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`.
+///
+/// This lets the desktop app record debug traces without requiring a visible
+/// terminal. Non-Windows builds treat this as a no-op.
+pub fn log_line(line: &str) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+        let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());
+        let dir = std::path::Path::new(&base).join("RemoteMic").join("RC003");
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("remote-mic.log"))
+        {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = line;
+    }
+}
+
 /// Press Win + H to start Windows built-in voice typing.
 #[cfg(target_os = "windows")]
 pub fn press_win_h() -> Result<()> {
