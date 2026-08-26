@@ -89,11 +89,14 @@ impl Drop for DefaultInputGuard {
 
 /// Set the default input (microphone) endpoint to `endpoint_id`.
 pub fn set_default_input(endpoint_id: &str) -> Result<()> {
-    let script_path = std::env::temp_dir().join("remote_mic_set_default_device.ps1");
-    let mut file = std::fs::File::create(&script_path)
-        .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
-    file.write_all(SET_DEFAULT_PS1.as_bytes())
-        .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
+    let script_path = std::env::temp_dir()
+        .join(format!("remote_mic_set_default_device_{}.ps1", std::process::id()));
+    {
+        let mut file = std::fs::File::create(&script_path)
+            .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
+        file.write_all(SET_DEFAULT_PS1.as_bytes())
+            .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
+    }
 
     let output = Command::new("powershell.exe")
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
