@@ -3,12 +3,25 @@
 use core_atvv::protocol::ControlEvent;
 use core_input::press_win_h;
 use serde::Serialize;
+use std::io::Write;
 use std::path::Path;
+use std::process::Command;
 
 use crate::VoiceEngine;
 
-/// Built-in public-domain speech sample used when no custom WAV is supplied.
-const TEST_SPEECH_WAV: &[u8] = include_bytes!("../assets/test_speech.wav");
+/// PowerShell TTS script: synthesize a Chinese phrase to a WAV file.
+/// Deliberately ASCII-only; the spoken text is passed through an environment
+/// variable so no non-ASCII characters live in the script file.
+const TTS_PS1: &str = r#"param([string]$OutputPath)
+$text = $env:REMOTE_MIC_TTS_TEXT
+Add-Type -AssemblyName System.Speech
+$synthesizer = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$voice = $synthesizer.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'zh-*' } | Select-Object -First 1
+if ($voice) { $synthesizer.SelectVoice($voice.VoiceInfo.Name) }
+$synthesizer.SetOutputToWaveFile($OutputPath)
+$synthesizer.Speak($text)
+$synthesizer.Dispose()
+"#;
 
 /// Result of the simulated voice chain.
 #[derive(Debug, Clone, Serialize)]
@@ -36,7 +49,15 @@ pub fn simulate_voice_chain(
             let bytes = std::fs::read(path).map_err(|e| format!("读取测试音频失败：{e}"))?;
             load_wav_pcm(&bytes)?
         }
-        None => load_wav_pcm(TEST_SPEECH_WAV)?,
+        None => {
+            let wav_path = std::env::temp_dir()
+                .join(format!("remote_mic_tts_{}.wav", std::process::id()));
+            synthesize_chinese_speech(&wav_path)?;
+            let bytes = std::fs::read(&wav_path)
+                .map_err(|e| format!("读取 TTS 音频失败：{e}"))?;
+            let _ = std::fs::remove_file(&wav_path);
+            load_wav_pcm(&bytes)?
+        }
     };
 
     let samples = resample_to_16k(&pcm, sample_rate);
@@ -44,7 +65,7 @@ pub fn simulate_voice_chain(
 
     let audio_name = test_audio_path
         .and_then(|p| Path::new(p).file_name().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "内置公开语音样本".to_string());
+        .unwrap_or_else(|| "TTS中文语音".to_string());
 
     core_input::log_line(&format!(
         "[simulate] start: device={}, audio={}, sample_rate={}, pcm_samples={}, duration_ms={}",
@@ -101,6 +122,37 @@ pub fn simulate_voice_chain(
         test_audio: audio_name,
         test_audio_ms: duration_ms,
     })
+}
+
+/// Synthesize a short Chinese phrase to a WAV file using Windows SAPI TTS.
+fn synthesize_chinese_speech(output_path: &Path) -> Result<(), String> {
+    let script_path = std::env::temp_dir()
+        .join(format!("remote_mic_tts_{}.ps1", std::process::id()));
+    {
+        let mut file = std::fs::File::create(&script_path)
+            .map_err(|e| format!("写入 TTS 脚本失败：{e}"))?;
+        file.write_all(TTS_PS1.as_bytes())
+            .map_err(|e| format!("写入 TTS 脚本失败：{e}"))?;
+    }
+
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&script_path)
+        .arg("-OutputPath")
+        .arg(output_path)
+        .env("REMOTE_MIC_TTS_TEXT", "这是一段中文语音测试")
+        .output()
+        .map_err(|e| format!("运行 TTS 脚本失败：{e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("TTS 合成失败：{stderr}"));
+    }
+    if !output_path.exists() {
+        return Err("TTS 未生成 WAV 文件".to_string());
+    }
+
+    Ok(())
 }
 
 /// Parse a standard PCM WAV and return `(sample_rate, mono i16 samples)`.
@@ -195,13 +247,6 @@ fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn builtin_speech_wav_is_valid_pcm() {
-        let (sample_rate, pcm) = load_wav_pcm(TEST_SPEECH_WAV).unwrap();
-        assert_eq!(sample_rate, 8000);
-        assert!(!pcm.is_empty());
-    }
 
     #[test]
     fn resample_8k_to_16k_preserves_length_ratio() {
