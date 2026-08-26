@@ -447,6 +447,97 @@ button {
   font-size: 13px;
 }
 
+.driver-select {
+  position: relative;
+  max-width: 420px;
+}
+
+.driver-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.driver-select-trigger.open {
+  border-color: var(--accent);
+}
+
+.driver-select-caret {
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+.driver-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.driver-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.driver-option:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.driver-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d0d7de;
+}
+
+.status-dot.ready {
+  background: #2da44e;
+  box-shadow: 0 0 0 3px rgba(45, 164, 78, 0.15);
+}
+
+.status-dot.missing {
+  background: #d1242f;
+  box-shadow: 0 0 0 3px rgba(209, 36, 47, 0.12);
+}
+
+.status-dot.loading {
+  background: #d0d7de;
+}
+
+.status-dot.preview {
+  background: #d0d7de;
+}
+
 .hint {
   color: var(--text-3);
   font-size: 12px;

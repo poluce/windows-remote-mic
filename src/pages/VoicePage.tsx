@@ -1,11 +1,63 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+
+type VbCableStatus = {
+  input: boolean;
+  output: boolean;
+  ready: boolean;
+};
+
+type DriverStatus = "loading" | "ready" | "missing" | "unknown";
+
+const DRIVER_OPTIONS = [
+  { value: "vb_cable", label: "VB-CABLE（当前）", disabled: false },
+  { value: "voicemeeter", label: "Voicemeeter（预留）", disabled: true },
+  { value: "rearoute", label: "ReaRoute（预留）", disabled: true },
+] as const;
 
 export function VoicePage() {
   const [voiceTarget, setVoiceTarget] = useState("windows_voice");
   const [virtualDriver, setVirtualDriver] = useState("vb_cable");
   const [selected] = useState("CABLE 输入（VB-CABLE）");
   const [simResult, setSimResult] = useState("");
+  const [driverStatus, setDriverStatus] = useState<DriverStatus>("unknown");
+  const [driverOpen, setDriverOpen] = useState(false);
+  const driverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (voiceTarget !== "windows_voice") {
+      setDriverOpen(false);
+      return;
+    }
+    let cancelled = false;
+    if (!isTauri()) {
+      setDriverStatus("unknown");
+      return () => {
+        cancelled = true;
+      };
+    }
+    setDriverStatus("loading");
+    invoke<VbCableStatus>("vb_cable_status")
+      .then((s) => {
+        if (!cancelled) setDriverStatus(s.ready ? "ready" : "missing");
+      })
+      .catch(() => {
+        if (!cancelled) setDriverStatus("missing");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [voiceTarget]);
+
+  useEffect(() => {
+    function onPointerDown(e: MouseEvent) {
+      if (driverRef.current && !driverRef.current.contains(e.target as Node)) {
+        setDriverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
 
   async function runVoiceSimulation() {
     if (voiceTarget !== "windows_voice") {
@@ -110,19 +162,46 @@ export function VoicePage() {
           <>
             <div className="wizard-group">
               <div className="wizard-label">虚拟声卡</div>
-              <select
-                className="select"
-                value={virtualDriver}
-                onChange={(e) => setVirtualDriver(e.currentTarget.value)}
-              >
-                <option value="vb_cable">VB-CABLE（当前）</option>
-                <option value="voicemeeter" disabled>
-                  Voicemeeter（预留）
-                </option>
-                <option value="rearoute" disabled>
-                  ReaRoute（预留）
-                </option>
-              </select>
+              <div className="driver-select" ref={driverRef}>
+                <button
+                  type="button"
+                  className={`driver-select-trigger${driverOpen ? " open" : ""}`}
+                  onClick={() => setDriverOpen((open) => !open)}
+                >
+                  <span className={`status-dot ${driverStatus}`} />
+                  <span>
+                    {virtualDriver === "vb_cable"
+                      ? "VB-CABLE（当前）"
+                      : virtualDriver === "voicemeeter"
+                        ? "Voicemeeter（预留）"
+                        : "ReaRoute（预留）"}
+                  </span>
+                  <span className="driver-select-caret">▾</span>
+                </button>
+                {driverOpen && (
+                  <div className="driver-select-menu">
+                    {DRIVER_OPTIONS.map((driver) => (
+                      <button
+                        type="button"
+                        key={driver.value}
+                        className="driver-option"
+                        disabled={driver.disabled}
+                        onClick={() => {
+                          setVirtualDriver(driver.value);
+                          setDriverOpen(false);
+                        }}
+                      >
+                        <span
+                          className={`status-dot ${
+                            driver.value === "vb_cable" ? driverStatus : "preview"
+                          }`}
+                        />
+                        <span>{driver.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <p className="hint">当前音频出口：{selected}</p>
           </>
