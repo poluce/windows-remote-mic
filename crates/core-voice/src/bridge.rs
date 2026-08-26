@@ -6,7 +6,7 @@ use std::time::Duration;
 use core_atvv::protocol::{ControlEvent, RawControlEvent, GET_CAPABILITIES_V10, parse_control};
 use core_ble::capture::CaptureRecorder;
 use core_ble::gatt::AtvvLink;
-use core_input::press_win_h;
+use core_input::{press_escape, press_win_h};
 
 use crate::VoiceEngine;
 
@@ -74,6 +74,8 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                 RawControlEvent::MicButtonPressed => {
                     // Win+H is a toggle: one press starts system voice typing.
                     core_input::log_line("[bridge] MicButtonPressed -> Win+H start");
+                    // Close any stray voice typing so Win+H starts from a known state.
+                    let _ = press_escape();
                     match core_audio::default_device::DefaultInputGuard::switch_to_cable_output() {
                         Ok(guard) => {
                             if let Ok(mut slot) = default_guard_ctrl.lock() {
@@ -95,10 +97,10 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
                 }
                 RawControlEvent::AudioStopped => {
                     let _ = eng.on_control(ControlEvent::StreamStop);
-                    // Toggle off: second Win+H press.
-                    core_input::log_line("[bridge] AudioStopped -> Win+H stop");
-                    if let Err(e) = press_win_h() {
-                        core_input::log_error(&format!("[bridge] Win+H stop failed: {e}"));
+                    // Close voice typing with Escape (more reliable than toggling).
+                    core_input::log_line("[bridge] AudioStopped -> close voice typing (Escape)");
+                    if let Err(e) = press_escape() {
+                        core_input::log_error(&format!("[bridge] close voice typing failed: {e}"));
                     }
                     // Restore the previous default microphone now that the
                     // voice session has ended.

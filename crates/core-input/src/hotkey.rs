@@ -2,7 +2,7 @@
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, INPUT, INPUT_0,
-    INPUT_KEYBOARD, VIRTUAL_KEY, VK_H, VK_LWIN,
+    INPUT_KEYBOARD, VIRTUAL_KEY, VK_ESCAPE, VK_H, VK_LWIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetForegroundWindow, GetWindowTextW,
@@ -32,6 +32,23 @@ pub fn press_win_h() -> Result<()> {
             "[input] SendInput only inserted {sent}/{} events",
             inputs.len()
         ));
+        return Err(crate::error::InputError::Windows(format!(
+            "SendInput only inserted {sent}/{} events",
+            inputs.len()
+        )));
+    }
+    Ok(())
+}
+
+/// Press Escape (used to close Windows voice typing).
+pub fn press_escape() -> Result<()> {
+    crate::log_line("[input] press Escape");
+    let down = keyboard_input(VK_ESCAPE, false);
+    let up = keyboard_input(VK_ESCAPE, true);
+    let inputs = [down, up];
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    crate::log_line(&format!("[input] Escape SendInput returned {sent} events"));
+    if sent != inputs.len() as u32 {
         return Err(crate::error::InputError::Windows(format!(
             "SendInput only inserted {sent}/{} events",
             inputs.len()

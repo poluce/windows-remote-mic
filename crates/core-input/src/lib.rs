@@ -40,6 +40,20 @@ pub fn press_win_h() -> Result<()> {
     ))
 }
 
+/// Press Escape to close Windows voice typing.
+#[cfg(target_os = "windows")]
+pub fn press_escape() -> Result<()> {
+    crate::hotkey::press_escape()
+}
+
+/// Non-Windows stub.
+#[cfg(not(target_os = "windows"))]
+pub fn press_escape() -> Result<()> {
+    Err(InputError::Windows(
+        "input injection is only implemented on Windows".to_string(),
+    ))
+}
+
 #[cfg(target_os = "windows")]
 mod hotkey;
 

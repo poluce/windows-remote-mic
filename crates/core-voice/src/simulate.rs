@@ -1,7 +1,7 @@
 //! Windows-only simulated voice chain: no real remote required.
 
 use core_atvv::protocol::ControlEvent;
-use core_input::press_win_h;
+use core_input::{press_escape, press_win_h};
 use serde::Serialize;
 use std::io::Write;
 use std::path::Path;
@@ -92,8 +92,15 @@ pub fn simulate_voice_chain(
     engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
     let _default_guard = core_audio::default_device::DefaultInputGuard::switch_to_cable_output()
         .map_err(|e| format!("切换默认麦克风失败：{e}"))?;
+
+    // Close any stray voice typing first so Win+H starts from a known state.
+    let _ = press_escape();
+    std::thread::sleep(std::time::Duration::from_millis(150));
+
     core_input::log_line("[simulate] Win+H start");
     press_win_h().map_err(|e| e.to_string())?;
+    // Give Windows voice typing a moment to become ready before playing audio.
+    std::thread::sleep(std::time::Duration::from_millis(400));
 
     let chunk = engine.feed_pcm(&samples);
     core_input::log_line(&format!(
@@ -110,8 +117,8 @@ pub fn simulate_voice_chain(
     std::thread::sleep(std::time::Duration::from_millis(duration_ms + 300));
 
     engine.on_control(ControlEvent::StreamStop).map_err(|e| e.to_string())?;
-    core_input::log_line("[simulate] Win+H stop");
-    press_win_h().map_err(|e| e.to_string())?;
+    core_input::log_line("[simulate] close voice typing (Escape)");
+    press_escape().map_err(|e| e.to_string())?;
 
     core_input::log_line("[simulate] done");
     Ok(SimulatedVoiceResult {
