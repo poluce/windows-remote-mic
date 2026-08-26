@@ -6,7 +6,7 @@ pub mod frame;
 pub mod protocol;
 pub mod session;
 
-pub use adpcm::ImaAdpcmDecoder;
+pub use adpcm::{ImaAdpcmDecoder, ImaAdpcmEncoder};
 pub use error::{AtvvError, Result};
 pub use frame::AudioFrameAssembler;
 pub use protocol::{AtvvCapabilities, ControlEvent};

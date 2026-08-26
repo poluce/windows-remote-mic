@@ -89,90 +89,94 @@ impl ImaAdpcmDecoder {
     }
 }
 
+/// Streaming IMA ADPCM encoder used to build simulated voice/test vectors.
+#[derive(Debug, Clone, Default)]
+pub struct ImaAdpcmEncoder {
+    predictor: i32,
+    step_index: i32,
+}
+
+impl ImaAdpcmEncoder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn reset(&mut self) {
+        self.predictor = 0;
+        self.step_index = 0;
+    }
+
+    pub fn encode_nibble(&mut self, sample: i16) -> u8 {
+        let step = STEP_TABLE[self.step_index.clamp(0, STEP_TABLE.len() as i32 - 1) as usize];
+        let mut temp = i32::from(sample) - self.predictor;
+        let mut nibble = 0u8;
+        if temp < 0 {
+            nibble = 8;
+            temp = -temp;
+        }
+        let mut step_local = step;
+        if temp >= step_local {
+            nibble |= 4;
+            temp -= step_local;
+        }
+        step_local >>= 1;
+        if temp >= step_local {
+            nibble |= 2;
+            temp -= step_local;
+        }
+        step_local >>= 1;
+        if temp >= step_local {
+            nibble |= 1;
+        }
+
+        let step = STEP_TABLE[self.step_index.clamp(0, STEP_TABLE.len() as i32 - 1) as usize];
+        let diff = compute_diff(nibble, step);
+        if nibble & 8 != 0 {
+            self.predictor -= diff;
+        } else {
+            self.predictor += diff;
+        }
+        self.predictor = self.predictor.clamp(-32768, 32767);
+        self.step_index =
+            (self.step_index + INDEX_TABLE[nibble as usize]).clamp(0, 88);
+        nibble
+    }
+
+    pub fn encode(&mut self, samples: &[i16]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(samples.len() / 2 + 1);
+        for chunk in samples.chunks(2) {
+            let high = self.encode_nibble(chunk[0]);
+            let low = if chunk.len() > 1 {
+                self.encode_nibble(chunk[1])
+            } else {
+                // Re-encode the last sample for the low nibble to keep
+                // decoder state aligned.
+                self.encode_nibble(chunk[0])
+            };
+            out.push((high << 4) | low);
+        }
+        out
+    }
+}
+
+fn compute_diff(nibble: u8, step: i32) -> i32 {
+    let mut diff = step >> 3;
+    if nibble & 1 != 0 {
+        diff += step >> 2;
+    }
+    if nibble & 2 != 0 {
+        diff += step >> 1;
+    }
+    if nibble & 4 != 0 {
+        diff += step;
+    }
+    diff
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Minimal IMA encoder used only to build round-trip test vectors.
-    struct Encoder {
-        predictor: i32,
-        step_index: i32,
-    }
-
-    impl Encoder {
-        fn new() -> Self {
-            Self {
-                predictor: 0,
-                step_index: 0,
-            }
-        }
-
-        fn encode_nibble(&mut self, sample: i16) -> u8 {
-            let step = STEP_TABLE[self.step_index.clamp(0, STEP_TABLE.len() as i32 - 1) as usize];
-            let mut temp = i32::from(sample) - self.predictor;
-            let mut nibble = 0u8;
-            if temp < 0 {
-                nibble = 8;
-                temp = -temp;
-            }
-            let mut step_local = step;
-            if temp >= step_local {
-                nibble |= 4;
-                temp -= step_local;
-            }
-            step_local >>= 1;
-            if temp >= step_local {
-                nibble |= 2;
-                temp -= step_local;
-            }
-            step_local >>= 1;
-            if temp >= step_local {
-                nibble |= 1;
-            }
-
-            let step = STEP_TABLE[self.step_index.clamp(0, STEP_TABLE.len() as i32 - 1) as usize];
-            let diff = compute_diff(nibble, step);
-            if nibble & 8 != 0 {
-                self.predictor -= diff;
-            } else {
-                self.predictor += diff;
-            }
-            self.predictor = self.predictor.clamp(-32768, 32767);
-            self.step_index =
-                (self.step_index + INDEX_TABLE[nibble as usize]).clamp(0, 88);
-            nibble
-        }
-
-        fn encode(&mut self, samples: &[i16]) -> Vec<u8> {
-            let mut out = Vec::with_capacity(samples.len() / 2 + 1);
-            for chunk in samples.chunks(2) {
-                let high = self.encode_nibble(chunk[0]);
-                let low = if chunk.len() > 1 {
-                    self.encode_nibble(chunk[1])
-                } else {
-                    // Re-encode the last sample for the low nibble to keep
-                    // decoder state aligned.
-                    self.encode_nibble(chunk[0])
-                };
-                out.push((high << 4) | low);
-            }
-            out
-        }
-    }
-
-    fn compute_diff(nibble: u8, step: i32) -> i32 {
-        let mut diff = step >> 3;
-        if nibble & 1 != 0 {
-            diff += step >> 2;
-        }
-        if nibble & 2 != 0 {
-            diff += step >> 1;
-        }
-        if nibble & 4 != 0 {
-            diff += step;
-        }
-        diff
-    }
 
     #[test]
     fn decode_byte_produces_two_samples() {
@@ -190,7 +194,7 @@ mod tests {
 
     #[test]
     fn round_trip_smooth_sine_is_close() {
-        let mut encoder = Encoder::new();
+        let mut encoder = ImaAdpcmEncoder::new();
         // Smooth sine avoids the huge slew at a sawtooth wraparound, which is
         // where IMA adaptation legitimately lags.
         let samples: Vec<i16> = (0..800)

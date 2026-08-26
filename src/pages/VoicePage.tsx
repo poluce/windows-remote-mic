@@ -89,9 +89,11 @@ export function VoicePage() {
         pcm_samples: number;
         output_samples: number;
         win_h_toast: boolean;
+        test_tone_hz: number;
+        test_tone_ms: number;
       }>("simulate_voice_chain", { outputDevice: "CABLE Input" });
       setSimResult(
-        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，Win+H=${ret.win_h_toast}`
+        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音 ${ret.test_tone_hz}Hz/${ret.test_tone_ms}ms，Win+H=${ret.win_h_toast}`
       );
     } catch (err) {
       setSimResult(`模拟失败：${err}`);
