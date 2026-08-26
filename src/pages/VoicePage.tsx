@@ -32,6 +32,7 @@ export function VoicePage() {
   const [targetOpen, setTargetOpen] = useState(false);
   const driverRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
+  const simInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (voiceTarget !== "windows_voice") {
@@ -80,6 +81,7 @@ export function VoicePage() {
       setSimResult("浏览器预览：请在桌面应用内模拟");
       return;
     }
+    simInputRef.current?.focus();
     setSimResult("正在模拟：Win+H → 合成语音 → CABLE…");
     try {
       const ret = await invoke<{
@@ -244,6 +246,19 @@ export function VoicePage() {
           </>
         )}
       </section>
+
+      {voiceTarget === "windows_voice" && (
+        <section className="card">
+          <div className="card-title">模拟输入框</div>
+          <textarea
+            ref={simInputRef}
+            className="sim-input"
+            rows={3}
+            placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
+          />
+          <p className="hint">模拟时会自动聚焦此输入框；识别出的文字会显示在这里。</p>
+        </section>
+      )}
 
       <section className="card actions">
         <button className="btn primary" onClick={runVoiceSimulation} disabled={!isTauri()}>

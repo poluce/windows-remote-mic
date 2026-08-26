@@ -544,6 +544,26 @@ button {
   margin: 10px 0 0;
 }
 
+.sim-input {
+  width: 100%;
+  max-width: 420px;
+  min-height: 64px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.sim-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .current-key {
   text-align: center;
   font-weight: 600;
