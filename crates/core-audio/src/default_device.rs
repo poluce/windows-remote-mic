@@ -4,48 +4,62 @@
 //! voice session it switches the default input to CABLE Output and restores
 //! the previous device when the session ends.
 
-use std::io::Write;
-use std::process::Command;
+#![allow(non_snake_case, non_upper_case_globals)]
+
+use windows_core::{HRESULT, IUnknown, IUnknown_Vtbl, PCWSTR, interface, GUID};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 
 use crate::endpoint::list_input_endpoints;
 use crate::error::{AudioError, Result};
 
-/// PowerShell script that uses the undocumented `IPolicyConfig` COM interface
-/// to set the default audio endpoint. Deliberately ASCII-only.
-const SET_DEFAULT_PS1: &str = r#"param([string]$DeviceId)
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
+/// `PolicyConfigClient` coclass CLSID.
+const CLSID_PolicyConfigClient: GUID = GUID::from_values(
+    0x870af99c,
+    0x171d,
+    0x4f9e,
+    [0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9],
+);
 
-[ComImport, Guid(""870af99c-171d-4f9e-af0d-e63df40c2bc9"")]
-public class PolicyConfigClient { }
-
-[ComImport, Guid(""f8679f50-850a-41cf-9c72-430f290290c8""), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IPolicyConfig {
-    [PreserveSig] int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, IntPtr ppFormat);
-    [PreserveSig] int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, bool bDefault, IntPtr ppFormat);
-    [PreserveSig] int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName);
-    [PreserveSig] int SetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, IntPtr pEndpointFormat, IntPtr MixFormat);
-    [PreserveSig] int GetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, bool bDefault, IntPtr pmftDefaultPeriod, IntPtr pmftMinimumPeriod);
-    [PreserveSig] int SetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, IntPtr pmftPeriod);
-    [PreserveSig] int GetShareMode([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, IntPtr pMode);
-    [PreserveSig] int SetShareMode([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, IntPtr mode);
-    [PreserveSig] int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, bool bFxStore, IntPtr key, IntPtr pv);
-    [PreserveSig] int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, bool bFxStore, IntPtr key, IntPtr pv);
-    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, int eRole);
-    [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string pszDeviceName, bool bVisible);
+/// Undocumented `IPolicyConfig` COM interface used to set the default endpoint.
+#[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
+unsafe trait IPolicyConfig: IUnknown {
+    fn GetMixFormat(&self, device: PCWSTR, format: *mut *mut core::ffi::c_void) -> HRESULT;
+    fn GetDeviceFormat(&self, device: PCWSTR, def: bool, format: *mut *mut core::ffi::c_void)
+        -> HRESULT;
+    fn ResetDeviceFormat(&self, device: PCWSTR) -> HRESULT;
+    fn SetDeviceFormat(
+        &self,
+        device: PCWSTR,
+        endpoint: *mut core::ffi::c_void,
+        mix: *mut core::ffi::c_void,
+    ) -> HRESULT;
+    fn GetProcessingPeriod(
+        &self,
+        device: PCWSTR,
+        def: bool,
+        default: *mut *mut core::ffi::c_void,
+        min: *mut *mut core::ffi::c_void,
+    ) -> HRESULT;
+    fn SetProcessingPeriod(&self, device: PCWSTR, period: *mut core::ffi::c_void) -> HRESULT;
+    fn GetShareMode(&self, device: PCWSTR, mode: *mut *mut core::ffi::c_void) -> HRESULT;
+    fn SetShareMode(&self, device: PCWSTR, mode: *mut core::ffi::c_void) -> HRESULT;
+    fn GetPropertyValue(
+        &self,
+        device: PCWSTR,
+        store: bool,
+        key: *const core::ffi::c_void,
+        value: *mut *mut core::ffi::c_void,
+    ) -> HRESULT;
+    fn SetPropertyValue(
+        &self,
+        device: PCWSTR,
+        store: bool,
+        key: *const core::ffi::c_void,
+        value: *const core::ffi::c_void,
+    ) -> HRESULT;
+    fn SetDefaultEndpoint(&self, device: PCWSTR, role: i32) -> HRESULT;
+    fn SetEndpointVisibility(&self, device: PCWSTR, visible: bool) -> HRESULT;
 }
-"@
-$client = New-Object PolicyConfigClient
-$policy = [IPolicyConfig]$client
-foreach ($role in @(0, 1, 2)) {
-    $hr = $policy.SetDefaultEndpoint($DeviceId, $role)
-    if ($hr -ne 0) {
-        Write-Error "SetDefaultEndpoint failed with HRESULT $hr"
-        exit $hr
-    }
-}
-"#;
 
 /// RAII guard: switches the default input to CABLE Output, then restores the
 /// previous default input when dropped.
@@ -100,33 +114,22 @@ impl Drop for DefaultInputGuard {
     }
 }
 
-/// Set the default input (microphone) endpoint to `endpoint_id`.
+/// Set the default input (microphone) endpoint to `endpoint_id` for all roles.
 pub fn set_default_input(endpoint_id: &str) -> Result<()> {
-    let script_path = std::env::temp_dir()
-        .join(format!("remote_mic_set_default_device_{}.ps1", std::process::id()));
-    {
-        let mut file = std::fs::File::create(&script_path)
-            .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
-        file.write_all(SET_DEFAULT_PS1.as_bytes())
-            .map_err(|e| AudioError::Windows(format!("write policy script: {e}")))?;
+    unsafe {
+        let policy: IPolicyConfig =
+            CoCreateInstance(&CLSID_PolicyConfigClient, None, CLSCTX_ALL)?;
+
+        let mut device_wide: Vec<u16> = endpoint_id.encode_utf16().collect();
+        device_wide.push(0);
+        let device = PCWSTR(device_wide.as_ptr());
+
+        for role in [0i32, 1, 2] {
+            policy.SetDefaultEndpoint(device, role).ok()?;
+        }
+
+        Ok(())
     }
-
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(&script_path)
-        .arg("-DeviceId")
-        .arg(endpoint_id)
-        .output()
-        .map_err(|e| AudioError::Windows(format!("run policy script: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AudioError::Windows(format!(
-            "set default input failed: {stderr}"
-        )));
-    }
-
-    Ok(())
 }
 
 fn find_cable_output_id() -> Result<String> {
@@ -135,7 +138,5 @@ fn find_cable_output_id() -> Result<String> {
         .into_iter()
         .find(|e| e.name.to_lowercase().contains("cable output"))
         .map(|e| e.id)
-        .ok_or_else(|| {
-            AudioError::Windows("CABLE Output endpoint not found".to_string())
-        })
+        .ok_or_else(|| AudioError::Windows("CABLE Output endpoint not found".to_string()))
 }

@@ -11,6 +11,7 @@ core-log = { path = "../core-log" }
 
 [target.'cfg(windows)'.dependencies]
 cpal = "0.15"
+windows-core = "0.62"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Media_Audio",
