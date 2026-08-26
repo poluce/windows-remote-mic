@@ -1,23 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-type Endpoint = {
-  id: string;
-  name: string;
-  kind: "Output" | "Input";
-};
-
 type Diagnostics = {
-  output_endpoints: Endpoint[];
-  input_endpoints: Endpoint[];
   has_vb_cable: boolean;
   cable_input_present: boolean;
   cable_output_present: boolean;
 };
 
 const EMPTY: Diagnostics = {
-  output_endpoints: [],
-  input_endpoints: [],
   has_vb_cable: false,
   cable_input_present: false,
   cable_output_present: false,
@@ -42,7 +32,6 @@ export function DiagnosticsPage() {
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
   const [logs, setLogs] = useState<LogFileInfo[]>([]);
   const [logContent, setLogContent] = useState("");
-  const [endpointTab, setEndpointTab] = useState<"output" | "input">("output");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -102,12 +91,11 @@ export function DiagnosticsPage() {
       setStatus("测试音循环仅在桌面应用内可用");
       return;
     }
-    const device = data.output_endpoints[0]?.name ?? null;
     setLooping(true);
     setStatus("循环播放测试音中…");
     try {
       const result = await invoke<string>("play_test_tone_loop", {
-        deviceName: device,
+        deviceName: "CABLE Input",
         repetitions: 3,
       });
       setStatus(result);
@@ -134,10 +122,6 @@ export function DiagnosticsPage() {
             <div className="brief-label">VB-CABLE 链路</div>
           </div>
           <div className={`brief ${data.cable_input_present ? "ok" : "warn"}`}>
-            <div className="brief-value">{data.output_endpoints.length}</div>
-            <div className="brief-label">输出设备数</div>
-          </div>
-          <div className={`brief ${data.cable_input_present ? "ok" : "warn"}`}>
             <div className="brief-value">{data.cable_input_present ? "有" : "无"}</div>
             <div className="brief-label">CABLE 输入</div>
           </div>
@@ -156,49 +140,6 @@ export function DiagnosticsPage() {
             打开/关闭快捷菜单
           </button>
         </div>
-      </section>
-
-      <section className="card">
-        <div className="card-title">设备端点</div>
-        <div className="category-tabs">
-          <button
-            className={`btn small ${endpointTab === "output" ? "primary" : ""}`}
-            onClick={() => setEndpointTab("output")}
-          >
-            输出设备
-          </button>
-          <button
-            className={`btn small ${endpointTab === "input" ? "primary" : ""}`}
-            onClick={() => setEndpointTab("input")}
-          >
-            输入设备
-          </button>
-        </div>
-        {endpointTab === "output" ? (
-          data.output_endpoints.length === 0 ? (
-            <p className="hint">暂无输出设备</p>
-          ) : (
-            <ul className="endpoint-list">
-              {data.output_endpoints.map((ep) => (
-                <li key={ep.id}>
-                  <span>{ep.name}</span>
-                  <span className="badge badge-ok">输出</span>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : data.input_endpoints.length === 0 ? (
-          <p className="hint">暂无输入设备</p>
-        ) : (
-          <ul className="endpoint-list">
-            {data.input_endpoints.map((ep) => (
-              <li key={ep.id}>
-                <span>{ep.name}</span>
-                <span className="badge badge-warn">输入</span>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="card">

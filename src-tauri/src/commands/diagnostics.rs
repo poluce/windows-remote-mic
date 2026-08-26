@@ -26,11 +26,18 @@ pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
     engine.feed(&bytes)
 }
 
+fn is_log_like(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("log" | "txt" | "bin" | "dat" | "cap")
+    )
+}
+
 fn list_logs_in_dir(dir: &std::path::Path, prefix: &str, out: &mut Vec<LogFileInfo>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() {
+            if path.is_file() && is_log_like(&path) {
                 let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 out.push(LogFileInfo {
                     name: format!("{prefix}{}", entry.file_name().to_string_lossy()),
