@@ -17,9 +17,14 @@ pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
 pub fn start_voice_bridge(device_id: String, output_device: String) -> String {
     #[cfg(target_os = "windows")]
     {
+        core_log::log_info(&format!(
+            "[commands/audio] start_voice_bridge requested for device_id='{device_id}', output='{output_device}'"
+        ));
         std::thread::spawn(move || {
             if let Err(e) = core_voice::run_bridge(&device_id, &output_device) {
-                core_input::log_error(&format!("[audio] voice bridge error: {e}"));
+                core_log::log_error(&format!("[commands/audio] voice bridge worker thread exited with error: {e}"));
+            } else {
+                core_log::log_info("[commands/audio] voice bridge worker thread finished normally");
             }
         });
         "语音桥已启动（监听 ATVV Audio → CABLE 输出）".to_string()

@@ -1,7 +1,9 @@
 //! core-input — Windows keyboard injection (SendInput).
 
 pub mod error;
+pub mod hook;
 pub use error::{InputError, Result};
+pub use hook::{start_key_hook, RawKeyEvent};
 
 /// Append a line to `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`.
 ///

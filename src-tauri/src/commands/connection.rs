@@ -17,15 +17,47 @@ pub struct PersistedSettings {
 }
 
 #[tauri::command]
-pub fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
-    core_ble::scan_for_rc003().map_err(|e| e.to_string())
+pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
+    core_log::log_info("[commands/connection] scan_for_rc003 invoked from UI");
+    tauri::async_runtime::spawn_blocking(|| {
+        match core_ble::scan_for_rc003() {
+            Ok(device) => {
+                core_log::log_info(&format!(
+                    "[commands/connection] scan_for_rc003 succeeded: name='{}', id='{}'",
+                    device.name, device.id
+                ));
+                Ok(device)
+            }
+            Err(e) => {
+                core_log::log_error(&format!("[commands/connection] scan_for_rc003 failed: {e}"));
+                Err(e.to_string())
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn connect_rc003() -> Result<Rc003Connection, String> {
-    core_ble::scan_and_connect()
-        .map(|(device, endpoints)| Rc003Connection { device, endpoints })
-        .map_err(|e| e.to_string())
+pub async fn connect_rc003() -> Result<Rc003Connection, String> {
+    core_log::log_info("[commands/connection] connect_rc003 invoked from UI");
+    tauri::async_runtime::spawn_blocking(|| {
+        match core_ble::scan_and_connect() {
+            Ok((device, endpoints)) => {
+                core_log::log_info(&format!(
+                    "[commands/connection] connect_rc003 succeeded for '{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
+                    device.name, device.id, endpoints.tx, endpoints.audio, endpoints.control
+                ));
+                Ok(Rc003Connection { device, endpoints })
+            }
+            Err(e) => {
+                core_log::log_error(&format!("[commands/connection] connect_rc003 failed: {e}"));
+                Err(e.to_string())
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

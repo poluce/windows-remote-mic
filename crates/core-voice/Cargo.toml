@@ -9,6 +9,7 @@ serde.workspace = true
 thiserror.workspace = true
 core-atvv = { path = "../core-atvv" }
 core-audio = { path = "../core-audio" }
+core-log = { path = "../core-log" }
 
 [dev-dependencies]
 

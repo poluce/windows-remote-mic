@@ -59,7 +59,7 @@ export function ConnectionPage() {
       return;
     }
     setConnecting(true);
-    setConnectResult("正在连接并枚举 GATT（UNCACHED）…");
+    setConnectResult("正在连接并枚举 GATT 特征…（如长时间无响应，请按一下遥控器按键以唤醒蓝牙）");
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       setConnected(true);

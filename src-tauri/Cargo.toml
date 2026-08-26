@@ -23,6 +23,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
 core-ble = { path = "../crates/core-ble" }
 core-atvv = { path = "../crates/core-atvv" }
 core-audio = { path = "../crates/core-audio" }
@@ -33,4 +37,5 @@ core-config = { path = "../crates/core-config" }
 core-diagnostics = { path = "../crates/core-diagnostics" }
 core-voice = { path = "../crates/core-voice" }
 core-stats = { path = "../crates/core-stats" }
+core-log = { path = "../crates/core-log" }
 

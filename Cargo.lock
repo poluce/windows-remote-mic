@@ -582,6 +582,7 @@ dependencies = [
 name = "core-ble"
 version = "0.1.0"
 dependencies = [
+ "core-log",
  "pollster",
  "serde",
  "tempfile",
@@ -648,6 +649,7 @@ dependencies = [
 name = "core-hid"
 version = "0.1.0"
 dependencies = [
+ "core-log",
  "core-mapping",
  "serde",
  "thiserror 2.0.20",
@@ -697,6 +699,7 @@ dependencies = [
  "core-audio",
  "core-ble",
  "core-input",
+ "core-log",
  "serde",
  "thiserror 2.0.20",
 ]
@@ -3124,6 +3127,7 @@ dependencies = [
  "core-diagnostics",
  "core-hid",
  "core-input",
+ "core-log",
  "core-mapping",
  "core-stats",
  "core-voice",
@@ -3132,6 +3136,8 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "webview2-com",
+ "windows-core 0.61.2",
 ]
 
 [[package]]

@@ -12,18 +12,41 @@ use crate::VoiceEngine;
 
 /// Run the voice bridge using real ATVV control events.
 pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
-    let link = AtvvLink::connect(device_id).map_err(|e| e.to_string())?;
+    core_log::log_info(&format!(
+        "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
+    ));
 
-    link.enable_audio_notifications()
-        .map_err(|e| e.to_string())?;
-    link.enable_control_notifications()
-        .map_err(|e| e.to_string())?;
-    link.write_tx(&GET_CAPABILITIES_V10)
-        .map_err(|e| e.to_string())?;
+    let link = AtvvLink::connect(device_id).map_err(|e| {
+        core_log::log_error(&format!("[bridge] AtvvLink::connect failed: {e}"));
+        e.to_string()
+    })?;
+    core_log::log_info("[bridge] AtvvLink connected");
+
+    link.enable_audio_notifications().map_err(|e| {
+        core_log::log_error(&format!("[bridge] enable_audio_notifications failed: {e}"));
+        e.to_string()
+    })?;
+    core_log::log_info("[bridge] audio notifications enabled");
+
+    link.enable_control_notifications().map_err(|e| {
+        core_log::log_error(&format!("[bridge] enable_control_notifications failed: {e}"));
+        e.to_string()
+    })?;
+    core_log::log_info("[bridge] control notifications enabled");
+
+    link.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
+        core_log::log_error(&format!("[bridge] write_tx GET_CAPABILITIES_V10 failed: {e}"));
+        e.to_string()
+    })?;
+    core_log::log_info("[bridge] GET_CAPABILITIES_V10 sent to remote");
 
     let sink = Arc::new(
-        core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| e.to_string())?,
+        core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
+            core_log::log_error(&format!("[bridge] failed to initialize AudioSink: {e}"));
+            e.to_string()
+        })?,
     );
+    core_log::log_info(&format!("[bridge] AudioSink initialized on '{output_device}'"));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
         .map(|base| std::path::Path::new(&base).join("RemoteMic/RC003/captures"))
@@ -44,10 +67,19 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
             };
             let chunk = eng.feed(&bytes);
             if !chunk.output.is_empty() {
+                core_log::log_debug(&format!(
+                    "[bridge] audio chunk decoded: {} samples -> output {} samples",
+                    chunk.pcm_samples,
+                    chunk.output_samples
+                ));
                 let _ = frame_tx.send(chunk.output);
             }
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            core_log::log_error(&format!("[bridge] register_audio_handler failed: {e}"));
+            e.to_string()
+        })?;
+    core_log::log_info("[bridge] audio handler registered");
 
     let engine_ctrl = engine.clone();
     let capture_ctrl = capture.clone();
@@ -55,13 +87,16 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
+            core_log::log_info(&format!("[bridge] control notification received: {:02X?}", bytes));
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,
             };
             let Some(event) = parse_control(&bytes) else {
+                core_log::log_warn(&format!("[bridge] unrecognized control packet: {:02X?}", bytes));
                 return;
             };
+            core_log::log_info(&format!("[bridge] parsed control event: {:?}", event));
             match event {
                 RawControlEvent::Caps(caps) => {
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
