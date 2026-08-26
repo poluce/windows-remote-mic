@@ -22,12 +22,16 @@ type SelfTestItem = {
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
+  const [checked, setChecked] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [installMsg, setInstallMsg] = useState("");
   const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
 
   async function runCheck() {
     if (!isTauri()) {
       setStatus("浏览器预览：无法调用后端，请在桌面应用内运行检查");
+      setChecked(true);
       return;
     }
     try {
@@ -35,12 +39,32 @@ export function DiagnosticsPage() {
       setStatus("检查完成");
     } catch (err) {
       setStatus(`检查失败: ${err}`);
+    } finally {
+      setChecked(true);
     }
   }
 
   useEffect(() => {
     runCheck();
   }, []);
+
+  async function installVbCable() {
+    if (!isTauri()) {
+      setInstallMsg("请在桌面应用内一键安装");
+      return;
+    }
+    setInstalling(true);
+    setInstallMsg("正在安装…请留意 UAC 弹窗确认");
+    try {
+      const msg = await invoke<string>("install_vb_cable");
+      setInstallMsg(msg);
+      await runCheck();
+    } catch (err) {
+      setInstallMsg(`安装失败：${err}`);
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   async function runSelfTest() {
     if (!isTauri()) {
@@ -100,6 +124,15 @@ export function DiagnosticsPage() {
             <div className="brief-label">CABLE 输出（麦克风）</div>
           </div>
         </div>
+        {checked && !data.has_vb_cable && (
+          <div className="actions">
+            <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
+              {installing ? "正在安装…" : "一键安装 VB-CABLE"}
+            </button>
+            {!isTauri() && <span className="hint">请在桌面应用内安装</span>}
+          </div>
+        )}
+        {installMsg && <p className="hint">{installMsg}</p>}
       </section>
 
       <section className="card">
