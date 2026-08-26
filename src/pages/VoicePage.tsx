@@ -10,7 +10,7 @@ type VbCableStatus = {
 type DriverStatus = "loading" | "ready" | "missing" | "unknown";
 
 const DRIVER_OPTIONS = [
-  { value: "vb_cable", label: "VB-CABLE（当前）", disabled: false },
+  { value: "vb_cable", label: "VB-CABLE", disabled: false },
   { value: "voicemeeter", label: "Voicemeeter（预留）", disabled: true },
   { value: "rearoute", label: "ReaRoute（预留）", disabled: true },
 ] as const;
@@ -171,7 +171,7 @@ export function VoicePage() {
                   <span className={`status-dot ${driverStatus}`} />
                   <span>
                     {virtualDriver === "vb_cable"
-                      ? "VB-CABLE（当前）"
+                      ? "VB-CABLE"
                       : virtualDriver === "voicemeeter"
                         ? "Voicemeeter（预留）"
                         : "ReaRoute（预留）"}
