@@ -2,14 +2,6 @@ use serde::Serialize;
 
 use core_mapping::gesture::GestureDetector;
 
-/// One log file entry.
-#[derive(Serialize)]
-pub struct LogFileInfo {
-    name: String,
-    path: String,
-    size: u64,
-}
-
 /// One self-test item with a PASS / FAIL / SKIP verdict.
 #[derive(Serialize)]
 pub struct SelfTestItem {
@@ -24,61 +16,6 @@ pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
     let mut engine = core_voice::VoiceEngine::new();
     let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
     engine.feed(&bytes)
-}
-
-fn is_log_like(path: &std::path::Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("log" | "txt" | "bin" | "dat" | "cap")
-    )
-}
-
-fn list_logs_in_dir(dir: &std::path::Path, prefix: &str, out: &mut Vec<LogFileInfo>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && is_log_like(&path) {
-                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                out.push(LogFileInfo {
-                    name: format!("{prefix}{}", entry.file_name().to_string_lossy()),
-                    path: path.display().to_string(),
-                    size,
-                });
-            }
-        }
-    }
-}
-
-/// List local log and capture files (config/logs/captures).
-#[tauri::command]
-pub fn list_log_files() -> Vec<LogFileInfo> {
-    let base = std::env::var("LOCALAPPDATA")
-        .map(|b| std::path::PathBuf::from(b).join("RemoteMic/RC003"))
-        .unwrap_or_default();
-    let mut out = Vec::new();
-    list_logs_in_dir(&base, "", &mut out);
-    list_logs_in_dir(&base.join("logs"), "logs/", &mut out);
-    list_logs_in_dir(&base.join("captures"), "captures/", &mut out);
-    out
-}
-
-/// Read a text log file (truncated to a safe size for the UI).
-#[tauri::command]
-pub fn read_log_file(path: String) -> Result<String, String> {
-    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&data).to_string();
-    Ok(limit_text(&text, 50_000))
-}
-
-fn limit_text(text: &str, max: usize) -> String {
-    if text.len() <= max {
-        return text.to_string();
-    }
-    let mut start = text.len() - max;
-    while !text.is_char_boundary(start) {
-        start += 1;
-    }
-    format!("...（已截断）\n{}", &text[start..])
 }
 
 /// Run a hardware-independent capability self-test (Windows does the audio part).

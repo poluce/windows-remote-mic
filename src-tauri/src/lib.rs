@@ -267,8 +267,6 @@ pub fn run() {
             commands::audio::play_test_tone,
             commands::audio::play_test_tone_loop,
             commands::diagnostics::decode_atvv_preview,
-            commands::diagnostics::list_log_files,
-            commands::diagnostics::read_log_file,
             commands::diagnostics::run_self_test,
             commands::quick_menu::toggle_quick_menu,
         ])
