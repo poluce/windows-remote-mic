@@ -44,9 +44,10 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-mapping      # 按键映射、手势识别
 │   ├── core-config       # 配置持久化（JSON，原子写入）
 │   ├── core-voice        # 语音桥 / 模拟链路
+│   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
 │   ├── core-hid          # Windows Raw Input 框架（可扩展）
-│   └── core-diagnostics  # 日志 / 自检
+│   └── core-diagnostics  # 自检 / 解码预览
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
 ├── scripts/              # Windows PowerShell 辅助脚本
@@ -126,6 +127,27 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
+
+### 5. 日志
+- 统一写入 `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`。
+- 每行格式：`[时间] [级别] 内容`，级别包含：
+  - `DEBUG` — 临时排错，默认关闭
+  - `INFO` — 正常流程
+  - `WARN` — 警告
+  - `ERROR` — 错误
+- 临时开启 DEBUG：
+  - 环境变量 `REMOTE_MIC_DEBUG=1`
+  - 或创建文件 `%LOCALAPPDATA%\RemoteMic\RC003\debug`（实时生效，无需重启）
+- 日志接口统一走 `core-log`：
+  - `core_log::log_debug / log_line / log_info / log_warn / log_error`
+  - `core-input` 提供 `log_line / log_debug / log_warn / log_error` 薄封装给现有调用方。
+- 不要使用 `eprintln!` / `println!` 输出调试信息，统一写入日志文件。
+- 筛选示例（PowerShell）：
+  ```powershell
+  Select-String -Path "$env:LOCALAPPDATA\RemoteMic\RC003\remote-mic.log" -Pattern "\[ERROR\]"
+  Select-String -Path "$env:LOCALAPPDATA\RemoteMic\RC003\remote-mic.log" -Pattern "\[DEBUG\]"
+  Select-String -Path "$env:LOCALAPPDATA\RemoteMic\RC003\remote-mic.log" -Pattern "\[simulate\]"
+  ```
 
 ## 约定与注意事项
 
