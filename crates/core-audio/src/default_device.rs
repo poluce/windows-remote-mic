@@ -69,6 +69,9 @@ impl DefaultInputGuard {
             previous
         ));
 
+        // Let Windows propagate the endpoint change before verifying/using it.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
         let current = crate::endpoint::default_input_name();
         core_log::log_line(&format!(
             "[default-device] after switch default_input={:?}",
