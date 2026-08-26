@@ -89,11 +89,11 @@ export function VoicePage() {
         pcm_samples: number;
         output_samples: number;
         win_h_toast: boolean;
-        test_tone_hz: number;
-        test_tone_ms: number;
+        test_audio: string;
+        test_audio_ms: number;
       }>("simulate_voice_chain", { outputDevice: "CABLE Input" });
       setSimResult(
-        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音 ${ret.test_tone_hz}Hz/${ret.test_tone_ms}ms，Win+H=${ret.win_h_toast}`
+        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音频 ${ret.test_audio}（${ret.test_audio_ms}ms），Win+H=${ret.win_h_toast}`
       );
     } catch (err) {
       setSimResult(`模拟失败：${err}`);
@@ -258,7 +258,7 @@ export function VoicePage() {
             rows={3}
             placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
           />
-          <p className="hint">模拟会自动聚焦此输入框；测试音不是人声，因此不会产生识别文字。</p>
+          <p className="hint">模拟会自动聚焦此输入框；使用真实语音样本测试，识别文字会显示在这里。</p>
         </section>
       )}
 

@@ -3,13 +3,12 @@
 use core_atvv::protocol::ControlEvent;
 use core_input::press_win_h;
 use serde::Serialize;
-use std::f32::consts::TAU;
+use std::path::Path;
 
 use crate::VoiceEngine;
 
-/// Default simulated test-signal metadata, so the UI can show what audio was played.
-pub const TEST_TONE_HZ: u32 = 1000;
-pub const TEST_TONE_MS: u64 = 500;
+/// Built-in public-domain speech sample used when no custom WAV is supplied.
+const TEST_SPEECH_WAV: &[u8] = include_bytes!("../assets/test_speech.wav");
 
 /// Result of the simulated voice chain.
 #[derive(Debug, Clone, Serialize)]
@@ -18,20 +17,30 @@ pub struct SimulatedVoiceResult {
     pub pcm_samples: usize,
     pub output_samples: usize,
     pub win_h_toast: bool,
-    pub test_tone_hz: u32,
-    pub test_tone_ms: u64,
+    pub test_audio: String,
+    pub test_audio_ms: u64,
 }
 
-/// Run: Win+H start -> StreamStart -> inject specified test PCM after the
+/// Run: Win+H start -> StreamStart -> inject a real speech WAV after the
 /// remote-audio parsing stage (via `VoiceEngine::feed_pcm`) -> CABLE output
 /// -> StreamStop -> Win+H stop.
+///
+/// `test_audio_path` is optional. When `None`, a built-in public-domain speech
+/// sample is used; when `Some(path)`, the given PCM WAV file is loaded.
 pub fn simulate_voice_chain(
     output_device: &str,
-    test_tone_hz: Option<u32>,
-    test_tone_ms: Option<u64>,
+    test_audio_path: Option<&str>,
 ) -> Result<SimulatedVoiceResult, String> {
-    let hz = test_tone_hz.unwrap_or(TEST_TONE_HZ);
-    let ms = test_tone_ms.unwrap_or(TEST_TONE_MS);
+    let (sample_rate, pcm) = match test_audio_path {
+        Some(path) => {
+            let bytes = std::fs::read(path).map_err(|e| format!("读取测试音频失败：{e}"))?;
+            load_wav_pcm(&bytes)?
+        }
+        None => load_wav_pcm(TEST_SPEECH_WAV)?,
+    };
+
+    let samples = resample_to_16k(&pcm, sample_rate);
+    let duration_ms = (samples.len() as u64 * 1000 / 16_000).max(1);
 
     let sink = core_audio::sink::AudioSink::new(Some(output_device))
         .map_err(|e| e.to_string())?;
@@ -40,34 +49,160 @@ pub fn simulate_voice_chain(
     engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
     press_win_h().map_err(|e| e.to_string())?;
 
-    // Generate a sine test tone at the remote's 16 kHz voice rate and inject
-    // it after parsing/decoding, so downstream output can be tested with a
-    // caller-specified audio signal.
-    let sample_rate = 16_000u32;
-    let total_samples = (sample_rate as u64 * ms / 1000) as usize;
-    let amplitude = 6_000f32;
-    let samples: Vec<i16> = (0..total_samples)
-        .map(|i| {
-            let t = i as f32 / sample_rate as f32;
-            ((t * hz as f32 * TAU).sin() * amplitude) as i16
-        })
-        .collect();
-
     let chunk = engine.feed_pcm(&samples);
     sink.push(&chunk.output);
 
-    // Let the sink play the test tone.
-    std::thread::sleep(std::time::Duration::from_millis(ms + 200));
+    // Let the sink finish playing the speech sample.
+    std::thread::sleep(std::time::Duration::from_millis(duration_ms + 300));
 
     engine.on_control(ControlEvent::StreamStop).map_err(|e| e.to_string())?;
     press_win_h().map_err(|e| e.to_string())?;
+
+    let audio_name = test_audio_path
+        .and_then(|p| Path::new(p).file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "内置公开语音样本".to_string());
 
     Ok(SimulatedVoiceResult {
         frames: chunk.complete_frames,
         pcm_samples: chunk.pcm_samples,
         output_samples: chunk.output_samples,
         win_h_toast: true,
-        test_tone_hz: hz,
-        test_tone_ms: ms,
+        test_audio: audio_name,
+        test_audio_ms: duration_ms,
     })
+}
+
+/// Parse a standard PCM WAV and return `(sample_rate, mono i16 samples)`.
+fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
+    if data.len() < 44 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+        return Err("不是有效的 WAV 文件".to_string());
+    }
+
+    let mut sample_rate = 0u32;
+    let mut channels = 0u16;
+    let mut bits_per_sample = 0u16;
+    let mut raw_data: Option<&[u8]> = None;
+
+    let mut pos = 12usize;
+    while pos + 8 <= data.len() {
+        let chunk_id = &data[pos..pos + 4];
+        let chunk_size = u32::from_le_bytes([
+            data[pos + 4],
+            data[pos + 5],
+            data[pos + 6],
+            data[pos + 7],
+        ]) as usize;
+        let body = pos + 8;
+        if body + chunk_size > data.len() {
+            break;
+        }
+
+        match chunk_id {
+            b"fmt " => {
+                if chunk_size < 16 {
+                    return Err("WAV fmt 块不完整".to_string());
+                }
+                let audio_format = u16::from_le_bytes([data[body], data[body + 1]]);
+                if audio_format != 1 {
+                    return Err("仅支持 PCM WAV".to_string());
+                }
+                channels = u16::from_le_bytes([data[body + 2], data[body + 3]]);
+                sample_rate = u32::from_le_bytes([
+                    data[body + 4],
+                    data[body + 5],
+                    data[body + 6],
+                    data[body + 7],
+                ]);
+                bits_per_sample = u16::from_le_bytes([data[body + 14], data[body + 15]]);
+            }
+            b"data" => {
+                raw_data = Some(&data[body..body + chunk_size]);
+            }
+            _ => {}
+        }
+
+        pos = body + chunk_size + (chunk_size % 2);
+    }
+
+    if sample_rate == 0 || channels == 0 || bits_per_sample == 0 {
+        return Err("WAV 缺少必要的格式信息".to_string());
+    }
+    let raw_data = raw_data.ok_or_else(|| "WAV 缺少 data 块".to_string())?;
+
+    let mut pcm = Vec::with_capacity(raw_data.len() / 2);
+    match bits_per_sample {
+        16 => {
+            for pair in raw_data.chunks_exact(2) {
+                pcm.push(i16::from_le_bytes([pair[0], pair[1]]));
+            }
+        }
+        8 => {
+            for &byte in raw_data {
+                pcm.push(((i16::from(byte)) - 128) << 8);
+            }
+        }
+        _ => return Err(format!("不支持的位深：{bits_per_sample}")),
+    }
+
+    if channels > 1 {
+        let frame_count = pcm.len() / channels as usize;
+        let mut mono = Vec::with_capacity(frame_count);
+        for frame in pcm.chunks_exact(channels as usize) {
+            let sum: i32 = frame.iter().map(|&s| i32::from(s)).sum();
+            mono.push((sum / i32::from(channels)) as i16);
+        }
+        pcm = mono;
+    }
+
+    if pcm.is_empty() {
+        return Err("WAV 中没有音频样本".to_string());
+    }
+
+    Ok((sample_rate, pcm))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_speech_wav_is_valid_pcm() {
+        let (sample_rate, pcm) = load_wav_pcm(TEST_SPEECH_WAV).unwrap();
+        assert_eq!(sample_rate, 8000);
+        assert!(!pcm.is_empty());
+    }
+
+    #[test]
+    fn resample_8k_to_16k_preserves_length_ratio() {
+        let input = vec![0i16; 800];
+        let out = resample_to_16k(&input, 8000);
+        assert_eq!(out.len(), 1600);
+    }
+}
+
+/// Simple linear resampler to the 16 kHz rate used by the voice pipeline.
+fn resample_to_16k(samples: &[i16], from_rate: u32) -> Vec<i16> {
+    if from_rate == 16_000 {
+        return samples.to_vec();
+    }
+
+    let out_len = ((samples.len() as f64 * 16_000.0 / f64::from(from_rate)).round() as usize)
+        .max(1);
+    let step = f64::from(from_rate) / 16_000.0;
+    let mut out = Vec::with_capacity(out_len);
+
+    for i in 0..out_len {
+        let pos = i as f64 * step;
+        let idx = pos.floor() as usize;
+        let frac = pos - idx as f64;
+        let a = f64::from(samples.get(idx).copied().unwrap_or(0));
+        let b = samples
+            .get(idx + 1)
+            .copied()
+            .map(f64::from)
+            .unwrap_or(a);
+        out.push((a + (b - a) * frac).round() as i16);
+    }
+
+    out
 }
