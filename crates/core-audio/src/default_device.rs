@@ -69,6 +69,19 @@ impl DefaultInputGuard {
             previous
         ));
 
+        let current = crate::endpoint::default_input_name();
+        core_log::log_line(&format!(
+            "[default-device] after switch default_input={:?}",
+            current
+        ));
+        if let Some(name) = current {
+            if !name.to_lowercase().contains("cable output") {
+                core_log::log_warn(
+                    "[default-device] CABLE Output is NOT the active default input after switch",
+                );
+            }
+        }
+
         Ok(Self { previous })
     }
 }
