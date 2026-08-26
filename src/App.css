@@ -302,8 +302,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   padding: 8px 0;
 }
 
@@ -311,10 +311,10 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 18px 22px;
-  min-width: 168px;
-  border-radius: var(--radius);
+  gap: 3px;
+  padding: 8px 12px;
+  min-width: 108px;
+  border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-3);
@@ -327,17 +327,33 @@ button {
 }
 
 .route-node span {
-  font-size: 28px;
+  font-size: 18px;
 }
 
 .route-node small {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .route-arrow {
-  font-size: 22px;
+  font-size: 16px;
   color: var(--text-3);
+}
+
+.route-arrow.flow {
+  animation: routeFlow 1.2s ease-in-out infinite;
+}
+
+@keyframes routeFlow {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(4px);
+  }
 }
 
 /* ---------- Diagnostics ---------- */
