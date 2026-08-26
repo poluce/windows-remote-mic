@@ -76,3 +76,18 @@ pub fn find_endpoint_by_id(id: &str) -> Result<AudioEndpoint> {
         .find(|e| e.id == id)
         .ok_or_else(|| crate::error::AudioError::EndpointNotFound(id.to_string()))
 }
+
+/// Return the current default capture (microphone) device name, if available.
+pub fn default_input_name() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        use cpal::traits::{DeviceTrait, HostTrait};
+        cpal::default_host()
+            .default_input_device()
+            .and_then(|device| device.name().ok())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
