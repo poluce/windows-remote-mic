@@ -27,6 +27,7 @@ export function VoicePage() {
   const [virtualDriver, setVirtualDriver] = useState("vb_cable");
   const [selected] = useState("CABLE 输入（VB-CABLE）");
   const [simResult, setSimResult] = useState("");
+  const [simText, setSimText] = useState("");
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("unknown");
   const [driverOpen, setDriverOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
@@ -95,6 +96,7 @@ export function VoicePage() {
       setSimResult(
         `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音 ${ret.test_tone_hz}Hz/${ret.test_tone_ms}ms，Win+H=${ret.win_h_toast}`
       );
+      setSimText("【模拟识别】这是一段测试语音输入");
     } catch (err) {
       setSimResult(`模拟失败：${err}`);
     }
@@ -256,9 +258,11 @@ export function VoicePage() {
             ref={simInputRef}
             className="sim-input"
             rows={3}
+            value={simText}
+            onChange={(e) => setSimText(e.currentTarget.value)}
             placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
           />
-          <p className="hint">模拟时会自动聚焦此输入框；识别出的文字会显示在这里。</p>
+          <p className="hint">模拟完成后会填入模拟识别文字（非真实语音识别结果）。</p>
         </section>
       )}
 
