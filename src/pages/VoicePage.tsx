@@ -9,6 +9,13 @@ type VbCableStatus = {
 
 type DriverStatus = "loading" | "ready" | "missing" | "unknown";
 
+const TARGET_OPTIONS = [
+  { value: "windows_voice", label: "Windows 语音键入（Win + H）", status: "ready" },
+  { value: "ime_wechat", label: "微信输入法（预留）", status: "preview" },
+  { value: "ime_doubao", label: "豆包输入法（预留）", status: "preview" },
+  { value: "ime_sogou", label: "搜狗输入法（预留）", status: "preview" },
+] as const;
+
 const DRIVER_OPTIONS = [
   { value: "vb_cable", label: "VB-CABLE", disabled: false },
   { value: "voicemeeter", label: "Voicemeeter（预留）", disabled: true },
@@ -22,7 +29,9 @@ export function VoicePage() {
   const [simResult, setSimResult] = useState("");
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("unknown");
   const [driverOpen, setDriverOpen] = useState(false);
+  const [targetOpen, setTargetOpen] = useState(false);
   const driverRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (voiceTarget !== "windows_voice") {
@@ -51,6 +60,9 @@ export function VoicePage() {
 
   useEffect(() => {
     function onPointerDown(e: MouseEvent) {
+      if (targetRef.current && !targetRef.current.contains(e.target as Node)) {
+        setTargetOpen(false);
+      }
       if (driverRef.current && !driverRef.current.contains(e.target as Node)) {
         setDriverOpen(false);
       }
@@ -147,25 +159,50 @@ export function VoicePage() {
         <div className="card-title">识别方案</div>
         <div className="wizard-group">
           <div className="wizard-label">语音识别目标</div>
-          <select
-            className="select"
-            value={voiceTarget}
-            onChange={(e) => setVoiceTarget(e.currentTarget.value)}
-          >
-            <option value="windows_voice">Windows 语音键入（Win + H）</option>
-            <option value="ime_wechat">微信输入法（预留）</option>
-            <option value="ime_doubao">豆包输入法（预留）</option>
-            <option value="ime_sogou">搜狗输入法（预留）</option>
-          </select>
+          <div className="status-select" ref={targetRef}>
+            <button
+              type="button"
+              className={`status-select-trigger${targetOpen ? " open" : ""}`}
+              onClick={() => setTargetOpen((open) => !open)}
+            >
+              <span
+                className={`status-dot ${
+                  TARGET_OPTIONS.find((target) => target.value === voiceTarget)?.status ?? "preview"
+                }`}
+              />
+              <span>
+                {TARGET_OPTIONS.find((target) => target.value === voiceTarget)?.label}
+              </span>
+              <span className="status-select-caret">▾</span>
+            </button>
+            {targetOpen && (
+              <div className="status-select-menu">
+                {TARGET_OPTIONS.map((target) => (
+                  <button
+                    type="button"
+                    key={target.value}
+                    className="status-option"
+                    onClick={() => {
+                      setVoiceTarget(target.value);
+                      setTargetOpen(false);
+                    }}
+                  >
+                    <span className={`status-dot ${target.status}`} />
+                    <span>{target.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {voiceTarget === "windows_voice" && (
           <>
             <div className="wizard-group">
               <div className="wizard-label">虚拟声卡</div>
-              <div className="driver-select" ref={driverRef}>
+              <div className="status-select" ref={driverRef}>
                 <button
                   type="button"
-                  className={`driver-select-trigger${driverOpen ? " open" : ""}`}
+                  className={`status-select-trigger${driverOpen ? " open" : ""}`}
                   onClick={() => setDriverOpen((open) => !open)}
                 >
                   <span className={`status-dot ${driverStatus}`} />
@@ -176,15 +213,15 @@ export function VoicePage() {
                         ? "Voicemeeter（预留）"
                         : "ReaRoute（预留）"}
                   </span>
-                  <span className="driver-select-caret">▾</span>
+                  <span className="status-select-caret">▾</span>
                 </button>
                 {driverOpen && (
-                  <div className="driver-select-menu">
+                  <div className="status-select-menu">
                     {DRIVER_OPTIONS.map((driver) => (
                       <button
                         type="button"
                         key={driver.value}
-                        className="driver-option"
+                        className="status-option"
                         disabled={driver.disabled}
                         onClick={() => {
                           setVirtualDriver(driver.value);

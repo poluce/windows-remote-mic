@@ -447,12 +447,12 @@ button {
   font-size: 13px;
 }
 
-.driver-select {
+.status-select {
   position: relative;
   max-width: 420px;
 }
 
-.driver-select-trigger {
+.status-select-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -467,16 +467,16 @@ button {
   text-align: left;
 }
 
-.driver-select-trigger.open {
+.status-select-trigger.open {
   border-color: var(--accent);
 }
 
-.driver-select-caret {
+.status-select-caret {
   margin-left: auto;
   color: var(--text-3);
 }
 
-.driver-select-menu {
+.status-select-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -489,7 +489,7 @@ button {
   box-shadow: var(--shadow);
 }
 
-.driver-option {
+.status-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -503,11 +503,11 @@ button {
   text-align: left;
 }
 
-.driver-option:hover:not(:disabled) {
+.status-option:hover:not(:disabled) {
   background: var(--accent-soft);
 }
 
-.driver-option:disabled {
+.status-option:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
