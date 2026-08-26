@@ -42,26 +42,38 @@ pub fn simulate_voice_chain(
     let samples = resample_to_16k(&pcm, sample_rate);
     let duration_ms = (samples.len() as u64 * 1000 / 16_000).max(1);
 
+    let audio_name = test_audio_path
+        .and_then(|p| Path::new(p).file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "内置公开语音样本".to_string());
+
+    eprintln!(
+        "[simulate] start: device={}, audio={}, sample_rate={}, pcm_samples={}, duration_ms={}",
+        output_device, audio_name, sample_rate, pcm.len(), duration_ms
+    );
+
     let sink = core_audio::sink::AudioSink::new(Some(output_device))
         .map_err(|e| e.to_string())?;
 
     let mut engine = VoiceEngine::new();
     engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
+    eprintln!("[simulate] Win+H start");
     press_win_h().map_err(|e| e.to_string())?;
 
     let chunk = engine.feed_pcm(&samples);
+    eprintln!(
+        "[simulate] pushed output samples={}, pcm_samples={}",
+        chunk.output_samples, chunk.pcm_samples
+    );
     sink.push(&chunk.output);
 
     // Let the sink finish playing the speech sample.
     std::thread::sleep(std::time::Duration::from_millis(duration_ms + 300));
 
     engine.on_control(ControlEvent::StreamStop).map_err(|e| e.to_string())?;
+    eprintln!("[simulate] Win+H stop");
     press_win_h().map_err(|e| e.to_string())?;
 
-    let audio_name = test_audio_path
-        .and_then(|p| Path::new(p).file_name().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "内置公开语音样本".to_string());
-
+    eprintln!("[simulate] done");
     Ok(SimulatedVoiceResult {
         frames: chunk.complete_frames,
         pcm_samples: chunk.pcm_samples,
