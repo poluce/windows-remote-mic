@@ -29,6 +29,7 @@ pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
 
 /// Return the device ID of the current default capture (microphone) endpoint.
 pub(crate) fn default_input_endpoint_id() -> Result<String> {
+    crate::default_device::ensure_com_initialized();
     unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
@@ -46,6 +47,7 @@ unsafe fn list_endpoints(
     dataflow: EDataFlow,
     kind: EndpointKind,
 ) -> Result<Vec<AudioEndpoint>> {
+    crate::default_device::ensure_com_initialized();
     unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;

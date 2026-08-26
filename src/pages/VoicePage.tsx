@@ -103,6 +103,19 @@ export function VoicePage() {
     }
   }
 
+  async function triggerVoiceTyping() {
+    if (!isTauri()) {
+      setSimResult("浏览器预览：请在桌面应用内操作");
+      return;
+    }
+    try {
+      const res = await invoke<string>("trigger_voice_typing");
+      setSimResult(res);
+    } catch (err) {
+      setSimResult(`唤出失败：${err}`);
+    }
+  }
+
   const imeName =
     voiceTarget === "ime_wechat"
       ? "微信输入法"
@@ -271,8 +284,8 @@ export function VoicePage() {
             ? "模拟完整语音链（无遥控器）"
             : `模拟 ${imeName}（未接入）`}
         </button>
-        <button className="btn" disabled>
-          打开系统语音设置
+        <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
+          🎙️ 唤出语音输入条（Win + H）
         </button>
       </section>
 

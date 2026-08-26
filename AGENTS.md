@@ -128,7 +128,13 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
-- 触发 Win+H 前会自动把系统默认输入临时切到 `CABLE Output`，语音会话结束后恢复原默认麦克风（避免用户手动改全局设置）。
+- **Win+H 麦克风绑定机制（重要实测结论）**：
+  - Windows 11 语音输入（`TextInputHost.exe`）维护专属的持久化音频偏好，**完全无视系统全局默认麦克风的切换**（无论是通过 `IPolicyConfig` 动态改全局默认，还是杀进程冷启动 `TextInputHost.exe` 均无效）。
+  - **正确架构与产品规范**：
+    - 后端 `AudioSink` 固定将遥控器音频写入 `CABLE Input`；
+    - 首次使用时通过引导页/语音页指引用户按 `Win+H`，在语音条设置中**手动将麦克风选择为 `CABLE Output`**（仅需配置一次，Windows 永久记忆）；
+    - 这样电脑原本的物理麦克风（如英特尔智音技术）保持为全局默认，开会、微信通话不受任何干扰，遥控器语音输入实现 0 延迟秒级直通。
+    - **禁止**在语音链路中做不可靠的“动态改全局默认麦克风”操作。
 
 ### 5. 日志
 - 统一写入 `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`。

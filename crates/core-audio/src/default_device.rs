@@ -119,8 +119,19 @@ impl Drop for DefaultInputGuard {
     }
 }
 
+#[inline]
+pub(crate) fn ensure_com_initialized() {
+    unsafe {
+        let _ = windows::Win32::System::Com::CoInitializeEx(
+            None,
+            windows::Win32::System::Com::COINIT_MULTITHREADED,
+        );
+    }
+}
+
 /// Set the default input (microphone) endpoint to `endpoint_id` for all roles.
 pub fn set_default_input(endpoint_id: &str) -> Result<()> {
+    ensure_com_initialized();
     unsafe {
         let policy: IPolicyConfig =
             CoCreateInstance(&CLSID_PolicyConfigClient, None, CLSCTX_ALL)?;

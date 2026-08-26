@@ -155,3 +155,17 @@ pub fn play_test_tone(device_name: Option<String>) -> String {
         "测试音播放仅在 Windows 可用".to_string()
     }
 }
+
+/// Trigger Windows Voice Typing (Win+H) to help the user configure CABLE Output in onboarding.
+#[tauri::command]
+pub fn trigger_voice_typing() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        core_input::press_win_h().map_err(|e| e.to_string())?;
+        Ok("已唤出 Windows 语音输入条，请点击 ⚙️ 齿轮将麦克风选为 CABLE Output".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("仅限 Windows".to_string())
+    }
+}
