@@ -112,11 +112,14 @@ pub fn read_log_file(path: String) -> Result<String, String> {
 }
 
 fn limit_text(text: &str, max: usize) -> String {
-    if text.len() > max {
-        format!("...（已截断）\n{}", &text[text.len() - max..])
-    } else {
-        text.to_string()
+    if text.len() <= max {
+        return text.to_string();
     }
+    let mut start = text.len() - max;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("...（已截断）\n{}", &text[start..])
 }
 
 /// Run a hardware-independent capability self-test (Windows does the audio part).
