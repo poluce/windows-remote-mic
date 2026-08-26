@@ -72,6 +72,11 @@ impl DefaultInputGuard {
     pub fn switch_to_cable_output() -> Result<Self> {
         let cable_id = find_cable_output_id()?;
         let previous = crate::wasapi::default_input_endpoint_id().ok();
+        let previous_name = crate::endpoint::default_input_name();
+        core_log::log_line(&format!(
+            "[default-device] previous default input name={:?}",
+            previous_name
+        ));
 
         if previous.as_deref() == Some(cable_id.as_str()) {
             return Ok(Self { previous: None });
@@ -79,7 +84,7 @@ impl DefaultInputGuard {
 
         set_default_input(&cable_id)?;
         core_log::log_line(&format!(
-            "[default-device] switched default input to CABLE Output (previous={:?})",
+            "[default-device] switched default input to CABLE Output (previous_id={:?})",
             previous
         ));
 
