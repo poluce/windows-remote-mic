@@ -270,7 +270,7 @@ pub fn run() {
                         }
                         Err(e) => {
                             core_log::log_warn(&format!(
-                                "[app] failed to access WebView2 to disable accelerator keys: {e}"
+                                "[app] 访问 WebView2 以禁用加速键失败: {e}"
                             ));
                         }
                     }
@@ -280,12 +280,12 @@ pub fn run() {
             let handle = app.handle().clone();
             if let Err(e) = core_input::start_key_hook(move |evt| {
                 core_log::log_debug(&format!(
-                    "[hook] key event: vkey={}, pressed={}",
+                    "[hook] 键盘事件: vkey={}, 按下={}",
                     evt.vkey, evt.pressed
                 ));
                 let _ = handle.emit("raw-remote-key", evt);
             }) {
-                core_log::log_error(&format!("[hook] start_key_hook failed: {e}"));
+                core_log::log_error(&format!("[hook] 启动键盘钩子失败: {e}"));
             }
 
             #[cfg(target_os = "windows")]
@@ -293,7 +293,7 @@ pub fn run() {
                 let handle_raw = app.handle().clone();
                 if let Err(e) = core_hid::raw_input::start_listener(move |evt| {
                     core_log::log_info(&format!(
-                        "[raw_input] remote key event: vkey={}, pressed={}",
+                        "[raw_input] 遥控器按键事件: vkey={}, 按下={}",
                         evt.vkey, evt.pressed
                     ));
                     let _ = handle_raw.emit(
@@ -304,7 +304,7 @@ pub fn run() {
                         },
                     );
                 }) {
-                    core_log::log_error(&format!("[raw_input] start_listener failed: {e}"));
+                    core_log::log_error(&format!("[raw_input] 启动原始输入监听失败: {e}"));
                 }
 
                 let handle_tap = app.handle().clone();
@@ -313,9 +313,7 @@ pub fn run() {
                 });
             }
 
-            core_log::log_info(
-                "[app] Remote Mic application setup completed, windows and global hook initialized",
-            );
+            core_log::log_info("[app] Remote Mic 应用初始化完成，窗口与全局钩子已就绪");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

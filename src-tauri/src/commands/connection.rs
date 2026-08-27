@@ -18,17 +18,17 @@ pub struct PersistedSettings {
 
 #[tauri::command]
 pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
-    core_log::log_info("[commands/connection] scan_for_rc003 invoked from UI");
+    core_log::log_info("[commands/connection] 前端请求扫描 RC003");
     tauri::async_runtime::spawn_blocking(|| match core_ble::scan_for_rc003() {
         Ok(device) => {
             core_log::log_info(&format!(
-                "[commands/connection] scan_for_rc003 succeeded: name='{}', id='{}'",
+                "[commands/connection] 扫描 RC003 成功：名称='{}'，ID='{}'",
                 device.name, device.id
             ));
             Ok(device)
         }
         Err(e) => {
-            core_log::log_error(&format!("[commands/connection] scan_for_rc003 failed: {e}"));
+            core_log::log_error(&format!("[commands/connection] 扫描 RC003 失败: {e}"));
             Err(e.to_string())
         }
     })
@@ -38,18 +38,18 @@ pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
 
 #[tauri::command]
 pub async fn connect_rc003() -> Result<Rc003Connection, String> {
-    core_log::log_info("[commands/connection] connect_rc003 invoked from UI");
+    core_log::log_info("[commands/connection] 前端请求连接 RC003");
     tauri::async_runtime::spawn_blocking(|| {
         match core_ble::scan_and_connect() {
             Ok((device, endpoints)) => {
                 core_log::log_info(&format!(
-                    "[commands/connection] connect_rc003 succeeded for '{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
+                    "[commands/connection] 连接 RC003 成功：'{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
                     device.name, device.id, endpoints.tx, endpoints.audio, endpoints.control
                 ));
                 Ok(Rc003Connection { device, endpoints })
             }
             Err(e) => {
-                core_log::log_error(&format!("[commands/connection] connect_rc003 failed: {e}"));
+                core_log::log_error(&format!("[commands/connection] 连接 RC003 失败: {e}"));
                 Err(e.to_string())
             }
         }

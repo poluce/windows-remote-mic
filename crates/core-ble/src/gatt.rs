@@ -48,7 +48,7 @@ pub struct AtvvLink {
 /// Discover the ATVV service/characteristics and return their ids for the UI.
 pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
     core_log::log_info(&format!(
-        "[ble/gatt] discover_atvv called for device_id='{device_id}'"
+        "[ble/gatt] 开始发现 ATVV 端点，设备 ID='{device_id}'"
     ));
     let (chars, _service) = open_atvv_chars_and_service(device_id)?;
 
@@ -65,16 +65,10 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
     }
 
     if endpoints.is_complete() {
-        core_log::log_info(&format!(
-            "[ble/gatt] ATVV endpoints complete: {:?}",
-            endpoints
-        ));
+        core_log::log_info(&format!("[ble/gatt] ATVV 端点齐全: {:?}", endpoints));
         Ok(endpoints)
     } else {
-        core_log::log_warn(&format!(
-            "[ble/gatt] ATVV endpoints incomplete: {:?}",
-            endpoints
-        ));
+        core_log::log_warn(&format!("[ble/gatt] ATVV 端点不完整: {:?}", endpoints));
         Err(BleError::Windows(
             "ATVV service/characteristics not found on this device".to_string(),
         ))
@@ -83,12 +77,10 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
 
 /// Connect and open the ATVV transport (keeps characteristics alive).
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
-    core_log::log_info(&format!(
-        "[ble/gatt] connect_atvv called for device_id='{device_id}'"
-    ));
+    core_log::log_info(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
     let device = open_ble_device(device_id)?;
-    core_log::log_info("[ble/gatt] connect_atvv established AtvvLink successfully");
+    core_log::log_info("[ble/gatt] ATVV 链路连接成功");
     Ok(AtvvLink {
         _device: device,
         _service: service,
@@ -125,9 +117,7 @@ fn open_atvv_chars_with_service(device_id: &str) -> Result<AtvvChars> {
     match (tx, audio, control) {
         (Some(t), Some(a), Some(c)) => Ok((t, a, c, service)),
         _ => {
-            core_log::log_error(
-                "[ble/gatt] ATVV characteristics incomplete (missing TX, Audio, or Control)",
-            );
+            core_log::log_error("[ble/gatt] ATVV 特征不完整（缺少 TX、Audio 或 Control）");
             Err(BleError::Windows(
                 "ATVV characteristics incomplete".to_string(),
             ))
@@ -140,7 +130,7 @@ fn open_atvv_chars_and_service(device_id: &str) -> Result<(FoundChars, GattDevic
         Ok(v) => Ok(v),
         Err(e) => {
             core_log::log_warn(&format!(
-                "[ble/gatt] Cached ATVV open failed: {e}; retrying Uncached on a fresh device"
+                "[ble/gatt] 使用缓存打开 ATVV 失败: {e}；将在新设备上以非缓存模式重试"
             ));
             try_open_atvv(device_id, BluetoothCacheMode::Uncached)
         }
@@ -149,7 +139,7 @@ fn open_atvv_chars_and_service(device_id: &str) -> Result<(FoundChars, GattDevic
 
 fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
     core_log::log_info(&format!(
-        "[ble/gatt] opening BluetoothLEDevice from ID: '{device_id}'"
+        "[ble/gatt] 正在从设备 ID 打开蓝牙设备: '{device_id}'"
     ));
     let hstr = HSTRING::from(device_id);
     let device = pollster::block_on(async {
@@ -157,14 +147,12 @@ fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
             BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
         op.await.map_err(|e| BleError::Windows(e.to_string()))
     })?;
-    core_log::log_info("[ble/gatt] BluetoothLEDevice instance obtained");
+    core_log::log_info("[ble/gatt] 已获取蓝牙设备实例");
 
     if let Ok(op) = device.RequestAccessAsync() {
         match pollster::block_on(async { op.await }) {
-            Ok(status) => {
-                core_log::log_info(&format!("[ble/gatt] RequestAccessAsync status={status:?}"))
-            }
-            Err(e) => core_log::log_warn(&format!("[ble/gatt] RequestAccessAsync failed: {e}")),
+            Ok(status) => core_log::log_info(&format!("[ble/gatt] 蓝牙访问请求状态={status:?}")),
+            Err(e) => core_log::log_warn(&format!("[ble/gatt] 蓝牙访问请求失败: {e}")),
         }
     }
 
@@ -176,7 +164,7 @@ fn try_open_atvv(
     mode: BluetoothCacheMode,
 ) -> Result<(FoundChars, GattDeviceService)> {
     core_log::log_info(&format!(
-        "[ble/gatt] opening ATVV service from device ID: '{device_id}' mode={mode:?}"
+        "[ble/gatt] 正在从设备 ID 打开 ATVV 服务: '{device_id}' 模式={mode:?}"
     ));
     let device = open_ble_device(device_id)?;
 
@@ -190,7 +178,7 @@ fn try_open_atvv(
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
     core_log::log_info(&format!(
-        "[ble/gatt] GetGattServices({mode:?}) status={svc_status:?}"
+        "[ble/gatt] 获取 GATT 服务（{mode:?}）状态={svc_status:?}"
     ));
     if svc_status != GattCommunicationStatus::Success {
         return Err(BleError::Windows(format!(
@@ -201,7 +189,7 @@ fn try_open_atvv(
         .Services()
         .map_err(|e| BleError::Windows(e.to_string()))?;
     core_log::log_info(&format!(
-        "[ble/gatt] found {} GATT services on device",
+        "[ble/gatt] 在设备上发现 {} 个 GATT 服务",
         services.Size().unwrap_or(0)
     ));
 
@@ -212,7 +200,7 @@ fn try_open_atvv(
         if uuid != ATVV_SERVICE_GUID {
             continue;
         }
-        core_log::log_info("[ble/gatt] matched ATVV service, opening for shared access...");
+        core_log::log_info("[ble/gatt] 找到 ATVV 服务，正在以共享模式打开…");
         open_atvv_service(&service)?;
         let found = read_atvv_characteristics(&service, mode)?;
         return Ok((found, service.clone()));
@@ -237,14 +225,14 @@ fn open_atvv_service(service: &GattDeviceService) -> Result<()> {
         });
         match status {
             Ok(s) if s == GattOpenStatus::Success || s == GattOpenStatus::AlreadyOpened => {
-                core_log::log_info(&format!("[ble/gatt] ATVV OpenAsync({mode:?}) -> {s:?}"));
+                core_log::log_info(&format!("[ble/gatt] ATVV 打开（{mode:?}）-> {s:?}"));
                 return Ok(());
             }
             Ok(s) => {
-                core_log::log_warn(&format!("[ble/gatt] ATVV OpenAsync({mode:?}) -> {s:?}"));
+                core_log::log_warn(&format!("[ble/gatt] ATVV 打开（{mode:?}）-> {s:?}"));
             }
             Err(e) => {
-                core_log::log_warn(&format!("[ble/gatt] ATVV OpenAsync({mode:?}) failed: {e}"));
+                core_log::log_warn(&format!("[ble/gatt] ATVV 打开（{mode:?}）失败: {e}"));
             }
         }
     }
@@ -265,14 +253,14 @@ fn read_atvv_characteristics(
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
     core_log::log_info(&format!(
-        "[ble/gatt] GetCharacteristics({mode:?}) status={char_status:?}"
+        "[ble/gatt] 获取特征（{mode:?}）状态={char_status:?}"
     ));
     if char_status == GattCommunicationStatus::Success {
         let chars = char_result
             .Characteristics()
             .map_err(|e| BleError::Windows(e.to_string()))?;
         core_log::log_info(&format!(
-            "[ble/gatt] found {} characteristics in ATVV service",
+            "[ble/gatt] 在 ATVV 服务中发现 {} 个特征",
             chars.Size().unwrap_or(0)
         ));
         let mut found = Vec::new();
@@ -287,21 +275,19 @@ fn read_atvv_characteristics(
         }
     }
 
-    core_log::log_warn(
-        "[ble/gatt] GetCharacteristics-all failed or incomplete; querying TX/Audio/Control by UUID",
-    );
+    core_log::log_warn("[ble/gatt] 获取全部特征失败或不完整；将按 UUID 查询 TX/Audio/Control");
     read_atvv_characteristics_by_uuid(service, mode)
 }
 
 fn push_atvv_char(found: &mut FoundChars, cuuid: GUID, characteristic: GattCharacteristic) {
     if cuuid == ATVV_TX_GUID {
-        core_log::log_info("[ble/gatt] found ATVV TX characteristic");
+        core_log::log_info("[ble/gatt] 找到 ATVV TX 特征");
         found.push((cuuid, characteristic));
     } else if cuuid == ATVV_AUDIO_GUID {
-        core_log::log_info("[ble/gatt] found ATVV AUDIO characteristic");
+        core_log::log_info("[ble/gatt] 找到 ATVV AUDIO 特征");
         found.push((cuuid, characteristic));
     } else if cuuid == ATVV_CONTROL_GUID {
-        core_log::log_info("[ble/gatt] found ATVV CONTROL characteristic");
+        core_log::log_info("[ble/gatt] 找到 ATVV CONTROL 特征");
         found.push((cuuid, characteristic));
     }
 }
@@ -319,16 +305,14 @@ fn read_atvv_characteristics_by_uuid(
             op.await.map_err(|e| BleError::Windows(e.to_string()))
         });
         let Ok(char_result) = result else {
-            core_log::log_warn(&format!(
-                "[ble/gatt] GetCharacteristicsForUuid {uuid:?} failed"
-            ));
+            core_log::log_warn(&format!("[ble/gatt] 按 UUID 获取特征失败: {uuid:?}"));
             continue;
         };
         let status = char_result
             .Status()
             .map_err(|e| BleError::Windows(e.to_string()))?;
         core_log::log_info(&format!(
-            "[ble/gatt] GetCharacteristicsForUuid {uuid:?} status={status:?}"
+            "[ble/gatt] 按 UUID 获取特征（{uuid:?}）状态={status:?}"
         ));
         if status != GattCommunicationStatus::Success {
             continue;
@@ -360,17 +344,17 @@ impl AtvvLink {
 
     /// Enable notifications on the Audio characteristic so voice data flows.
     pub fn enable_audio_notifications(&self) -> Result<()> {
-        core_log::log_info("[ble/gatt] enabling audio notifications (CCCD Notify)...");
+        core_log::log_info("[ble/gatt] 正在启用音频通知（CCCD Notify）…");
         self.enable_notifications(&self.audio)?;
-        core_log::log_info("[ble/gatt] audio notifications enabled successfully");
+        core_log::log_info("[ble/gatt] 音频通知启用成功");
         Ok(())
     }
 
     /// Enable notifications on the Control characteristic (device events).
     pub fn enable_control_notifications(&self) -> Result<()> {
-        core_log::log_info("[ble/gatt] enabling control notifications (CCCD Notify)...");
+        core_log::log_info("[ble/gatt] 正在启用控制通知（CCCD Notify）…");
         self.enable_notifications(&self.control)?;
-        core_log::log_info("[ble/gatt] control notifications enabled successfully");
+        core_log::log_info("[ble/gatt] 控制通知启用成功");
         Ok(())
     }
 
@@ -385,7 +369,7 @@ impl AtvvLink {
                 .map_err(|e| BleError::Windows(e.to_string()))
         })?;
         core_log::log_debug(&format!(
-            "[ble/gatt] WriteClientCharacteristicConfigurationDescriptor status: {:?}",
+            "[ble/gatt] 写入客户端特征配置描述符状态: {:?}",
             status
         ));
         Ok(())
@@ -394,7 +378,7 @@ impl AtvvLink {
     /// Host -> device command bytes are written to the TX characteristic.
     pub fn write_tx(&self, bytes: &[u8]) -> Result<()> {
         core_log::log_info(&format!(
-            "[ble/gatt] writing {} bytes to TX: {:02X?}",
+            "[ble/gatt] 正在向 TX 写入 {} 字节: {:02X?}",
             bytes.len(),
             bytes
         ));
@@ -413,10 +397,7 @@ impl AtvvLink {
                 .await
                 .map_err(|e| BleError::Windows(e.to_string()))
         })?;
-        core_log::log_info(&format!(
-            "[ble/gatt] write_tx completed with status: {:?}",
-            status
-        ));
+        core_log::log_info(&format!("[ble/gatt] TX 写入完成，状态: {:?}", status));
         Ok(())
     }
 

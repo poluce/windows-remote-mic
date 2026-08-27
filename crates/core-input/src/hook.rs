@@ -44,7 +44,7 @@ pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result
             match hook {
                 Ok(h) => {
                     *HOOK_HANDLE.lock().unwrap() = Some(SendHhook(h));
-                    crate::log_line("[hook] WH_KEYBOARD_LL global hook registered successfully");
+                    crate::log_line("[hook] 全局键盘钩子（WH_KEYBOARD_LL）注册成功");
                     let mut msg: MSG = std::mem::zeroed();
                     while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
                         let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
@@ -52,7 +52,9 @@ pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result
                     }
                 }
                 Err(e) => {
-                    crate::log_error(&format!("[hook] SetWindowsHookExW failed: {e}"));
+                    crate::log_error(&format!(
+                        "[hook] 安装键盘钩子（SetWindowsHookExW）失败: {e}"
+                    ));
                 }
             }
         });
@@ -90,7 +92,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let scan = kbd.scanCode;
             let flags = kbd.flags.0;
             crate::log_debug(&format!(
-                "[hook] LowLevelKey: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, is_down={}",
+                "[hook] 低层键盘事件: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, 按下={}",
                 vk, scan, flags, is_down
             ));
             // Do not forward ordinary typing. The tester was collecting laptop
@@ -100,7 +102,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 return CallNextHookEx(None, code, wparam, lparam);
             }
             crate::log_line(&format!(
-                "[hook] forward gap key: vkCode={}, is_down={}",
+                "[hook] 转发补充按键: vkCode={}, 按下={}",
                 vk, is_down
             ));
             let event = RawKeyEvent {

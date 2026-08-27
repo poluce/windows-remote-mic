@@ -26,10 +26,10 @@ where
     ));
 
     let link = AtvvLink::connect(device_id).map_err(|e| {
-        core_log::log_error(&format!("[bridge] AtvvLink::connect failed: {e}"));
+        core_log::log_error(&format!("[bridge] 连接 ATVV 链路失败: {e}"));
         e.to_string()
     })?;
-    core_log::log_info("[bridge] AtvvLink connected");
+    core_log::log_info("[bridge] ATVV 链路已连接");
 
     let disconnected = Arc::new(AtomicBool::new(false));
     let disconnected_cb = disconnected.clone();
@@ -39,47 +39,45 @@ where
         } else {
             "disconnected"
         };
-        core_log::log_line(&format!("[bridge] BLE connection status changed: {msg}"));
+        core_log::log_line(&format!("[bridge] BLE 连接状态变化: {msg}"));
         if !connected {
             disconnected_cb.store(true, Ordering::SeqCst);
         }
         on_status(connected);
     })
     .map_err(|e| e.to_string())?;
-    core_log::log_info("[bridge] BLE connection status handler registered");
+    core_log::log_info("[bridge] BLE 连接状态监听已注册");
 
     link.enable_audio_notifications().map_err(|e| {
-        core_log::log_error(&format!("[bridge] enable_audio_notifications failed: {e}"));
+        core_log::log_error(&format!("[bridge] 启用音频通知失败: {e}"));
         e.to_string()
     })?;
-    core_log::log_info("[bridge] audio notifications enabled");
+    core_log::log_info("[bridge] 音频通知已启用");
 
     link.enable_control_notifications().map_err(|e| {
-        core_log::log_error(&format!(
-            "[bridge] enable_control_notifications failed: {e}"
-        ));
+        core_log::log_error(&format!("[bridge] 启用控制通知失败: {e}"));
         e.to_string()
     })?;
-    core_log::log_info("[bridge] control notifications enabled");
+    core_log::log_info("[bridge] 控制通知已启用");
 
     link.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
         core_log::log_error(&format!(
-            "[bridge] write_tx GET_CAPABILITIES_V10 failed: {e}"
+            "[bridge] 发送能力查询（GET_CAPABILITIES_V10）失败: {e}"
         ));
         e.to_string()
     })?;
-    core_log::log_info("[bridge] GET_CAPABILITIES_V10 sent to remote");
+    core_log::log_info("[bridge] 已向遥控器发送能力查询（GET_CAPABILITIES_V10）");
 
     // ATVV notify is live. Start the optional Back/Volume tap only now so the
     // HOGP inject cannot steal the GATT session during characteristic setup.
     core_hid::tap::start_after_atvv();
 
     let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
-        core_log::log_error(&format!("[bridge] failed to initialize AudioSink: {e}"));
+        core_log::log_error(&format!("[bridge] 初始化音频输出（AudioSink）失败: {e}"));
         e.to_string()
     })?;
     core_log::log_info(&format!(
-        "[bridge] AudioSink initialized on '{output_device}'"
+        "[bridge] 音频输出（AudioSink）已初始化：{output_device}"
     ));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
@@ -102,17 +100,17 @@ where
             let chunk = eng.feed(&bytes);
             if !chunk.output.is_empty() {
                 core_log::log_debug(&format!(
-                    "[bridge] audio chunk decoded: {} samples -> output {} samples",
+                    "[bridge] 音频块解码完成：{} 采样 -> 输出 {} 采样",
                     chunk.pcm_samples, chunk.output_samples
                 ));
                 let _ = frame_tx.send(chunk.output);
             }
         })
         .map_err(|e| {
-            core_log::log_error(&format!("[bridge] register_audio_handler failed: {e}"));
+            core_log::log_error(&format!("[bridge] 注册音频回调失败: {e}"));
             e.to_string()
         })?;
-    core_log::log_info("[bridge] audio handler registered");
+    core_log::log_info("[bridge] 音频回调已注册");
 
     let engine_ctrl = engine.clone();
     let capture_ctrl = capture.clone();
@@ -120,27 +118,21 @@ where
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
-            core_log::log_info(&format!(
-                "[bridge] control notification received: {:02X?}",
-                bytes
-            ));
+            core_log::log_info(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,
             };
             let Some(event) = parse_control(&bytes) else {
-                core_log::log_warn(&format!(
-                    "[bridge] unrecognized control packet: {:02X?}",
-                    bytes
-                ));
+                core_log::log_warn(&format!("[bridge] 无法识别的控制包: {:02X?}", bytes));
                 return;
             };
-            core_log::log_info(&format!("[bridge] parsed control event: {:?}", event));
+            core_log::log_info(&format!("[bridge] 已解析控制事件: {:?}", event));
             match event {
                 RawControlEvent::Caps(caps) => {
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
                         core_input::log_warn(&format!(
-                            "[bridge] unsupported ATVV sample rate: {}",
+                            "[bridge] 不支持的 ATVV 采样率: {}",
                             caps.sample_rate_hz
                         ));
                     }
@@ -184,9 +176,7 @@ where
                             );
                             let _ = eng.on_control(ControlEvent::StreamStop);
                             if let Err(e) = press_escape() {
-                                core_input::log_error(&format!(
-                                    "[bridge] close voice typing failed: {e}"
-                                ));
+                                core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
                             }
                         }
                     }
@@ -202,7 +192,7 @@ where
     // Main loop: keep link alive and push decoded frames to the sink.
     loop {
         if disconnected.load(Ordering::SeqCst) {
-            core_log::log_line("[bridge] BLE disconnected, stopping bridge for auto-reconnect");
+            core_log::log_line("[bridge] BLE 已断开，停止语音桥以等待自动重连");
             break;
         }
         match frame_rx.recv_timeout(Duration::from_secs(2)) {

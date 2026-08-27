@@ -121,12 +121,14 @@ pub fn start_listener(
         if let Err(e) =
             RegisterRawInputDevices(&devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32)
         {
-            core_log::log_error(&format!("[raw_input] RegisterRawInputDevices failed: {e}"));
+            core_log::log_error(&format!("[raw_input] 注册原始输入设备失败: {e}"));
             let _ = tx.send(Err(e.to_string()));
             return;
         }
 
-        core_log::log_info("[raw_input] Raw Input window and devices (Keyboard, Consumer, System) initialized on thread successfully");
+        core_log::log_info(
+            "[raw_input] 原始输入窗口及设备（键盘、消费类、系统）已在线程上初始化成功",
+        );
         let _ = tx.send(Ok(()));
 
         let mut msg: MSG = std::mem::zeroed();
@@ -216,7 +218,7 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Option<Vec<u8>> {
     if probe == u32::MAX || size == 0 {
         if !LOGGED_SIZE_FAIL.swap(true, Ordering::Relaxed) {
             core_log::log_error(&format!(
-                "[raw_input] GetRawInputData size query failed (ret={probe}, size={size}, header={header_size})"
+                "[raw_input] 获取原始输入数据大小失败（ret={probe}, size={size}, header={header_size}）"
             ));
         }
         return None;
@@ -232,7 +234,7 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Option<Vec<u8>> {
     if got == u32::MAX || got == 0 {
         if !LOGGED_SIZE_FAIL.swap(true, Ordering::Relaxed) {
             core_log::log_error(&format!(
-                "[raw_input] GetRawInputData copy failed (ret={got}, size={size})"
+                "[raw_input] 读取原始输入数据失败（ret={got}, size={size}）"
             ));
         }
         return None;
@@ -283,7 +285,7 @@ unsafe extern "system" fn wnd_proc(
                 let keyboard: RAWKEYBOARD = input.data.keyboard;
                 let pressed = keyboard.Flags & 0x01 == 0;
                 core_log::log_info(&format!(
-                    "[raw_input] Keyboard: vkey={}, make_code=0x{:02X}, pressed={}, device={}",
+                    "[raw_input] 键盘事件: vkey={}, make_code=0x{:02X}, 按下={}, 设备={}",
                     keyboard.VKey, keyboard.MakeCode, pressed, name
                 ));
 
@@ -313,7 +315,7 @@ unsafe extern "system" fn wnd_proc(
             } else if header.dwType == RIM_TYPEHID.0 {
                 let raw_slice = hid_payload(&buf);
                 core_log::log_info(&format!(
-                    "[raw_input] HID packet: {:02X?} device={}",
+                    "[raw_input] HID 数据包: {:02X?} 设备={}",
                     raw_slice, name
                 ));
                 let now = parse_hid_report_vkeys(raw_slice);
@@ -345,7 +347,9 @@ unsafe extern "system" fn wnd_proc(
         // WM_APPCOMMAND (0x0319)
         if msg == 0x0319 {
             let cmd = ((lparam.0 as u32) >> 16) & 0xFFF;
-            core_log::log_info(&format!("[raw_input] WM_APPCOMMAND received: cmd={cmd}"));
+            core_log::log_info(&format!(
+                "[raw_input] 收到应用命令（WM_APPCOMMAND）: cmd={cmd}"
+            ));
             if emit_appcommand(cmd) {
                 return LRESULT(1);
             }

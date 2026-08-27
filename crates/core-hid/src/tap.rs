@@ -100,16 +100,16 @@ pub fn maybe_run_injector() -> bool {
         .and_then(|i| args.get(pos + 1 + i + 1))
         .and_then(|s| s.parse::<u32>().ok());
     let Some(pid) = pid else {
-        core_log::log_error("[hid-tap] injector missing --pid");
+        core_log::log_error("[hid-tap] 注入器缺少 --pid 参数");
         std::process::exit(2);
     };
     match inject_into(pid) {
         Ok(()) => {
-            core_log::log_info(&format!("[hid-tap] injected pid={pid}"));
+            core_log::log_info(&format!("[hid-tap] 已注入 pid={pid}"));
             std::process::exit(0);
         }
         Err(e) => {
-            core_log::log_error(&format!("[hid-tap] inject pid={pid} failed: {e}"));
+            core_log::log_error(&format!("[hid-tap] 注入 pid={pid} 失败: {e}"));
             std::process::exit(1);
         }
     }
@@ -123,7 +123,7 @@ pub fn start_after_atvv() {
         return;
     }
     if RUNNING.swap(true, Ordering::SeqCst) {
-        core_log::log_info("[hid-tap] hub already running");
+        core_log::log_info("[hid-tap] 旁路服务已在运行");
         return;
     }
     if let Err(e) = prepare_runtime() {
@@ -176,7 +176,7 @@ fn hub_loop() {
                 l
             }
             Err(e) => {
-                core_log::log_warn(&format!("[hid-tap] bind {port} failed: {e}"));
+                core_log::log_warn(&format!("[hid-tap] 绑定端口 {port} 失败: {e}"));
                 std::thread::sleep(retry);
                 continue;
             }
@@ -239,7 +239,7 @@ fn hub_loop() {
         arm_grace();
         serve_client(stream);
         *ACTIVE.lock().unwrap() = Vec::new();
-        core_log::log_info("[hid-tap] gadget socket closed; will retry");
+        core_log::log_info("[hid-tap] 旁路连接已关闭，稍后重试");
     }
 }
 
@@ -262,7 +262,7 @@ fn serve_client(stream: std::net::TcpStream) {
                     on_ioctl_bytes(&bytes);
                 }
             }
-            "error" => core_log::log_warn(&format!("[hid-tap] gadget: {}", msg.message)),
+            "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}
         }
     }
@@ -325,7 +325,7 @@ fn emit_usage(usage: u16, pressed: bool) {
         return;
     };
     core_log::log_info(&format!(
-        "[hid-tap] special key usage=0x{usage:02X} vkey={vkey} pressed={pressed}"
+        "[hid-tap] 特殊按键 usage=0x{usage:02X} vkey={vkey} 按下={pressed}"
     ));
     raw_input::emit(raw_input::RawInputEvent {
         vkey,

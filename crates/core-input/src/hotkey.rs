@@ -10,7 +10,7 @@ use crate::Result;
 
 /// Press Win + H and release.
 pub fn press_win_h() -> Result<()> {
-    crate::log_line("[input] press Win+H");
+    crate::log_line("[input] 按下 Win+H");
     log_foreground_window("before");
     let down = |vk| keyboard_input(vk, false);
     let up = |vk| keyboard_input(vk, true);
@@ -18,11 +18,11 @@ pub fn press_win_h() -> Result<()> {
     let inputs = [down(VK_LWIN), down(VK_H), up(VK_H), up(VK_LWIN)];
 
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-    crate::log_line(&format!("[input] SendInput returned {sent} events"));
+    crate::log_line(&format!("[input] SendInput 已注入 {sent} 个事件"));
     log_foreground_window("after");
     if sent != inputs.len() as u32 {
         crate::log_error(&format!(
-            "[input] SendInput only inserted {sent}/{} events",
+            "[input] SendInput 仅注入 {sent}/{} 个事件",
             inputs.len()
         ));
         return Err(crate::error::InputError::Windows(format!(
@@ -35,12 +35,12 @@ pub fn press_win_h() -> Result<()> {
 
 /// Press Escape (used to close Windows voice typing).
 pub fn press_escape() -> Result<()> {
-    crate::log_line("[input] press Escape");
+    crate::log_line("[input] 按下 Escape");
     let down = keyboard_input(VK_ESCAPE, false);
     let up = keyboard_input(VK_ESCAPE, true);
     let inputs = [down, up];
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-    crate::log_line(&format!("[input] Escape SendInput returned {sent} events"));
+    crate::log_line(&format!("[input] Escape SendInput 已注入 {sent} 个事件"));
     if sent != inputs.len() as u32 {
         return Err(crate::error::InputError::Windows(format!(
             "SendInput only inserted {sent}/{} events",
@@ -83,7 +83,7 @@ fn log_foreground_window(tag: &str) {
         let class = String::from_utf16_lossy(&class_buf[..class_len.max(0) as usize]);
 
         crate::log_line(&format!(
-            "[input] foreground {tag}: hwnd={:?}, title={:?}, class={:?}",
+            "[input] 前台窗口 {tag}: hwnd={:?}, 标题={:?}, 类名={:?}",
             hwnd, title, class
         ));
     }

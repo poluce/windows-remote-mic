@@ -24,7 +24,7 @@ pub fn start_voice_bridge(
     #[cfg(target_os = "windows")]
     {
         core_log::log_info(&format!(
-            "[commands/audio] start_voice_bridge requested for device_id='{device_id}', output='{output_device}'"
+            "[commands/audio] 收到启动语音桥请求：设备 ID='{device_id}'，输出='{output_device}'"
         ));
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
@@ -36,18 +36,16 @@ pub fn start_voice_bridge(
                 };
 
                 core_log::log_line(&format!(
-                    "[commands/audio] voice bridge attempt {} starting",
+                    "[commands/audio] 语音桥第 {} 次尝试启动",
                     attempt + 1
                 ));
                 let result = core_voice::run_bridge(&device_id, &output_device, on_status);
                 match result {
                     Ok(()) => {
-                        core_log::log_line(
-                            "[commands/audio] voice bridge stopped, preparing reconnect",
-                        );
+                        core_log::log_line("[commands/audio] 语音桥已停止，准备重连");
                     }
                     Err(e) => {
-                        core_log::log_error(&format!("[commands/audio] voice bridge error: {e}"));
+                        core_log::log_error(&format!("[commands/audio] 语音桥错误: {e}"));
                     }
                 }
 
@@ -55,7 +53,7 @@ pub fn start_voice_bridge(
                 attempt += 1;
                 let delay_secs = (attempt * 2).min(10);
                 core_log::log_line(&format!(
-                    "[commands/audio] reconnecting in {delay_secs}s (attempt {attempt})"
+                    "[commands/audio] 将在 {delay_secs} 秒后重连（第 {attempt} 次）"
                 ));
                 std::thread::sleep(Duration::from_secs(delay_secs));
             }

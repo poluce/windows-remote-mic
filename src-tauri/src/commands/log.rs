@@ -3,7 +3,7 @@ use serde::Serialize;
 /// Frontend-facing log helper: append a line to the shared Remote Mic log.
 #[tauri::command]
 pub fn log_message(message: String) {
-    core_log::log_line(&format!("[frontend] {message}"));
+    core_log::log_line(&format!("[前端] {message}"));
 }
 
 #[derive(Serialize)]
