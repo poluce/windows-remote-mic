@@ -20,6 +20,24 @@ type SelfTestItem = {
   detail: string;
 };
 
+type LogInfo = {
+  path: string;
+  file_size: number;
+  debug_enabled: boolean;
+  files: {
+    name: string;
+    path: string;
+    size: number;
+    modified: number | null;
+  }[];
+};
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
@@ -28,6 +46,11 @@ export function DiagnosticsPage() {
   const [installMsg, setInstallMsg] = useState("");
   const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
+
+  const [logInfo, setLogInfo] = useState<LogInfo | null>(null);
+  const [logContent, setLogContent] = useState("");
+  const [logLoading, setLogLoading] = useState(false);
+  const [logMsg, setLogMsg] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -108,6 +131,81 @@ export function DiagnosticsPage() {
     invoke("toggle_quick_menu");
   }
 
+  async function refreshLogInfo() {
+    if (!isTauri()) return;
+    try {
+      setLogInfo(await invoke<LogInfo>("get_log_info"));
+    } catch (err) {
+      setLogMsg(`读取日志信息失败: ${err}`);
+    }
+  }
+
+  async function loadLogTail() {
+    if (!isTauri()) {
+      setLogContent("请在桌面应用内查看日志");
+      return;
+    }
+    setLogLoading(true);
+    setLogMsg("");
+    try {
+      const text = await invoke<string>("read_log_tail", { maxBytes: 64 * 1024 });
+      setLogContent(text || "（日志为空）");
+      await refreshLogInfo();
+    } catch (err) {
+      setLogMsg(`读取日志失败: ${err}`);
+    } finally {
+      setLogLoading(false);
+    }
+  }
+
+  async function clearLogFile() {
+    if (!isTauri()) return;
+    if (!window.confirm("确定清空当前日志文件？此操作不可撤销。")) {
+      return;
+    }
+    setLogMsg("");
+    try {
+      await invoke("clear_log");
+      setLogContent("（日志已清空）");
+      setLogMsg("日志已清空");
+      await refreshLogInfo();
+    } catch (err) {
+      setLogMsg(`清空日志失败: ${err}`);
+    }
+  }
+
+  async function openLogDir() {
+    if (!isTauri()) {
+      setLogMsg("请在桌面应用内打开日志目录");
+      return;
+    }
+    try {
+      await invoke("open_log_dir");
+      setLogMsg("已在文件管理器中打开日志目录");
+    } catch (err) {
+      setLogMsg(`打开日志目录失败: ${err}`);
+    }
+  }
+
+  async function toggleDebugLogging() {
+    if (!isTauri()) return;
+    const enabled = !(logInfo?.debug_enabled ?? false);
+    try {
+      const result = await invoke<boolean>("set_debug_logging", { enabled });
+      setLogInfo((prev) => (prev ? { ...prev, debug_enabled: result } : prev));
+      setLogMsg(result ? "已开启 DEBUG 详细日志" : "已关闭 DEBUG 详细日志");
+    } catch (err) {
+      setLogMsg(`切换 DEBUG 日志失败: ${err}`);
+    }
+  }
+
+  useEffect(() => {
+    if (isTauri()) {
+      refreshLogInfo();
+      loadLogTail();
+    }
+  }, []);
+
   return (
     <div className="page">
 
@@ -167,6 +265,28 @@ export function DiagnosticsPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="card">
+        <div className="card-title">日志</div>
+        <div className="log-actions">
+          <button className="btn" onClick={loadLogTail} disabled={logLoading}>
+            {logLoading ? "读取中…" : "刷新日志"}
+          </button>
+          <button className="btn" onClick={clearLogFile}>清空日志</button>
+          <button className="btn" onClick={openLogDir}>打开日志目录</button>
+          <button className="btn" onClick={toggleDebugLogging}>
+            {logInfo?.debug_enabled ? "关闭 DEBUG" : "开启 DEBUG"}
+          </button>
+        </div>
+        {logInfo && (
+          <p className="hint">
+            当前日志：{logInfo.path}（{formatSize(logInfo.file_size)}）
+            {logInfo.files.length > 1 && `，已保留 ${logInfo.files.length - 1} 个轮转文件`}
+          </p>
+        )}
+        {logMsg && <p className="hint">{logMsg}</p>}
+        <div className="log-preview">{logContent || "（暂无日志内容）"}</div>
       </section>
 
       <RemoteKeyTester />

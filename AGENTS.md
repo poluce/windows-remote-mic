@@ -156,11 +156,17 @@ cargo check -p remote-mic
   - `ERROR` — 错误
 - 临时开启 DEBUG：
   - 环境变量 `REMOTE_MIC_DEBUG=1`
-  - 或创建文件 `%LOCALAPPDATA%\RemoteMic\RC003\debug`（实时生效，无需重启）
+  - 创建文件 `%LOCALAPPDATA%\RemoteMic\RC003\debug`（实时生效，无需重启）
+  - 诊断页「开启 DEBUG」按钮（调用 `core_log::set_debug_enabled`，运行时生效）
+- 日志轮转（`core-log` 自动处理）：
+  - 主日志超过 `MAX_LOG_BYTES`（默认 2 MiB）时自动改名为 `remote-mic.<时间戳>.log`
+  - 轮转备份保留 `KEEP_BACKUP_FILES`（默认 5 份），更旧的自动删除
 - 日志接口统一走 `core-log`：
   - `core_log::log_debug / log_line / log_info / log_warn / log_error`
+  - `core-log` 还提供 `read_log_tail / clear_log / log_files / debug_enabled / set_debug_enabled` 供诊断页与 Tauri 命令使用
   - `core-input` 提供 `log_line / log_debug / log_warn / log_error` 薄封装给现有调用方。
 - 不要使用 `eprintln!` / `println!` 输出调试信息，统一写入日志文件。
+- 诊断页可查看日志尾部、清空日志、打开日志目录、切换 DEBUG。
 - 筛选示例（PowerShell）：
   ```powershell
   Select-String -Path "$env:LOCALAPPDATA\RemoteMic\RC003\remote-mic.log" -Pattern "\[ERROR\]"

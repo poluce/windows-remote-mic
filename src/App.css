@@ -619,7 +619,7 @@ button {
 
 /* ---------- Log preview ---------- */
 .log-preview {
-  max-height: 240px;
+  max-height: 300px;
   overflow: auto;
   padding: 12px;
   background: #f6f8fa;
@@ -629,6 +629,14 @@ button {
   white-space: pre-wrap;
   word-break: break-all;
   margin-top: 10px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+    Menlo, monospace;
+}
+
+.log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* ---------- Mapping wizard ---------- */
