@@ -23,13 +23,16 @@ remote-mic/
 ├── src/                     # 前端（TypeScript + React）
 ├── src-tauri/               # Tauri 桌面壳（Rust）
 ├── crates/
-│   ├── core-ble/            # 蓝牙 BLE/GATT
+│   ├── core-ble/            # 蓝牙 BLE/GATT 连接
 │   ├── core-atvv/           # ATVV 协议 + ADPCM 解码
-│   ├── core-audio/          # 音频输出（WASAPI）
-│   ├── core-hid/            # HID / Raw Input
-│   ├── core-input/          # 按键注入 / 动作执行
-│   ├── core-mapping/        # 按键映射
+│   ├── core-audio/          # WASAPI 音频输出、DSP、诊断
+│   ├── core-hid/            # HID 事件捕获 / 报告解析（Raw Input）
+│   ├── core-input/          # Windows 按键注入、热键、输入钩子
+│   ├── core-mapping/        # 按键映射与触发规则
 │   ├── core-config/         # 配置持久化
+│   ├── core-voice/          # 语音桥：BLE -> 解码 -> 输出
+│   ├── core-log/            # 统一文件日志
+│   ├── core-stats/          # 本机统计
 │   └── core-diagnostics/    # 诊断
 └── docs/                    # 规划与任务文档
 ```
@@ -48,6 +51,22 @@ npm run tauri dev
 
 # 构建发布包
 npm run tauri build
+```
+
+## 质量检查
+
+```bash
+# 前端类型检查（CI 会执行）
+npm run typecheck
+
+# Rust 格式检查（CI 会执行）
+cargo fmt --all -- --check
+
+# 核心 crates Clippy（CI 会执行，warning 视为错误）
+cargo clippy --workspace --exclude remote-mic --all-targets -- -D warnings
+
+# Rust 测试
+cargo test --workspace --exclude remote-mic
 ```
 
 ## 文档

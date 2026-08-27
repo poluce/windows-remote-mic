@@ -50,11 +50,10 @@ pub fn simulate_voice_chain(
             load_wav_pcm(&bytes)?
         }
         None => {
-            let wav_path = std::env::temp_dir()
-                .join(format!("remote_mic_tts_{}.wav", std::process::id()));
+            let wav_path =
+                std::env::temp_dir().join(format!("remote_mic_tts_{}.wav", std::process::id()));
             synthesize_chinese_speech(&wav_path)?;
-            let bytes = std::fs::read(&wav_path)
-                .map_err(|e| format!("读取 TTS 音频失败：{e}"))?;
+            let bytes = std::fs::read(&wav_path).map_err(|e| format!("读取 TTS 音频失败：{e}"))?;
             let _ = std::fs::remove_file(&wav_path);
             load_wav_pcm(&bytes)?
         }
@@ -64,16 +63,28 @@ pub fn simulate_voice_chain(
     let duration_ms = (samples.len() as u64 * 1000 / 16_000).max(1);
 
     let audio_name = test_audio_path
-        .and_then(|p| Path::new(p).file_name().map(|s| s.to_string_lossy().into_owned()))
+        .and_then(|p| {
+            Path::new(p)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+        })
         .unwrap_or_else(|| "TTS中文语音".to_string());
 
     core_input::log_line(&format!(
         "[simulate] start: device={}, audio={}, sample_rate={}, pcm_samples={}, duration_ms={}",
-        output_device, audio_name, sample_rate, pcm.len(), duration_ms
+        output_device,
+        audio_name,
+        sample_rate,
+        pcm.len(),
+        duration_ms
     ));
 
     let diag = core_audio::diagnostics::run();
-    let input_names: Vec<String> = diag.input_endpoints.iter().map(|e| e.name.clone()).collect();
+    let input_names: Vec<String> = diag
+        .input_endpoints
+        .iter()
+        .map(|e| e.name.clone())
+        .collect();
     let default_input = core_audio::endpoint::default_input_name();
     core_input::log_line(&format!(
         "[simulate] diagnostics: has_vb_cable={}, cable_input={}, cable_output={}, default_input={:?}, input_endpoints={:?}",
@@ -84,12 +95,13 @@ pub fn simulate_voice_chain(
         input_names
     ));
 
-    let sink = core_audio::sink::AudioSink::new(Some(output_device))
-        .map_err(|e| e.to_string())?;
+    let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| e.to_string())?;
     core_input::log_debug("[simulate] audio sink created");
 
     let mut engine = VoiceEngine::new();
-    engine.on_control(ControlEvent::StreamStart).map_err(|e| e.to_string())?;
+    engine
+        .on_control(ControlEvent::StreamStart)
+        .map_err(|e| e.to_string())?;
 
     // Close any stray voice typing first so Win+H starts from a known state.
     let _ = press_escape();
@@ -114,7 +126,9 @@ pub fn simulate_voice_chain(
     ));
     std::thread::sleep(std::time::Duration::from_millis(duration_ms + 300));
 
-    engine.on_control(ControlEvent::StreamStop).map_err(|e| e.to_string())?;
+    engine
+        .on_control(ControlEvent::StreamStop)
+        .map_err(|e| e.to_string())?;
     core_input::log_line("[simulate] close voice typing (Escape)");
     press_escape().map_err(|e| e.to_string())?;
 
@@ -131,11 +145,11 @@ pub fn simulate_voice_chain(
 
 /// Synthesize a short Chinese phrase to a WAV file using Windows SAPI TTS.
 fn synthesize_chinese_speech(output_path: &Path) -> Result<(), String> {
-    let script_path = std::env::temp_dir()
-        .join(format!("remote_mic_tts_{}.ps1", std::process::id()));
+    let script_path =
+        std::env::temp_dir().join(format!("remote_mic_tts_{}.ps1", std::process::id()));
     {
-        let mut file = std::fs::File::create(&script_path)
-            .map_err(|e| format!("写入 TTS 脚本失败：{e}"))?;
+        let mut file =
+            std::fs::File::create(&script_path).map_err(|e| format!("写入 TTS 脚本失败：{e}"))?;
         file.write_all(TTS_PS1.as_bytes())
             .map_err(|e| format!("写入 TTS 脚本失败：{e}"))?;
     }
@@ -174,12 +188,9 @@ fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
     let mut pos = 12usize;
     while pos + 8 <= data.len() {
         let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([
-            data[pos + 4],
-            data[pos + 5],
-            data[pos + 6],
-            data[pos + 7],
-        ]) as usize;
+        let chunk_size =
+            u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]])
+                as usize;
         let body = pos + 8;
         if body + chunk_size > data.len() {
             break;
@@ -249,6 +260,29 @@ fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
     Ok((sample_rate, pcm))
 }
 
+/// Simple linear resampler to the 16 kHz rate used by the voice pipeline.
+fn resample_to_16k(samples: &[i16], from_rate: u32) -> Vec<i16> {
+    if from_rate == 16_000 {
+        return samples.to_vec();
+    }
+
+    let out_len =
+        ((samples.len() as f64 * 16_000.0 / f64::from(from_rate)).round() as usize).max(1);
+    let step = f64::from(from_rate) / 16_000.0;
+    let mut out = Vec::with_capacity(out_len);
+
+    for i in 0..out_len {
+        let pos = i as f64 * step;
+        let idx = pos.floor() as usize;
+        let frac = pos - idx as f64;
+        let a = f64::from(samples.get(idx).copied().unwrap_or(0));
+        let b = samples.get(idx + 1).copied().map(f64::from).unwrap_or(a);
+        out.push((a + (b - a) * frac).round() as i16);
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,31 +293,4 @@ mod tests {
         let out = resample_to_16k(&input, 8000);
         assert_eq!(out.len(), 1600);
     }
-}
-
-/// Simple linear resampler to the 16 kHz rate used by the voice pipeline.
-fn resample_to_16k(samples: &[i16], from_rate: u32) -> Vec<i16> {
-    if from_rate == 16_000 {
-        return samples.to_vec();
-    }
-
-    let out_len = ((samples.len() as f64 * 16_000.0 / f64::from(from_rate)).round() as usize)
-        .max(1);
-    let step = f64::from(from_rate) / 16_000.0;
-    let mut out = Vec::with_capacity(out_len);
-
-    for i in 0..out_len {
-        let pos = i as f64 * step;
-        let idx = pos.floor() as usize;
-        let frac = pos - idx as f64;
-        let a = f64::from(samples.get(idx).copied().unwrap_or(0));
-        let b = samples
-            .get(idx + 1)
-            .copied()
-            .map(f64::from)
-            .unwrap_or(a);
-        out.push((a + (b - a) * frac).round() as i16);
-    }
-
-    out
 }

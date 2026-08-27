@@ -73,7 +73,9 @@ pub fn open_app(name: &str) -> Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn send_key_combo(_tokens: &[&str]) -> Result<()> {
-    Err(InputError::Windows("key injection only on Windows".to_string()))
+    Err(InputError::Windows(
+        "key injection only on Windows".to_string(),
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]

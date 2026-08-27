@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use windows::core::{GUID, HSTRING, IInspectable};
+use windows::core::{IInspectable, GUID, HSTRING};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristic, GattClientCharacteristicConfigurationDescriptorValue,
     GattCommunicationStatus, GattDeviceService, GattOpenStatus, GattSharingMode,
@@ -47,14 +47,14 @@ pub struct AtvvLink {
 
 /// Discover the ATVV service/characteristics and return their ids for the UI.
 pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
-    core_log::log_info(&format!("[ble/gatt] discover_atvv called for device_id='{device_id}'"));
+    core_log::log_info(&format!(
+        "[ble/gatt] discover_atvv called for device_id='{device_id}'"
+    ));
     let (chars, _service) = open_atvv_chars_and_service(device_id)?;
 
     let mut endpoints = AtvvEndpoints::default();
     for (uuid, c) in &chars {
-        let u = c
-            .Uuid()
-            .map_err(|e| BleError::Windows(e.to_string()))?;
+        let u = c.Uuid().map_err(|e| BleError::Windows(e.to_string()))?;
         if *uuid == ATVV_TX_GUID {
             endpoints.tx = Some(format!("{u:?}"));
         } else if *uuid == ATVV_AUDIO_GUID {
@@ -65,10 +65,16 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
     }
 
     if endpoints.is_complete() {
-        core_log::log_info(&format!("[ble/gatt] ATVV endpoints complete: {:?}", endpoints));
+        core_log::log_info(&format!(
+            "[ble/gatt] ATVV endpoints complete: {:?}",
+            endpoints
+        ));
         Ok(endpoints)
     } else {
-        core_log::log_warn(&format!("[ble/gatt] ATVV endpoints incomplete: {:?}", endpoints));
+        core_log::log_warn(&format!(
+            "[ble/gatt] ATVV endpoints incomplete: {:?}",
+            endpoints
+        ));
         Err(BleError::Windows(
             "ATVV service/characteristics not found on this device".to_string(),
         ))
@@ -77,7 +83,9 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
 
 /// Connect and open the ATVV transport (keeps characteristics alive).
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
-    core_log::log_info(&format!("[ble/gatt] connect_atvv called for device_id='{device_id}'"));
+    core_log::log_info(&format!(
+        "[ble/gatt] connect_atvv called for device_id='{device_id}'"
+    ));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
     let device = open_ble_device(device_id)?;
     core_log::log_info("[ble/gatt] connect_atvv established AtvvLink successfully");
@@ -117,15 +125,17 @@ fn open_atvv_chars_with_service(device_id: &str) -> Result<AtvvChars> {
     match (tx, audio, control) {
         (Some(t), Some(a), Some(c)) => Ok((t, a, c, service)),
         _ => {
-            core_log::log_error("[ble/gatt] ATVV characteristics incomplete (missing TX, Audio, or Control)");
-            Err(BleError::Windows("ATVV characteristics incomplete".to_string()))
+            core_log::log_error(
+                "[ble/gatt] ATVV characteristics incomplete (missing TX, Audio, or Control)",
+            );
+            Err(BleError::Windows(
+                "ATVV characteristics incomplete".to_string(),
+            ))
         }
     }
 }
 
-fn open_atvv_chars_and_service(
-    device_id: &str,
-) -> Result<(FoundChars, GattDeviceService)> {
+fn open_atvv_chars_and_service(device_id: &str) -> Result<(FoundChars, GattDeviceService)> {
     match try_open_atvv(device_id, BluetoothCacheMode::Cached) {
         Ok(v) => Ok(v),
         Err(e) => {
@@ -143,14 +153,17 @@ fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
     ));
     let hstr = HSTRING::from(device_id);
     let device = pollster::block_on(async {
-        let op = BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
+        let op =
+            BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
         op.await.map_err(|e| BleError::Windows(e.to_string()))
     })?;
     core_log::log_info("[ble/gatt] BluetoothLEDevice instance obtained");
 
     if let Ok(op) = device.RequestAccessAsync() {
         match pollster::block_on(async { op.await }) {
-            Ok(status) => core_log::log_info(&format!("[ble/gatt] RequestAccessAsync status={status:?}")),
+            Ok(status) => {
+                core_log::log_info(&format!("[ble/gatt] RequestAccessAsync status={status:?}"))
+            }
             Err(e) => core_log::log_warn(&format!("[ble/gatt] RequestAccessAsync failed: {e}")),
         }
     }
@@ -306,7 +319,9 @@ fn read_atvv_characteristics_by_uuid(
             op.await.map_err(|e| BleError::Windows(e.to_string()))
         });
         let Ok(char_result) = result else {
-            core_log::log_warn(&format!("[ble/gatt] GetCharacteristicsForUuid {uuid:?} failed"));
+            core_log::log_warn(&format!(
+                "[ble/gatt] GetCharacteristicsForUuid {uuid:?} failed"
+            ));
             continue;
         };
         let status = char_result
@@ -369,13 +384,20 @@ impl AtvvLink {
                 .await
                 .map_err(|e| BleError::Windows(e.to_string()))
         })?;
-        core_log::log_debug(&format!("[ble/gatt] WriteClientCharacteristicConfigurationDescriptor status: {:?}", status));
+        core_log::log_debug(&format!(
+            "[ble/gatt] WriteClientCharacteristicConfigurationDescriptor status: {:?}",
+            status
+        ));
         Ok(())
     }
 
     /// Host -> device command bytes are written to the TX characteristic.
     pub fn write_tx(&self, bytes: &[u8]) -> Result<()> {
-        core_log::log_info(&format!("[ble/gatt] writing {} bytes to TX: {:02X?}", bytes.len(), bytes));
+        core_log::log_info(&format!(
+            "[ble/gatt] writing {} bytes to TX: {:02X?}",
+            bytes.len(),
+            bytes
+        ));
         let writer = DataWriter::new().map_err(|e| BleError::Windows(e.to_string()))?;
         writer
             .WriteBytes(bytes)
@@ -391,7 +413,10 @@ impl AtvvLink {
                 .await
                 .map_err(|e| BleError::Windows(e.to_string()))
         })?;
-        core_log::log_info(&format!("[ble/gatt] write_tx completed with status: {:?}", status));
+        core_log::log_info(&format!(
+            "[ble/gatt] write_tx completed with status: {:?}",
+            status
+        ));
         Ok(())
     }
 
@@ -410,22 +435,25 @@ impl AtvvLink {
         let handler = shared.clone();
 
         let event_handler: TypedEventHandler<GattCharacteristic, GattValueChangedEventArgs> =
-            TypedEventHandler::new(move |_sender: windows::core::Ref<GattCharacteristic>, args: windows::core::Ref<GattValueChangedEventArgs>| {
-            let event_args = match args.as_ref() {
-                Some(v) => v,
-                None => return Ok(()),
-            };
-            let buffer: IBuffer = match event_args.CharacteristicValue() {
-                Ok(b) => b,
-                Err(_) => return Ok(()),
-            };
-            if let Ok(data) = buffer_to_vec(&buffer) {
-                if let Ok(mut guard) = handler.lock() {
-                    guard(data);
-                }
-            }
-            Ok(())
-        });
+            TypedEventHandler::new(
+                move |_sender: windows::core::Ref<GattCharacteristic>,
+                      args: windows::core::Ref<GattValueChangedEventArgs>| {
+                    let event_args = match args.as_ref() {
+                        Some(v) => v,
+                        None => return Ok(()),
+                    };
+                    let buffer: IBuffer = match event_args.CharacteristicValue() {
+                        Ok(b) => b,
+                        Err(_) => return Ok(()),
+                    };
+                    if let Ok(data) = buffer_to_vec(&buffer) {
+                        if let Ok(mut guard) = handler.lock() {
+                            guard(data);
+                        }
+                    }
+                    Ok(())
+                },
+            );
 
         let cookie = self
             .audio
@@ -496,8 +524,8 @@ impl AtvvLink {
         let handler = Arc::new(Mutex::new(callback));
         let event_handler = handler.clone();
 
-        let typed = TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(
-            move |sender, _args| {
+        let typed =
+            TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(move |sender, _args| {
                 if let Some(device) = sender.as_ref() {
                     if let Ok(status) = device.ConnectionStatus() {
                         if let Ok(mut guard) = event_handler.lock() {
@@ -506,8 +534,7 @@ impl AtvvLink {
                     }
                 }
                 Ok(())
-            },
-        );
+            });
 
         self._device
             .ConnectionStatusChanged(&typed)
@@ -528,8 +555,7 @@ fn buffer_to_vec(buffer: &IBuffer) -> Result<Vec<u8>> {
         .Length()
         .map_err(|e| BleError::Windows(e.to_string()))? as usize;
     let mut out = vec![0u8; len];
-    let reader = DataReader::FromBuffer(buffer)
-        .map_err(|e| BleError::Windows(e.to_string()))?;
+    let reader = DataReader::FromBuffer(buffer).map_err(|e| BleError::Windows(e.to_string()))?;
     reader
         .ReadBytes(&mut out)
         .map_err(|e| BleError::Windows(e.to_string()))?;

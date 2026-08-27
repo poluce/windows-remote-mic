@@ -101,7 +101,11 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
             items.push(SelfTestItem {
                 name: "本地统计读写".into(),
                 status: if ok { "pass" } else { "fail" }.into(),
-                detail: if ok { "统计写读一致".into() } else { "统计读写失败".into() },
+                detail: if ok {
+                    "统计写读一致".into()
+                } else {
+                    "统计读写失败".into()
+                },
             });
         } else {
             items.push(SelfTestItem {
@@ -137,4 +141,3 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
 
     items
 }
-

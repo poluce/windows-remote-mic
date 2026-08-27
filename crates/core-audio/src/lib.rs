@@ -14,10 +14,10 @@ pub mod playback;
 #[cfg(target_os = "windows")]
 pub mod sink;
 
+pub mod diagnostics;
 pub mod dsp;
 pub mod endpoint;
 pub mod error;
-pub mod diagnostics;
 pub mod test_tone;
 
 pub use error::{AudioError, Result};

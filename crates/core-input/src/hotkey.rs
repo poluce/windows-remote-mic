@@ -1,12 +1,10 @@
 //! Windows-only SendInput helpers.
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, INPUT, INPUT_0,
-    INPUT_KEYBOARD, VIRTUAL_KEY, VK_ESCAPE, VK_H, VK_LWIN,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+    VIRTUAL_KEY, VK_ESCAPE, VK_H, VK_LWIN,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetClassNameW, GetForegroundWindow, GetWindowTextW,
-};
+use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow, GetWindowTextW};
 
 use crate::Result;
 
@@ -17,12 +15,7 @@ pub fn press_win_h() -> Result<()> {
     let down = |vk| keyboard_input(vk, false);
     let up = |vk| keyboard_input(vk, true);
 
-    let inputs = [
-        down(VK_LWIN),
-        down(VK_H),
-        up(VK_H),
-        up(VK_LWIN),
-    ];
+    let inputs = [down(VK_LWIN), down(VK_H), up(VK_H), up(VK_LWIN)];
 
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
     crate::log_line(&format!("[input] SendInput returned {sent} events"));
@@ -58,12 +51,18 @@ pub fn press_escape() -> Result<()> {
 }
 
 fn keyboard_input(vk: VIRTUAL_KEY, up: bool) -> INPUT {
-    let mut input = INPUT::default();
-    input.r#type = INPUT_KEYBOARD;
+    let mut input = INPUT {
+        r#type: INPUT_KEYBOARD,
+        ..Default::default()
+    };
     let ki = KEYBDINPUT {
         wVk: vk,
         wScan: 0,
-        dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+        dwFlags: if up {
+            KEYEVENTF_KEYUP
+        } else {
+            KEYBD_EVENT_FLAGS(0)
+        },
         time: 0,
         dwExtraInfo: 0,
     };
@@ -100,11 +99,8 @@ pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
             }
         }
         // release in reverse order
-        let releases: Vec<(VIRTUAL_KEY, bool)> = seq
-            .iter()
-            .rev()
-            .map(|(vk, _)| (*vk, true))
-            .collect();
+        let releases: Vec<(VIRTUAL_KEY, bool)> =
+            seq.iter().rev().map(|(vk, _)| (*vk, true)).collect();
         seq.extend(releases);
         seq
     };

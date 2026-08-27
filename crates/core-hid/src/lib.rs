@@ -11,7 +11,7 @@ pub const HID_USAGE_PAGE_KEYBOARD: u16 = 0x07;
 /// device can also report it as Keyboard F5 (usage 0x3E); we keep it as a
 /// fallback so a pure-HID path can still detect the voice key.
 pub const BUTTON_USAGE_MAP: [(u32, ButtonId); 14] = [
-    (0x003E, ButtonId::Mic),     // F5 fallback for voice key
+    (0x003E, ButtonId::Mic), // F5 fallback for voice key
     (0x00F1, ButtonId::Back),
     (0x0028, ButtonId::Ok),
     (0x0035, ButtonId::Tv),
@@ -51,15 +51,13 @@ pub fn usage_to_button(usage: u32) -> Option<ButtonId> {
 
 /// Map a physical button back to its HID usage id.
 pub fn button_to_usage(button: ButtonId) -> Option<u32> {
-    BUTTON_USAGE_MAP
-        .iter()
-        .find_map(|(usage, b)| {
-            if *b == button && usage_to_button(*usage) == Some(button) {
-                Some(*usage)
-            } else {
-                None
-            }
-        })
+    BUTTON_USAGE_MAP.iter().find_map(|(usage, b)| {
+        if *b == button && usage_to_button(*usage) == Some(button) {
+            Some(*usage)
+        } else {
+            None
+        }
+    })
 }
 
 /// Parse a single Raw Input keyboard report into pressed buttons.
@@ -95,12 +93,12 @@ pub fn usage_to_vkey(usage: u32) -> Option<u16> {
 /// Consumer Control (usage page 0x0C) -> Windows virtual-key.
 pub fn consumer_usage_to_vkey(usage: u32) -> Option<u16> {
     match usage {
-        0x0224 => Some(166), // AC Back
+        0x0224 => Some(166),          // AC Back
         0x0223 | 0x018A => Some(172), // AC Home
-        0x00E9 => Some(175), // Volume increment
-        0x00EA => Some(174), // Volume decrement
-        0x00E2 => Some(173), // Mute
-        0x0040 => Some(93),  // Menu
+        0x00E9 => Some(175),          // Volume increment
+        0x00EA => Some(174),          // Volume decrement
+        0x00E2 => Some(173),          // Mute
+        0x0040 => Some(93),           // Menu
         _ => None,
     }
 }
@@ -211,10 +209,7 @@ mod tests {
     fn parse_report_maps_known_buttons() {
         // up(0x52), ok(0x28), back(0xF1)
         let buttons = parse_keyboard_report(&[0x52, 0x28, 0xF1, 0x00]);
-        assert_eq!(
-            buttons,
-            vec![ButtonId::Up, ButtonId::Ok, ButtonId::Back]
-        );
+        assert_eq!(buttons, vec![ButtonId::Up, ButtonId::Ok, ButtonId::Back]);
     }
 
     #[test]
@@ -230,7 +225,10 @@ mod tests {
 
     #[test]
     fn hid_report_detects_keyboard_back() {
-        assert_eq!(parse_hid_report_vkeys(&[0x00, 0x00, 0xF1, 0x00, 0x00, 0x00, 0x00, 0x00]), vec![166]);
+        assert_eq!(
+            parse_hid_report_vkeys(&[0x00, 0x00, 0xF1, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            vec![166]
+        );
     }
 
     #[test]
@@ -247,7 +245,10 @@ mod tests {
     #[test]
     fn hogp_ioctl_keeps_only_back_and_volume() {
         let back = [0x01, 0x00, 0x00, 0xF1, 0x00, 0x00, 0x00, 0x00, 0x00];
-        assert_eq!(hogp_special_usages(hogp_ioctl_payload(&back).unwrap()), vec![0x00F1]);
+        assert_eq!(
+            hogp_special_usages(hogp_ioctl_payload(&back).unwrap()),
+            vec![0x00F1]
+        );
 
         let vol = [0x01, 0x00, 0x00, 0x80, 0x00, 0x81, 0x00, 0x00, 0x00];
         let mut got = hogp_special_usages(hogp_ioctl_payload(&vol).unwrap());

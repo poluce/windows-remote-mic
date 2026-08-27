@@ -155,10 +155,12 @@ mod tests {
     #[test]
     fn save_then_load_roundtrip() {
         let (_dir, store) = temp_store();
-        let mut cfg = Config::default();
-        cfg.output_endpoint_id = Some("cable-input".into());
-        cfg.gain_db = 12.0;
-        cfg.selected_device_id = Some("device-1".into());
+        let cfg = Config {
+            output_endpoint_id: Some("cable-input".into()),
+            gain_db: 12.0,
+            selected_device_id: Some("device-1".into()),
+            ..Config::default()
+        };
         store.save(&cfg).unwrap();
 
         let loaded = store.load().unwrap();

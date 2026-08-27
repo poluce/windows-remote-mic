@@ -2,13 +2,11 @@
 
 /// IMA ADPCM step size table (89 entries).
 pub const STEP_TABLE: [i32; 89] = [
-    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41,
-    45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190,
-    209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724,
-    796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272,
-    2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132,
-    7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500,
-    20350, 22385, 24623, 27086, 29794, 32767,
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66,
+    73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
+    494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272,
+    2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493,
+    10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
 ];
 
 /// IMA ADPCM index adjustment table.
@@ -74,7 +72,10 @@ impl ImaAdpcmDecoder {
 
     /// Decode a byte as two 16-bit PCM samples, **high nibble first**.
     pub fn decode_byte(&mut self, byte: u8) -> [i16; 2] {
-        [self.decode_nibble(byte >> 4), self.decode_nibble(byte & 0x0F)]
+        [
+            self.decode_nibble(byte >> 4),
+            self.decode_nibble(byte & 0x0F),
+        ]
     }
 
     /// Decode a whole buffer, producing 2 samples per byte.
@@ -137,8 +138,7 @@ impl ImaAdpcmEncoder {
             self.predictor += diff;
         }
         self.predictor = self.predictor.clamp(-32768, 32767);
-        self.step_index =
-            (self.step_index + INDEX_TABLE[nibble as usize]).clamp(0, 88);
+        self.step_index = (self.step_index + INDEX_TABLE[nibble as usize]).clamp(0, 88);
         nibble
     }
 
@@ -176,7 +176,6 @@ fn compute_diff(nibble: u8, step: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn decode_byte_produces_two_samples() {

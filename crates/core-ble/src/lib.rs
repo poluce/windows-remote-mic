@@ -26,7 +26,10 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
     let devices = self::winrt::scan_paired()?;
     for d in &devices {
         if matches_rc003(&d.name) {
-            core_log::log_info(&format!("[ble] matched RC003 device: name='{}', id='{}'", d.name, d.id));
+            core_log::log_info(&format!(
+                "[ble] matched RC003 device: name='{}', id='{}'",
+                d.name, d.id
+            ));
             return Ok(d.clone());
         }
     }
@@ -59,8 +62,14 @@ mod winrt;
 pub fn scan_and_connect() -> Result<(BleDevice, AtvvEndpoints)> {
     core_log::log_info("[ble] scan_and_connect initiated...");
     let device = scan_for_rc003()?;
-    core_log::log_info(&format!("[ble] device found: '{}', proceeding to discover ATVV endpoints...", device.name));
+    core_log::log_info(&format!(
+        "[ble] device found: '{}', proceeding to discover ATVV endpoints...",
+        device.name
+    ));
     let endpoints = discover_atvv(&device.id)?;
-    core_log::log_info(&format!("[ble] ATVV endpoints discovered successfully: complete={}", endpoints.is_complete()));
+    core_log::log_info(&format!(
+        "[ble] ATVV endpoints discovered successfully: complete={}",
+        endpoints.is_complete()
+    ));
     Ok((device, endpoints))
 }

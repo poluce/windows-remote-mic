@@ -164,7 +164,12 @@ mod tests {
     fn long_press_fires_on_long_hold() {
         let mut d = TriggerDetector::new();
         d.press(0);
-        assert_eq!(d.release(600), FeedOutcome::Fire(TriggerEvent { trigger: Trigger::LongPress }));
+        assert_eq!(
+            d.release(600),
+            FeedOutcome::Fire(TriggerEvent {
+                trigger: Trigger::LongPress
+            })
+        );
     }
 
     #[test]

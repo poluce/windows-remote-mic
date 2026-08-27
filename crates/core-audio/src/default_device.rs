@@ -6,8 +6,8 @@
 
 #![allow(non_snake_case, non_upper_case_globals)]
 
-use windows_core::{HRESULT, IUnknown, IUnknown_Vtbl, PCWSTR, interface, GUID};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
+use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
+use windows_core::{interface, IUnknown, IUnknown_Vtbl, GUID, HRESULT, PCWSTR};
 
 use crate::endpoint::list_input_endpoints;
 use crate::error::{AudioError, Result};
@@ -24,8 +24,12 @@ const CLSID_PolicyConfigClient: GUID = GUID::from_values(
 #[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
 unsafe trait IPolicyConfig: IUnknown {
     fn GetMixFormat(&self, device: PCWSTR, format: *mut *mut core::ffi::c_void) -> HRESULT;
-    fn GetDeviceFormat(&self, device: PCWSTR, def: bool, format: *mut *mut core::ffi::c_void)
-        -> HRESULT;
+    fn GetDeviceFormat(
+        &self,
+        device: PCWSTR,
+        def: bool,
+        format: *mut *mut core::ffi::c_void,
+    ) -> HRESULT;
     fn ResetDeviceFormat(&self, device: PCWSTR) -> HRESULT;
     fn SetDeviceFormat(
         &self,
@@ -133,8 +137,7 @@ pub(crate) fn ensure_com_initialized() {
 pub fn set_default_input(endpoint_id: &str) -> Result<()> {
     ensure_com_initialized();
     unsafe {
-        let policy: IPolicyConfig =
-            CoCreateInstance(&CLSID_PolicyConfigClient, None, CLSCTX_ALL)?;
+        let policy: IPolicyConfig = CoCreateInstance(&CLSID_PolicyConfigClient, None, CLSCTX_ALL)?;
 
         let mut device_wide: Vec<u16> = endpoint_id.encode_utf16().collect();
         device_wide.push(0);

@@ -12,14 +12,16 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::{hogp_ioctl_payload, hogp_special_usages, usage_to_vkey, raw_input};
+use crate::{hogp_ioctl_payload, hogp_special_usages, raw_input, usage_to_vkey};
 
 const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
-static STATUS_CB: Mutex<Option<Box<dyn Fn(String) + Send>>> = Mutex::new(None);
+type StatusCallback = Box<dyn Fn(String) + Send>;
+
+static STATUS_CB: Mutex<Option<StatusCallback>> = Mutex::new(None);
 static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 static ACTIVE: Mutex<Vec<u16>> = Mutex::new(Vec::new());
@@ -42,7 +44,10 @@ fn tap_port() -> u16 {
 
 fn gadget_dir() -> PathBuf {
     let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base).join("RemoteMic").join("RC003").join("hid-tap")
+    PathBuf::from(base)
+        .join("RemoteMic")
+        .join("RC003")
+        .join("hid-tap")
 }
 
 fn gadget_dll_path() -> PathBuf {
@@ -148,8 +153,11 @@ fn prepare_runtime() -> Result<(), String> {
         "runtime": "qjs",
         "teardown": "minimal"
     });
-    std::fs::write(dir.join("frida-gadget.config"), serde_json::to_vec_pretty(&cfg).unwrap())
-        .map_err(|e| e.to_string())?;
+    std::fs::write(
+        dir.join("frida-gadget.config"),
+        serde_json::to_vec_pretty(&cfg).unwrap(),
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -180,7 +188,9 @@ fn hub_loop() {
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
-                        status(&format!("已请求注入 HOGP 宿主 pid={pid}（若弹出 UAC 请允许）"));
+                        status(&format!(
+                            "已请求注入 HOGP 宿主 pid={pid}（若弹出 UAC 请允许）"
+                        ));
                     }
                     Ok(false) => {
                         status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响");
@@ -223,7 +233,9 @@ fn hub_loop() {
             continue;
         };
         drop(listener);
-        status(&format!("返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"));
+        status(&format!(
+            "返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"
+        ));
         arm_grace();
         serve_client(stream);
         *ACTIVE.lock().unwrap() = Vec::new();
@@ -258,7 +270,7 @@ fn serve_client(stream: std::net::TcpStream) {
 
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(s.len() / 2);
@@ -414,13 +426,13 @@ fn find_rc003_host_pid() -> Option<u32> {
         None
     }
 
-    let root = open_sub(HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\BTHLEDevice")?;
+    let root = open_sub(
+        HKEY_LOCAL_MACHINE,
+        r"SYSTEM\CurrentControlSet\Enum\BTHLEDevice",
+    )?;
     let mut service_i = 0;
     let mut found = None;
-    loop {
-        let Some(service) = enum_key(root, service_i) else {
-            break;
-        };
+    while let Some(service) = enum_key(root, service_i) {
         service_i += 1;
         let folded = service.to_ascii_lowercase();
         if !folded.contains("00001812-0000-1000-8000-00805f9b34fb") {
@@ -433,10 +445,7 @@ fn find_rc003_host_pid() -> Option<u32> {
             continue;
         };
         let mut inst_i = 0;
-        loop {
-            let Some(instance) = enum_key(svc_key, inst_i) else {
-                break;
-            };
+        while let Some(instance) = enum_key(svc_key, inst_i) {
             inst_i += 1;
             let diag = format!("{instance}\\Device Parameters\\WUDFDiagnosticInfo");
             if let Some(diag_key) = open_sub(svc_key, &diag) {
@@ -474,7 +483,9 @@ fn find_rc003_host_pid() -> Option<u32> {
 #[cfg(windows)]
 fn is_elevated() -> bool {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
     unsafe {
         let mut token = HANDLE::default();
@@ -503,13 +514,13 @@ fn is_elevated() -> bool {
 
 #[cfg(windows)]
 fn enable_debug_privilege() -> Result<(), String> {
+    use windows::core::w;
     use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};
     use windows::Win32::Security::{
-        AdjustTokenPrivileges, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
-        TOKEN_PRIVILEGES, TOKEN_QUERY,
+        AdjustTokenPrivileges, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
+        TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
     };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-    use windows::core::w;
     unsafe {
         let mut token = HANDLE::default();
         OpenProcessToken(
@@ -544,7 +555,8 @@ fn enable_debug_privilege() -> Result<(), String> {
 fn process_is_wudfhost(pid: u32) -> Result<bool, String> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
@@ -613,13 +625,8 @@ fn inject_into(pid: u32) -> Result<(), String> {
             let _ = CloseHandle(process);
             return Err("VirtualAllocEx failed".into());
         }
-        let written_ok = WriteProcessMemory(
-            process,
-            remote,
-            encoded.as_ptr() as *const _,
-            bytes,
-            None,
-        );
+        let written_ok =
+            WriteProcessMemory(process, remote, encoded.as_ptr() as *const _, bytes, None);
         if written_ok.is_err() {
             let _ = VirtualFreeEx(process, remote, 0, MEM_RELEASE);
             let _ = CloseHandle(process);
@@ -628,7 +635,10 @@ fn inject_into(pid: u32) -> Result<(), String> {
         let k32 = GetModuleHandleW(w!("kernel32.dll")).map_err(|e| e.to_string())?;
         let load = GetProcAddress(k32, s!("LoadLibraryW")).ok_or("LoadLibraryW missing")?;
         let start: windows::Win32::System::Threading::LPTHREAD_START_ROUTINE =
-            Some(std::mem::transmute(load));
+            Some(std::mem::transmute::<
+                unsafe extern "system" fn() -> isize,
+                unsafe extern "system" fn(*mut std::ffi::c_void) -> u32,
+            >(load));
         let thread = CreateRemoteThread(process, None, 0, start, Some(remote), 0, None);
         let thread = match thread {
             Ok(t) => t,
@@ -660,9 +670,7 @@ fn elevate_and_inject(pid: u32) -> Result<bool, String> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::System::Threading::WaitForSingleObject;
-    use windows::Win32::UI::Shell::{
-        ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
-    };
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -678,7 +686,7 @@ fn elevate_and_inject(pid: u32) -> Result<bool, String> {
             lpVerb: PCWSTR(verb.as_ptr()),
             lpFile: PCWSTR(exe_w.as_ptr()),
             lpParameters: PCWSTR(params_w.as_ptr()),
-            nShow: SW_HIDE.0 as i32,
+            nShow: SW_HIDE.0,
             ..Default::default()
         };
         if ShellExecuteExW(&mut info).is_err() {
@@ -687,7 +695,9 @@ fn elevate_and_inject(pid: u32) -> Result<bool, String> {
         if !info.hProcess.is_invalid() {
             let _ = WaitForSingleObject(info.hProcess, 30_000);
             if WaitForSingleObject(info.hProcess, 0) != WAIT_OBJECT_0 {
-                core_log::log_warn("[hid-tap] elevated injector still running; hub will wait for gadget");
+                core_log::log_warn(
+                    "[hid-tap] elevated injector still running; hub will wait for gadget",
+                );
             }
             let _ = CloseHandle(info.hProcess);
         }

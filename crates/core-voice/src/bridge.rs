@@ -1,13 +1,12 @@
 //! Windows-only real-device bridge: BLE -> decode -> CABLE output -> Win+H.
 
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc, Arc, Mutex,
 };
 use std::time::Duration;
 
-use core_atvv::protocol::{ControlEvent, RawControlEvent, GET_CAPABILITIES_V10, parse_control};
+use core_atvv::protocol::{parse_control, ControlEvent, RawControlEvent, GET_CAPABILITIES_V10};
 use core_ble::capture::CaptureRecorder;
 use core_ble::gatt::AtvvLink;
 use core_input::{press_escape, press_win_h};
@@ -18,11 +17,7 @@ use crate::VoiceEngine;
 ///
 /// `on_status` is invoked with `true` when the BLE connection becomes
 /// connected and `false` when it becomes disconnected.
-pub fn run_bridge<F>(
-    device_id: &str,
-    output_device: &str,
-    on_status: F,
-) -> Result<(), String>
+pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Result<(), String>
 where
     F: Fn(bool) + Send + 'static,
 {
@@ -39,7 +34,11 @@ where
     let disconnected = Arc::new(AtomicBool::new(false));
     let disconnected_cb = disconnected.clone();
     link.register_connection_status_changed(move |connected| {
-        let msg = if connected { "connected" } else { "disconnected" };
+        let msg = if connected {
+            "connected"
+        } else {
+            "disconnected"
+        };
         core_log::log_line(&format!("[bridge] BLE connection status changed: {msg}"));
         if !connected {
             disconnected_cb.store(true, Ordering::SeqCst);
@@ -56,13 +55,17 @@ where
     core_log::log_info("[bridge] audio notifications enabled");
 
     link.enable_control_notifications().map_err(|e| {
-        core_log::log_error(&format!("[bridge] enable_control_notifications failed: {e}"));
+        core_log::log_error(&format!(
+            "[bridge] enable_control_notifications failed: {e}"
+        ));
         e.to_string()
     })?;
     core_log::log_info("[bridge] control notifications enabled");
 
     link.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
-        core_log::log_error(&format!("[bridge] write_tx GET_CAPABILITIES_V10 failed: {e}"));
+        core_log::log_error(&format!(
+            "[bridge] write_tx GET_CAPABILITIES_V10 failed: {e}"
+        ));
         e.to_string()
     })?;
     core_log::log_info("[bridge] GET_CAPABILITIES_V10 sent to remote");
@@ -71,13 +74,13 @@ where
     // HOGP inject cannot steal the GATT session during characteristic setup.
     core_hid::tap::start_after_atvv();
 
-    let sink = Arc::new(
-        core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
-            core_log::log_error(&format!("[bridge] failed to initialize AudioSink: {e}"));
-            e.to_string()
-        })?,
-    );
-    core_log::log_info(&format!("[bridge] AudioSink initialized on '{output_device}'"));
+    let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
+        core_log::log_error(&format!("[bridge] failed to initialize AudioSink: {e}"));
+        e.to_string()
+    })?;
+    core_log::log_info(&format!(
+        "[bridge] AudioSink initialized on '{output_device}'"
+    ));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
         .map(|base| std::path::Path::new(&base).join("RemoteMic/RC003/captures"))
@@ -100,8 +103,7 @@ where
             if !chunk.output.is_empty() {
                 core_log::log_debug(&format!(
                     "[bridge] audio chunk decoded: {} samples -> output {} samples",
-                    chunk.pcm_samples,
-                    chunk.output_samples
+                    chunk.pcm_samples, chunk.output_samples
                 ));
                 let _ = frame_tx.send(chunk.output);
             }
@@ -118,13 +120,19 @@ where
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
-            core_log::log_info(&format!("[bridge] control notification received: {:02X?}", bytes));
+            core_log::log_info(&format!(
+                "[bridge] control notification received: {:02X?}",
+                bytes
+            ));
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,
             };
             let Some(event) = parse_control(&bytes) else {
-                core_log::log_warn(&format!("[bridge] unrecognized control packet: {:02X?}", bytes));
+                core_log::log_warn(&format!(
+                    "[bridge] unrecognized control packet: {:02X?}",
+                    bytes
+                ));
                 return;
             };
             core_log::log_info(&format!("[bridge] parsed control event: {:?}", event));
@@ -154,7 +162,9 @@ where
                         let _ = eng.on_control(ControlEvent::StreamStart);
                     } else {
                         *active = false;
-                        core_input::log_line("[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)");
+                        core_input::log_line(
+                            "[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)",
+                        );
                         let _ = eng.on_control(ControlEvent::StreamStop);
                         if let Err(e) = press_escape() {
                             core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
@@ -169,10 +179,14 @@ where
                     if let Ok(mut active) = is_active_ctrl.lock() {
                         if *active {
                             *active = false;
-                            core_input::log_line("[bridge] 遥控器 AudioStopped -> 关闭语音输入 (Escape)");
+                            core_input::log_line(
+                                "[bridge] 遥控器 AudioStopped -> 关闭语音输入 (Escape)",
+                            );
                             let _ = eng.on_control(ControlEvent::StreamStop);
                             if let Err(e) = press_escape() {
-                                core_input::log_error(&format!("[bridge] close voice typing failed: {e}"));
+                                core_input::log_error(&format!(
+                                    "[bridge] close voice typing failed: {e}"
+                                ));
                             }
                         }
                     }

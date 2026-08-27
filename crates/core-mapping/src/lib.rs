@@ -114,7 +114,10 @@ impl Default for MappingConfig {
 
 impl MappingConfig {
     pub fn by_button(&self, button: ButtonId) -> Vec<&KeyBinding> {
-        self.bindings.iter().filter(|b| b.button == button).collect()
+        self.bindings
+            .iter()
+            .filter(|b| b.button == button)
+            .collect()
     }
 
     /// Resolve the single/double/long action for a button.

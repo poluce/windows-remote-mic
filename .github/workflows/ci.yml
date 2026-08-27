@@ -21,16 +21,27 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Typecheck frontend
+        run: npm run typecheck
+
       - name: Build frontend (TypeScript + Vite)
         run: npm run build
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: target
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy core crates
+        run: cargo clippy --workspace --exclude remote-mic --all-targets -- -D warnings
 
       - name: Test core crates
         run: cargo test --workspace --exclude remote-mic

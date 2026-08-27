@@ -68,13 +68,10 @@ impl VoiceEngine {
         for frame in self.assembler.push(bytes) {
             chunk.complete_frames += 1;
 
-            let accepted = match self
+            let accepted = self
                 .session
                 .on_audio_frame(self.now_ms, frame.len() * 2)
-            {
-                Ok(ok) => ok,
-                Err(_) => false,
-            };
+                .unwrap_or_default();
 
             if !accepted {
                 chunk.dropped_bytes += frame.len();

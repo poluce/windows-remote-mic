@@ -5,25 +5,13 @@ use serde::Serialize;
 use crate::endpoint::{list_input_endpoints, list_output_endpoints, AudioEndpoint};
 
 /// Snapshot of the audio route health.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct AudioDiagnostics {
     pub output_endpoints: Vec<AudioEndpoint>,
     pub input_endpoints: Vec<AudioEndpoint>,
     pub has_vb_cable: bool,
     pub cable_input_present: bool,
     pub cable_output_present: bool,
-}
-
-impl Default for AudioDiagnostics {
-    fn default() -> Self {
-        Self {
-            output_endpoints: Vec::new(),
-            input_endpoints: Vec::new(),
-            has_vb_cable: false,
-            cable_input_present: false,
-            cable_output_present: false,
-        }
-    }
 }
 
 /// Run endpoint enumeration and derive the virtual sound-card verdict.

@@ -50,11 +50,17 @@ fn debug_enabled() -> bool {
     }
 
     let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());
-    Path::new(&base).join("RemoteMic").join("RC003").join("debug").exists()
+    Path::new(&base)
+        .join("RemoteMic")
+        .join("RC003")
+        .join("debug")
+        .exists()
 }
 
 fn write_log(level: &str, line: &str) {
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+    let now = chrono::Local::now()
+        .format("%Y-%m-%d %H:%M:%S%.3f")
+        .to_string();
     let full = format!("[{now}] [{level}] {line}");
 
     let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());

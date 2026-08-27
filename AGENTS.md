@@ -47,7 +47,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
-│   ├── core-hid          # Windows Raw Input 框架（可扩展）
+│   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input）
+│   ├── core-input        # Windows 按键注入、热键、输入钩子
 │   └── core-diagnostics  # 自检 / 解码预览
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
@@ -171,6 +172,10 @@ cargo check -p remote-mic
 
 - **UI 全部使用简体中文。**
 - 项目是 clean-room 实现：不要在文档/代码中引用外部仓库（如 HD838A/remote-mic-app）作为来源。
+- **crate 边界**：
+  - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告）。
+  - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
+  - 日志统一以 `core-log` 为唯一出口；`core-input` 现有的 `log_*` 薄封装仅为兼容旧调用，新代码不要再增加这类包装。
 - `scripts/*.ps1` 保持纯 ASCII，避免 PowerShell 编码问题。
 - Windows PowerShell 5.1 没有 `Join-String`，需要用 `-join`。
 - WSL 与 Windows 共享 node_modules 会产生平台冲突；如遇 esbuild/rollup 平台错误，在 Windows 端重新 `npm install`。
@@ -179,7 +184,12 @@ cargo check -p remote-mic
 
 ## 工作流提示
 
-- 修改前端页面后，运行 `npm run build` 验证。
-- 修改 Rust 后，运行 `cargo check -p remote-mic` 验证。
+- 修改前端页面后，至少运行 `npm run typecheck`，完整验证用 `npm run build`。
+- 修改 Rust 后，运行以下命令验证：
+  ```powershell
+  cargo fmt --all -- --check
+  cargo clippy --workspace --exclude remote-mic --all-targets -- -D warnings
+  cargo check -p remote-mic
+  ```
 - 提交前检查 `git status`，避免把临时文件或平台相关 node_modules 提交进去。
 - 需要重启 Tauri dev 时，先结束旧 `remote-mic.exe` / 占用 `1420` 的进程，再重新启动。

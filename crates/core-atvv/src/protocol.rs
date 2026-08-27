@@ -88,7 +88,11 @@ impl AtvvCapabilities {
             raw_frame_size as usize
         };
         let selected_codec = if codecs & 0x02 != 0 { 0x02 } else { 0x01 };
-        let sample_rate_hz = if selected_codec == 0x02 { 16_000 } else { 8_000 };
+        let sample_rate_hz = if selected_codec == 0x02 {
+            16_000
+        } else {
+            8_000
+        };
 
         Some(Self {
             version,
@@ -164,16 +168,15 @@ mod tests {
         );
         assert_eq!(
             parse_control(&[OPCODE_AUDIO_START, 0, 0, 7]),
-            Some(RawControlEvent::AudioStarted { session_id: Some(7) })
+            Some(RawControlEvent::AudioStarted {
+                session_id: Some(7)
+            })
         );
         assert_eq!(
             parse_control(&[OPCODE_AUDIO_STOP]),
             Some(RawControlEvent::AudioStopped)
         );
-        assert_eq!(
-            parse_control(&[0x77]),
-            Some(RawControlEvent::Unknown(0x77))
-        );
+        assert_eq!(parse_control(&[0x77]), Some(RawControlEvent::Unknown(0x77)));
     }
 
     #[test]

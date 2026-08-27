@@ -3,16 +3,14 @@
 //! Only compiled and used on `target_os = "windows"`.
 
 use windows::core::PWSTR;
+use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, eRender, DEVICE_STATE_ACTIVE, EDataFlow, IMMDeviceEnumerator,
-    IMMDeviceCollection, MMDeviceEnumerator,
-};
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, STGM_READ,
+    eCapture, eConsole, eRender, EDataFlow, IMMDeviceCollection, IMMDeviceEnumerator,
+    MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
+use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, STGM_READ};
 use windows::Win32::System::Variant::VT_LPWSTR;
-use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 
 use crate::endpoint::{AudioEndpoint, EndpointKind};
 use crate::error::Result;
@@ -43,10 +41,7 @@ pub(crate) fn default_input_endpoint_id() -> Result<String> {
     }
 }
 
-unsafe fn list_endpoints(
-    dataflow: EDataFlow,
-    kind: EndpointKind,
-) -> Result<Vec<AudioEndpoint>> {
+unsafe fn list_endpoints(dataflow: EDataFlow, kind: EndpointKind) -> Result<Vec<AudioEndpoint>> {
     crate::default_device::ensure_com_initialized();
     unsafe {
         let enumerator: IMMDeviceEnumerator =
@@ -73,9 +68,9 @@ unsafe fn collect_endpoint(
         let device = collection.Item(index)?;
 
         let id_pw: PWSTR = device.GetId()?;
-        let id = id_pw.to_string().map_err(|e| {
-            crate::error::AudioError::Windows(format!("bad device id: {e}"))
-        })?;
+        let id = id_pw
+            .to_string()
+            .map_err(|e| crate::error::AudioError::Windows(format!("bad device id: {e}")))?;
         CoTaskMemFree(Some(id_pw.as_ptr() as *const core::ffi::c_void));
 
         let store = device.OpenPropertyStore(STGM_READ)?;

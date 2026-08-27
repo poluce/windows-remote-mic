@@ -5,8 +5,8 @@
 //! CABLE Input is selected as the output device, then the tone should be
 //! visible on CABLE Output (a.k.a. the virtual microphone).
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -66,11 +66,7 @@ pub fn play_test_tone(device_name: Option<&str>) -> Result<()> {
 }
 
 /// Play the test tone several times with a short gap between each run.
-pub fn play_test_tone_loop(
-    device_name: Option<&str>,
-    repetitions: u32,
-    gap_ms: u64,
-) -> Result<()> {
+pub fn play_test_tone_loop(device_name: Option<&str>, repetitions: u32, gap_ms: u64) -> Result<()> {
     let repetitions = repetitions.clamp(1, 20);
     for i in 0..repetitions {
         play_test_tone(device_name)?;
@@ -81,7 +77,10 @@ pub fn play_test_tone_loop(
     Ok(())
 }
 
-pub(crate) fn pick_output_device_public(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
+pub(crate) fn pick_output_device_public(
+    host: &cpal::Host,
+    name: Option<&str>,
+) -> Result<cpal::Device> {
     pick_output_device(host, name)
 }
 
@@ -102,6 +101,5 @@ fn pick_output_device(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Dev
         }
     }
 
-    host.default_output_device()
-        .ok_or(AudioError::NoEndpoint)
+    host.default_output_device().ok_or(AudioError::NoEndpoint)
 }

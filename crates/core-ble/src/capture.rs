@@ -66,7 +66,7 @@ mod tests {
         rec.record("control", &[0x08]);
         rec.record("audio", &[0x11, 0x22]);
 
-        assert!(!rec.path_for("control").exists() == false);
+        assert!(rec.path_for("control").exists());
         let text = std::fs::read_to_string(rec.path_for("control")).unwrap();
         assert!(text.contains("08"));
     }

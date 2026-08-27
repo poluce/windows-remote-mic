@@ -42,7 +42,9 @@ pub fn start_voice_bridge(
                 let result = core_voice::run_bridge(&device_id, &output_device, on_status);
                 match result {
                     Ok(()) => {
-                        core_log::log_line("[commands/audio] voice bridge stopped, preparing reconnect");
+                        core_log::log_line(
+                            "[commands/audio] voice bridge stopped, preparing reconnect",
+                        );
                     }
                     Err(e) => {
                         core_log::log_error(&format!("[commands/audio] voice bridge error: {e}"));
@@ -136,10 +138,7 @@ pub fn install_vb_cable() -> String {
             Ok(out) if out.status.success() => {
                 String::from_utf8_lossy(&out.stdout).trim().to_string()
             }
-            Ok(out) => format!(
-                "安装失败：{}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            ),
+            Ok(out) => format!("安装失败：{}", String::from_utf8_lossy(&out.stderr).trim()),
             Err(e) => format!("无法启动安装程序：{e}"),
         }
     }

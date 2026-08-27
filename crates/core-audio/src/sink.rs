@@ -3,8 +3,8 @@
 
 use std::collections::VecDeque;
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
 };
 
 use cpal::traits::{DeviceTrait, StreamTrait};

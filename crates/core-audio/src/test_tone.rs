@@ -65,8 +65,8 @@ mod tests {
     fn default_tone_length_equals_sr_seconds_channels() {
         let spec = ToneSpec::default();
         let tone = generate_test_tone(spec);
-        let expected = (spec.sample_rate_hz as f32 * spec.duration_secs) as usize
-            * spec.channels as usize;
+        let expected =
+            (spec.sample_rate_hz as f32 * spec.duration_secs) as usize * spec.channels as usize;
         assert_eq!(tone.len(), expected);
     }
 
@@ -85,8 +85,10 @@ mod tests {
 
     #[test]
     fn mono_spec_uses_one_channel() {
-        let mut spec = ToneSpec::default();
-        spec.channels = 1;
+        let spec = ToneSpec {
+            channels: 1,
+            ..Default::default()
+        };
         let tone = generate_test_tone(spec);
         assert_eq!(tone.len(), spec.sample_rate_hz as usize);
     }

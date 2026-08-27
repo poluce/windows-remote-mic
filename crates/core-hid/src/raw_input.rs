@@ -9,8 +9,8 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::{
-    GetRawInputData, GetRawInputDeviceInfoW, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE,
-    RAWINPUTDEVICE_FLAGS, RAWINPUTHEADER, RAWKEYBOARD, RegisterRawInputDevices, RIDEV_INPUTSINK,
+    GetRawInputData, GetRawInputDeviceInfoW, RegisterRawInputDevices, HRAWINPUT, RAWINPUT,
+    RAWINPUTDEVICE, RAWINPUTDEVICE_FLAGS, RAWINPUTHEADER, RAWKEYBOARD, RIDEV_INPUTSINK,
     RIDI_DEVICENAME, RID_INPUT, RIM_TYPEHID, RIM_TYPEKEYBOARD,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -21,7 +21,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::parse_hid_report_vkeys;
 
-static CALLBACK: Mutex<Option<Box<dyn Fn(RawInputEvent) + Send>>> = Mutex::new(None);
+type RawInputCallback = Box<dyn Fn(RawInputEvent) + Send>;
+
+static CALLBACK: Mutex<Option<RawInputCallback>> = Mutex::new(None);
 static HID_DOWN: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 static LOGGED_SIZE_FAIL: AtomicBool = AtomicBool::new(false);
 
@@ -116,7 +118,8 @@ pub fn start_listener(
             },
         ];
 
-        if let Err(e) = RegisterRawInputDevices(&devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32)
+        if let Err(e) =
+            RegisterRawInputDevices(&devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32)
         {
             core_log::log_error(&format!("[raw_input] RegisterRawInputDevices failed: {e}"));
             let _ = tx.send(Err(e.to_string()));
@@ -244,8 +247,10 @@ fn hid_payload(buf: &[u8]) -> &[u8] {
     if buf.len() < header_size + 8 {
         return &[];
     }
-    let dw_size_hid = u32::from_le_bytes(buf[header_size..header_size + 4].try_into().unwrap()) as usize;
-    let dw_count = u32::from_le_bytes(buf[header_size + 4..header_size + 8].try_into().unwrap()) as usize;
+    let dw_size_hid =
+        u32::from_le_bytes(buf[header_size..header_size + 4].try_into().unwrap()) as usize;
+    let dw_count =
+        u32::from_le_bytes(buf[header_size + 4..header_size + 8].try_into().unwrap()) as usize;
     let start = header_size + 8;
     let total = dw_size_hid.saturating_mul(dw_count.max(1));
     let end = (start + total).min(buf.len());

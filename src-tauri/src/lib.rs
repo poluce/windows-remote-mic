@@ -234,50 +234,44 @@ pub fn run() {
                 (0.0, 0.0)
             };
 
-            WebviewWindowBuilder::new(
-                app,
-                "quick-menu",
-                WebviewUrl::App("quick-menu.html".into()),
-            )
-            .title("Quick Menu")
-            .inner_size(win_width, win_height)
-            .position(x, y)
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .shadow(false)
-            .visible(false)
-            .build()?;
+            WebviewWindowBuilder::new(app, "quick-menu", WebviewUrl::App("quick-menu.html".into()))
+                .title("Quick Menu")
+                .inner_size(win_width, win_height)
+                .position(x, y)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .shadow(false)
+                .visible(false)
+                .build()?;
 
             #[cfg(windows)]
             if let Some(win) = app.get_webview_window("main") {
-                let _ = win.with_webview(|webview| {
-                    unsafe {
-                        use webview2_com::Microsoft::Web::WebView2::Win32::{
-                            ICoreWebView2Settings3, ICoreWebView2Settings6,
-                        };
-                        use windows_core::Interface;
-                        match webview.controller().CoreWebView2() {
-                            Ok(core) => {
-                                if let Ok(settings) = core.Settings() {
-                                    if let Ok(s3) = settings.cast::<ICoreWebView2Settings3>() {
-                                        let _ = s3.SetAreBrowserAcceleratorKeysEnabled(false);
-                                    }
-                                    if let Ok(s6) = settings.cast::<ICoreWebView2Settings6>() {
-                                        let _ = s6.SetIsSwipeNavigationEnabled(false);
-                                    }
-                                    core_log::log_info(
-                                        "[app] WebView2 accelerator keys and swipe navigation disabled",
-                                    );
+                let _ = win.with_webview(|webview| unsafe {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Settings3, ICoreWebView2Settings6,
+                    };
+                    use windows_core::Interface;
+                    match webview.controller().CoreWebView2() {
+                        Ok(core) => {
+                            if let Ok(settings) = core.Settings() {
+                                if let Ok(s3) = settings.cast::<ICoreWebView2Settings3>() {
+                                    let _ = s3.SetAreBrowserAcceleratorKeysEnabled(false);
                                 }
+                                if let Ok(s6) = settings.cast::<ICoreWebView2Settings6>() {
+                                    let _ = s6.SetIsSwipeNavigationEnabled(false);
+                                }
+                                core_log::log_info(
+                                    "[app] WebView2 accelerator keys and swipe navigation disabled",
+                                );
                             }
-                            Err(e) => {
-                                core_log::log_warn(&format!(
-                                    "[app] failed to access WebView2 to disable accelerator keys: {e}"
-                                ));
-                            }
+                        }
+                        Err(e) => {
+                            core_log::log_warn(&format!(
+                                "[app] failed to access WebView2 to disable accelerator keys: {e}"
+                            ));
                         }
                     }
                 });
@@ -285,7 +279,10 @@ pub fn run() {
 
             let handle = app.handle().clone();
             if let Err(e) = core_input::start_key_hook(move |evt| {
-                core_log::log_debug(&format!("[hook] key event: vkey={}, pressed={}", evt.vkey, evt.pressed));
+                core_log::log_debug(&format!(
+                    "[hook] key event: vkey={}, pressed={}",
+                    evt.vkey, evt.pressed
+                ));
                 let _ = handle.emit("raw-remote-key", evt);
             }) {
                 core_log::log_error(&format!("[hook] start_key_hook failed: {e}"));
@@ -316,7 +313,9 @@ pub fn run() {
                 });
             }
 
-            core_log::log_info("[app] Remote Mic application setup completed, windows and global hook initialized");
+            core_log::log_info(
+                "[app] Remote Mic application setup completed, windows and global hook initialized",
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

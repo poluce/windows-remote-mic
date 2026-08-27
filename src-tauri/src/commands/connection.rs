@@ -19,19 +19,17 @@ pub struct PersistedSettings {
 #[tauri::command]
 pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
     core_log::log_info("[commands/connection] scan_for_rc003 invoked from UI");
-    tauri::async_runtime::spawn_blocking(|| {
-        match core_ble::scan_for_rc003() {
-            Ok(device) => {
-                core_log::log_info(&format!(
-                    "[commands/connection] scan_for_rc003 succeeded: name='{}', id='{}'",
-                    device.name, device.id
-                ));
-                Ok(device)
-            }
-            Err(e) => {
-                core_log::log_error(&format!("[commands/connection] scan_for_rc003 failed: {e}"));
-                Err(e.to_string())
-            }
+    tauri::async_runtime::spawn_blocking(|| match core_ble::scan_for_rc003() {
+        Ok(device) => {
+            core_log::log_info(&format!(
+                "[commands/connection] scan_for_rc003 succeeded: name='{}', id='{}'",
+                device.name, device.id
+            ));
+            Ok(device)
+        }
+        Err(e) => {
+            core_log::log_error(&format!("[commands/connection] scan_for_rc003 failed: {e}"));
+            Err(e.to_string())
         }
     })
     .await

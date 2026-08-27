@@ -2,8 +2,8 @@
 //! Captures all hardware keystrokes (including BrowserBack, Media, App keys)
 //! directly from the OS before WebView2 or other windows can consume them.
 
-use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RawKeyEvent {
@@ -11,14 +11,16 @@ pub struct RawKeyEvent {
     pub pressed: bool,
 }
 
-static HOOK_CALLBACK: Mutex<Option<Box<dyn Fn(RawKeyEvent) + Send>>> = Mutex::new(None);
+type HookCallback = Box<dyn Fn(RawKeyEvent) + Send>;
+
+static HOOK_CALLBACK: Mutex<Option<HookCallback>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, MSG, SetWindowsHookExW,
-    HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL,
+    WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 #[cfg(target_os = "windows")]
@@ -37,12 +39,7 @@ pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result
     #[cfg(target_os = "windows")]
     {
         std::thread::spawn(|| unsafe {
-            let hook = SetWindowsHookExW(
-                WH_KEYBOARD_LL,
-                Some(low_level_keyboard_proc),
-                None,
-                0,
-            );
+            let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), None, 0);
 
             match hook {
                 Ok(h) => {
