@@ -115,6 +115,16 @@ cargo check -p remote-mic
   - 保存后写入后端并更新本地列表
 - 映射表只读展示，编辑统一走上方向导。
 
+### 3.5 按键来源分类（三类流）
+- 当前物理按键来源分三类：
+  | 类别 | 链路 | 按键 |
+  | --- | --- | --- |
+  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风键（主路径） |
+  | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 方向、OK、Home、Menu、Power、TV；麦克风键 F5 兜底 |
+  | HID 非标准 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回、音量+、音量- |
+- 三类流最终汇聚到 `core-mapping` 统一做按键映射。
+- 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook 线程。
+
 ### 4. ATVV / 音频要点
 - GATT 服务：`AB5E0001-...`
   - TX：`...0002`
