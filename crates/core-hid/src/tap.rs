@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::{hogp_ioctl_payload, hogp_special_usages, raw_input, usage_to_vkey};
+use crate::{hogp_ioctl_payload, hogp_payload_usages, raw_input, usage_to_vkey};
 
 const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
@@ -295,12 +295,30 @@ fn from_hex(c: u8) -> Option<u8> {
 }
 
 fn on_ioctl_bytes(data: &[u8]) {
+    core_log::log_debug(&format!(
+        "[hid-tap] HOGP 原始数据: {} 字节, hex={}",
+        data.len(),
+        hex_bytes(data)
+    ));
+
     let Some(payload) = hogp_ioctl_payload(data) else {
+        core_log::log_debug(&format!(
+            "[hid-tap] HOGP 数据格式不匹配，已忽略: {}",
+            hex_bytes(data)
+        ));
         return;
     };
-    let mut next = hogp_special_usages(payload);
+
+    let mut next = hogp_payload_usages(payload);
     next.sort_unstable();
     next.dedup();
+
+    // 记录所有解析出的 usage，包括未知 usage，便于校准真实信号。
+    if !next.is_empty() {
+        let usages: Vec<String> = next.iter().map(|u| format!("0x{u:04X}")).collect();
+        core_log::log_info(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
+    }
+
     let mut prev = ACTIVE.lock().unwrap();
     if *prev == next {
         return;
@@ -322,6 +340,9 @@ fn on_ioctl_bytes(data: &[u8]) {
 
 fn emit_usage(usage: u16, pressed: bool) {
     let Some(vkey) = usage_to_vkey(u32::from(usage)) else {
+        core_log::log_warn(&format!(
+            "[hid-tap] 未知 usage=0x{usage:04X} 按下={pressed}，无对应虚拟键，已记录但不转发"
+        ));
         return;
     };
     core_log::log_info(&format!(
@@ -332,6 +353,10 @@ fn emit_usage(usage: u16, pressed: bool) {
         make_code: 0,
         pressed,
     });
+}
+
+fn hex_bytes(data: &[u8]) -> String {
+    data.iter().map(|b| format!("{b:02X}")).collect()
 }
 
 fn request_inject(pid: u32) -> Result<bool, String> {
