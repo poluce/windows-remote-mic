@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::time::Duration;
 use tauri::Emitter;
 
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
@@ -27,16 +28,37 @@ pub fn start_voice_bridge(
         ));
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
-            let on_status = move |connected: bool| {
-                let _ = app_for_thread.emit("ble-connection-status", connected);
-            };
-            if let Err(e) = core_voice::run_bridge(&device_id, &output_device, on_status) {
-                core_log::log_error(&format!("[commands/audio] voice bridge worker thread exited with error: {e}"));
-            } else {
-                core_log::log_info("[commands/audio] voice bridge worker thread finished normally");
+            let mut attempt: u64 = 0;
+            loop {
+                let app_cb = app_for_thread.clone();
+                let on_status = move |connected: bool| {
+                    let _ = app_cb.emit("ble-connection-status", connected);
+                };
+
+                core_log::log_line(&format!(
+                    "[commands/audio] voice bridge attempt {} starting",
+                    attempt + 1
+                ));
+                let result = core_voice::run_bridge(&device_id, &output_device, on_status);
+                match result {
+                    Ok(()) => {
+                        core_log::log_line("[commands/audio] voice bridge stopped, preparing reconnect");
+                    }
+                    Err(e) => {
+                        core_log::log_error(&format!("[commands/audio] voice bridge error: {e}"));
+                    }
+                }
+
+                let _ = app_for_thread.emit("ble-connection-status", false);
+                attempt += 1;
+                let delay_secs = (attempt * 2).min(10);
+                core_log::log_line(&format!(
+                    "[commands/audio] reconnecting in {delay_secs}s (attempt {attempt})"
+                ));
+                std::thread::sleep(Duration::from_secs(delay_secs));
             }
         });
-        "语音桥已启动（监听 ATVV Audio → CABLE 输出）".to_string()
+        "语音桥已启动（断线后自动重连）".to_string()
     }
     #[cfg(not(target_os = "windows"))]
     {

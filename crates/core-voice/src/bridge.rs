@@ -1,6 +1,10 @@
 //! Windows-only real-device bridge: BLE -> decode -> CABLE output -> Win+H.
 
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::time::Duration;
 
 use core_atvv::protocol::{ControlEvent, RawControlEvent, GET_CAPABILITIES_V10, parse_control};
@@ -32,9 +36,14 @@ where
     })?;
     core_log::log_info("[bridge] AtvvLink connected");
 
+    let disconnected = Arc::new(AtomicBool::new(false));
+    let disconnected_cb = disconnected.clone();
     link.register_connection_status_changed(move |connected| {
         let msg = if connected { "connected" } else { "disconnected" };
         core_log::log_line(&format!("[bridge] BLE connection status changed: {msg}"));
+        if !connected {
+            disconnected_cb.store(true, Ordering::SeqCst);
+        }
         on_status(connected);
     })
     .map_err(|e| e.to_string())?;
@@ -178,6 +187,10 @@ where
 
     // Main loop: keep link alive and push decoded frames to the sink.
     loop {
+        if disconnected.load(Ordering::SeqCst) {
+            core_log::log_line("[bridge] BLE disconnected, stopping bridge for auto-reconnect");
+            break;
+        }
         match frame_rx.recv_timeout(Duration::from_secs(2)) {
             Ok(frames) => sink.push(&frames),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
