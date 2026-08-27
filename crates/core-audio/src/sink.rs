@@ -2,10 +2,7 @@
 //!（例如 CABLE Input）。使用 cpal/WASAPI，带内部帧队列。
 
 use std::collections::VecDeque;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, StreamTrait};
 
@@ -15,7 +12,6 @@ use crate::error::{AudioError, Result};
 pub struct AudioSink {
     queue: Arc<Mutex<VecDeque<f32>>>,
     _stream: cpal::Stream,
-    started: Arc<AtomicBool>,
 }
 
 impl AudioSink {
@@ -36,17 +32,14 @@ impl AudioSink {
 
         let config: cpal::StreamConfig = supported.into();
         let queue: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let started = Arc::new(AtomicBool::new(false));
 
         let q = queue.clone();
-        let started_play = started.clone();
         let err_fn = |e| core_log::log_error(&format!("[audio] 音频流错误: {e}"));
 
         let stream = device
             .build_output_stream(
                 &config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    started_play.store(true, Ordering::Relaxed);
                     if let Ok(mut q) = q.lock() {
                         for sample in data.iter_mut() {
                             *sample = q.pop_front().unwrap_or(0.0);
@@ -65,7 +58,6 @@ impl AudioSink {
         Ok(Self {
             queue,
             _stream: stream,
-            started,
         })
     }
 
@@ -74,10 +66,5 @@ impl AudioSink {
         if let Ok(mut q) = self.queue.lock() {
             q.extend(frames);
         }
-    }
-
-    /// 音频回调是否至少运行过一次。
-    pub fn is_started(&self) -> bool {
-        self.started.load(Ordering::Relaxed)
     }
 }

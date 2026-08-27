@@ -401,11 +401,6 @@ impl AtvvLink {
         Ok(())
     }
 
-    /// 旧调用方使用的向后兼容别名。
-    pub fn write_control(&self, bytes: &[u8]) -> Result<()> {
-        self.write_tx(bytes)
-    }
-
     /// 注册一个接收原始 Audio 特征字节的回调。
     /// 返回事件 cookie；调用 `remove_audio_handler` 停止。
     pub fn register_audio_handler<F>(&self, callback: F) -> Result<i64>
@@ -520,13 +515,6 @@ impl AtvvLink {
         self._device
             .ConnectionStatusChanged(&typed)
             .map_err(|e| BleError::Windows(e.to_string()))
-    }
-
-    /// 保持链路存活直到进程退出（用于独立桥接程序）。
-    pub fn run_forever(&self) -> Result<()> {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(60));
-        }
     }
 }
 

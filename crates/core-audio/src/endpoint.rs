@@ -69,14 +69,6 @@ pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     }
 }
 
-/// 根据持久化的 ID 查找端点。
-pub fn find_endpoint_by_id(id: &str) -> Result<AudioEndpoint> {
-    list_output_endpoints()?
-        .into_iter()
-        .find(|e| e.id == id)
-        .ok_or_else(|| crate::error::AudioError::EndpointNotFound(id.to_string()))
-}
-
 /// 返回当前默认采集（麦克风）设备名称（如果可用）。
 pub fn default_input_name() -> Option<String> {
     #[cfg(target_os = "windows")]

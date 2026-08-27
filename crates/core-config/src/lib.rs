@@ -130,10 +130,6 @@ impl ConfigStore {
     }
 }
 
-pub fn default_config_dir_name() -> &'static str {
-    "RemoteMic/RC003"
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -5,15 +5,24 @@
 use windows::core::PWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, eRender, EDataFlow, IMMDeviceCollection, IMMDeviceEnumerator,
-    MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+    eCapture, eRender, EDataFlow, IMMDeviceCollection, IMMDeviceEnumerator, MMDeviceEnumerator,
+    DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
-use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, STGM_READ};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
+};
 use windows::Win32::System::Variant::VT_LPWSTR;
 
 use crate::endpoint::{AudioEndpoint, EndpointKind};
 use crate::error::Result;
+
+#[inline]
+pub(crate) fn ensure_com_initialized() {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+}
 
 /// 枚举当前活动的 WASAPI 播放（渲染）端点。
 pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
@@ -25,24 +34,8 @@ pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     unsafe { list_endpoints(eCapture, EndpointKind::Input) }
 }
 
-/// 返回当前默认采集（麦克风）端点的设备 ID。
-pub(crate) fn default_input_endpoint_id() -> Result<String> {
-    crate::default_device::ensure_com_initialized();
-    unsafe {
-        let enumerator: IMMDeviceEnumerator =
-            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
-        let device = enumerator.GetDefaultAudioEndpoint(eCapture, eConsole)?;
-        let id_pw = device.GetId()?;
-        let id = id_pw.to_string().map_err(|e| {
-            crate::error::AudioError::Windows(format!("bad default device id: {e}"))
-        })?;
-        CoTaskMemFree(Some(id_pw.as_ptr() as *const core::ffi::c_void));
-        Ok(id)
-    }
-}
-
 unsafe fn list_endpoints(dataflow: EDataFlow, kind: EndpointKind) -> Result<Vec<AudioEndpoint>> {
-    crate::default_device::ensure_com_initialized();
+    ensure_com_initialized();
     unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;

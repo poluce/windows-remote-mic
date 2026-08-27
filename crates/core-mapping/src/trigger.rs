@@ -146,13 +146,6 @@ impl TriggerDetector {
     pub fn reset(&mut self) {
         *self = Self::default();
     }
-
-    /// 测试辅助：立即强制确认任何待处理的单击。
-    pub fn confirm_single(&mut self) -> Option<TriggerEvent> {
-        self.last_single_at.take().map(|_| TriggerEvent {
-            trigger: Trigger::SingleClick,
-        })
-    }
 }
 
 #[cfg(test)]

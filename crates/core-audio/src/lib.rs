@@ -8,8 +8,6 @@
 mod wasapi;
 
 #[cfg(target_os = "windows")]
-pub mod default_device;
-#[cfg(target_os = "windows")]
 pub mod playback;
 #[cfg(target_os = "windows")]
 pub mod sink;

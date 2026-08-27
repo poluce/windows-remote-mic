@@ -113,13 +113,6 @@ impl Default for MappingConfig {
 }
 
 impl MappingConfig {
-    pub fn by_button(&self, button: ButtonId) -> Vec<&KeyBinding> {
-        self.bindings
-            .iter()
-            .filter(|b| b.button == button)
-            .collect()
-    }
-
     /// 解析某个按钮对应的单击/双击/长按动作。
     pub fn resolve(&self, button: ButtonId, trigger: Trigger) -> Option<&ActionKind> {
         self.bindings

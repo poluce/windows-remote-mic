@@ -129,53 +129,6 @@ export function VoicePage() {
     <div className="page">
 
       <section className="card">
-        <div className="card-title">语音识别目标</div>
-        <div className="voice-route">
-          <div className="route-node">
-            <span>🎛️</span>
-            <div>遥控器</div>
-            <small>RC003</small>
-          </div>
-          {voiceTarget === "windows_voice" ? (
-            <>
-              <span className="route-arrow flow">→</span>
-              <div className="route-node">
-                <span>🎧</span>
-                <div>
-                  {virtualDriver === "vb_cable"
-                    ? "VB-CABLE"
-                    : virtualDriver === "voicemeeter"
-                      ? "Voicemeeter"
-                      : virtualDriver === "rearoute"
-                        ? "ReaRoute"
-                        : "虚拟声卡"}
-                </div>
-                <small>{virtualDriver === "vb_cable" ? selected : "预留"}</small>
-              </div>
-              <span className="route-arrow flow">→</span>
-            </>
-          ) : (
-            <span className="route-arrow flow">→</span>
-          )}
-          <div className="route-node active">
-            <span>🎙️</span>
-            <div>
-              {voiceTarget === "windows_voice"
-                ? "Windows 语音键入"
-                : voiceTarget === "ime_wechat"
-                  ? "微信输入法"
-                  : voiceTarget === "ime_doubao"
-                    ? "豆包输入法"
-                    : voiceTarget === "ime_sogou"
-                      ? "搜狗输入法"
-                      : "第三方输入法"}
-            </div>
-            <small>{voiceTarget === "windows_voice" ? "Win + H" : "预留"}</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="card">
         <div className="card-title">识别方案</div>
         <div className="wizard-group">
           <div className="wizard-label">语音识别目标</div>
@@ -267,28 +220,25 @@ export function VoicePage() {
       </section>
 
       {voiceTarget === "windows_voice" && (
-        <section className="card">
-          <div className="card-title">模拟输入框</div>
+        <section className="card sim-card">
           <textarea
             ref={simInputRef}
             className="sim-input"
             rows={3}
             placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
           />
-          <p className="hint">模拟会自动聚焦此输入框；使用真实语音样本测试，识别文字会显示在这里。</p>
+          <div className="sim-actions">
+            <button className="btn primary" onClick={runVoiceSimulation} disabled={!isTauri()}>
+              {voiceTarget === "windows_voice"
+                ? "模拟完整语音链（无遥控器）"
+                : `模拟 ${imeName}（未接入）`}
+            </button>
+            <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
+              🎙️ 唤出语音输入条（Win + H）
+            </button>
+          </div>
         </section>
       )}
-
-      <section className="card actions">
-        <button className="btn primary" onClick={runVoiceSimulation} disabled={!isTauri()}>
-          {voiceTarget === "windows_voice"
-            ? "模拟完整语音链（无遥控器）"
-            : `模拟 ${imeName}（未接入）`}
-        </button>
-        <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
-          🎙️ 唤出语音输入条（Win + H）
-        </button>
-      </section>
 
       {simResult && (
         <section className="card">

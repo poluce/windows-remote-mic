@@ -617,6 +617,25 @@ button {
   margin: 10px 0 0;
 }
 
+.sim-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.sim-card .sim-input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
+.sim-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .sim-input {
   width: 100%;
   max-width: 420px;

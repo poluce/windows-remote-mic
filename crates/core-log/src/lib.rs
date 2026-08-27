@@ -206,13 +206,6 @@ pub fn clear_log() -> std::io::Result<()> {
     Ok(())
 }
 
-/// 如果活动日志文件超过 [`MAX_LOG_BYTES`] 则进行轮转，然后清理旧备份。
-/// 每次写入前会自动调用。
-pub fn rotate_log_if_needed() {
-    let _guard = LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-    rotate_if_needed(&log_path());
-}
-
 fn write_log(level: &str, line: &str) {
     let _guard = LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let now = chrono::Local::now()
