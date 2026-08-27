@@ -1,40 +1,40 @@
-//! core-input — Windows keyboard injection (SendInput).
+//! core-input — Windows 键盘注入（SendInput）。
 
 pub mod error;
 pub mod hook;
 pub use error::{InputError, Result};
 pub use hook::{start_key_hook, RawKeyEvent};
 
-/// Append a line to `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log`.
+/// 向 `%LOCALAPPDATA%\RemoteMic\RC003\remote-mic.log` 追加一行日志。
 ///
-/// This is a thin wrapper around `core_log` so existing callers can keep using
-/// `core_input::log_line`.
+/// 这是对 `core_log` 的薄封装，让现有调用方可以继续使用
+/// `core_input::log_line`。
 pub fn log_line(line: &str) {
     core_log::log_line(line);
 }
 
-/// Append a DEBUG-level line. Only written when temporary debug logging is on.
+/// 追加一行 DEBUG 级别日志。仅在临时调试日志开启时写入。
 pub fn log_debug(line: &str) {
     core_log::log_debug(line);
 }
 
-/// Append an ERROR-level line to the shared Remote Mic log file.
+/// 向共享的 Remote Mic 日志文件追加一行 ERROR 级别日志。
 pub fn log_error(line: &str) {
     core_log::log_error(line);
 }
 
-/// Append a WARN-level line to the shared Remote Mic log file.
+/// 向共享的 Remote Mic 日志文件追加一行 WARN 级别日志。
 pub fn log_warn(line: &str) {
     core_log::log_warn(line);
 }
 
-/// Press Win + H to start Windows built-in voice typing.
+/// 按下 Win + H 启动 Windows 自带语音输入。
 #[cfg(target_os = "windows")]
 pub fn press_win_h() -> Result<()> {
     crate::hotkey::press_win_h()
 }
 
-/// Non-Windows stub so the crate compiles everywhere.
+/// 非 Windows 平台桩实现，使 crate 在所有平台都能编译。
 #[cfg(not(target_os = "windows"))]
 pub fn press_win_h() -> Result<()> {
     Err(InputError::Windows(
@@ -42,13 +42,13 @@ pub fn press_win_h() -> Result<()> {
     ))
 }
 
-/// Press Escape to close Windows voice typing.
+/// 按下 Escape 关闭 Windows 语音输入。
 #[cfg(target_os = "windows")]
 pub fn press_escape() -> Result<()> {
     crate::hotkey::press_escape()
 }
 
-/// Non-Windows stub.
+/// 非 Windows 平台桩实现。
 #[cfg(not(target_os = "windows"))]
 pub fn press_escape() -> Result<()> {
     Err(InputError::Windows(
@@ -59,13 +59,13 @@ pub fn press_escape() -> Result<()> {
 #[cfg(target_os = "windows")]
 mod hotkey;
 
-/// Send a keyboard shortcut from tokens, e.g. ["win","d"] or ["ctrl","space"].
+/// 根据按键标记发送快捷键，例如 ["win","d"] 或 ["ctrl","space"]。
 #[cfg(target_os = "windows")]
 pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
     crate::hotkey::send_key_combo(tokens)
 }
 
-/// Open an app / file by launching it through the shell (Windows only).
+/// 通过 shell 打开应用/文件（仅 Windows）。
 #[cfg(target_os = "windows")]
 pub fn open_app(name: &str) -> Result<()> {
     crate::hotkey::open_app(name)

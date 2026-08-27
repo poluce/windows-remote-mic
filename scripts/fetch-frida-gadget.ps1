@@ -1,5 +1,5 @@
-# Fetch the official Frida Gadget used by the optional RC003 HID tap.
-# ASCII-only. Does not inject anything; the app starts the tap after ATVV is up.
+# 下载可选的 RC003 HID 旁路所需的官方 Frida Gadget。
+# 仅 ASCII。不会注入任何内容；应用在 ATVV 就绪后启动旁路。
 param(
     [string]$Version = "17.15.3"
 )
@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 
 $archiveName = "frida-gadget-$Version-windows-x86_64.dll.xz"
 $url = "https://github.com/frida/frida/releases/download/$Version/$archiveName"
-# Official GitHub release digest for 17.15.3 windows-x86_64 gadget xz.
+# 17.15.3 windows-x86_64 gadget xz 的官方 GitHub Release 摘要。
 $expectedArchiveSha256 = "b566d70189b6d551ad8f4e0bea24de08a3d4c0f559bb35b2bdb67d45182240c2"
 
 $dest = Join-Path $env:LOCALAPPDATA "RemoteMic\RC003\hid-tap"

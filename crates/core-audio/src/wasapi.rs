@@ -1,6 +1,6 @@
-//! Windows WASAPI endpoint enumeration (playback + capture).
+//! Windows WASAPI 端点枚举（播放 + 采集）。
 //!
-//! Only compiled and used on `target_os = "windows"`.
+//! 仅在 `target_os = "windows"` 时编译和使用。
 
 use windows::core::PWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
@@ -15,17 +15,17 @@ use windows::Win32::System::Variant::VT_LPWSTR;
 use crate::endpoint::{AudioEndpoint, EndpointKind};
 use crate::error::Result;
 
-/// Enumerate currently-active WASAPI playback (render) endpoints.
+/// 枚举当前活动的 WASAPI 播放（渲染）端点。
 pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
     unsafe { list_endpoints(eRender, EndpointKind::Output) }
 }
 
-/// Enumerate currently-active WASAPI capture (microphone) endpoints.
+/// 枚举当前活动的 WASAPI 采集（麦克风）端点。
 pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     unsafe { list_endpoints(eCapture, EndpointKind::Input) }
 }
 
-/// Return the device ID of the current default capture (microphone) endpoint.
+/// 返回当前默认采集（麦克风）端点的设备 ID。
 pub(crate) fn default_input_endpoint_id() -> Result<String> {
     crate::default_device::ensure_com_initialized();
     unsafe {
@@ -84,7 +84,7 @@ unsafe fn collect_endpoint(
     }
 }
 
-/// Read a `VT_LPWSTR` PROPVARIANT as a Rust String.
+/// 将 `VT_LPWSTR` PROPVARIANT 读取为 Rust String。
 unsafe fn propvar_to_string(pv: &PROPVARIANT) -> String {
     unsafe {
         if pv.Anonymous.Anonymous.vt == VT_LPWSTR {

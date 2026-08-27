@@ -3,7 +3,7 @@ use crate::{
     trigger_key, MappingEdit, MappingEntry,
 };
 
-/// Save one button mapping to `config.json`.
+/// 将一条按键映射保存到 `config.json`。
 #[tauri::command]
 pub fn save_mapping(edit: MappingEdit) -> Result<(), String> {
     let button = parse_button(&edit.button).ok_or("未知按键")?;
@@ -29,7 +29,7 @@ pub fn save_mapping(edit: MappingEdit) -> Result<(), String> {
     store.save(&cfg).map_err(|e| e.to_string())
 }
 
-/// Return all persisted bindings (single/double/long) for the mapping editor.
+/// 返回映射编辑器所需的全部持久化绑定（单击/双击/长按）。
 #[tauri::command]
 pub fn get_mappings() -> Vec<MappingEntry> {
     let cfg = config_store()
@@ -48,7 +48,7 @@ pub fn get_mappings() -> Vec<MappingEntry> {
         .collect()
 }
 
-/// Save key calibrations map to `config.json`.
+/// 将按键校准表保存到 `config.json`。
 #[tauri::command]
 pub fn save_key_calibrations(
     calibrations: std::collections::HashMap<String, core_config::KeyCalibration>,
@@ -59,7 +59,7 @@ pub fn save_key_calibrations(
     store.save(&cfg).map_err(|e| e.to_string())
 }
 
-/// Get key calibrations map from `config.json`.
+/// 从 `config.json` 读取按键校准表。
 #[tauri::command]
 pub fn get_key_calibrations() -> std::collections::HashMap<String, core_config::KeyCalibration> {
     let cfg = config_store()

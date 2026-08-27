@@ -2,14 +2,14 @@ use serde::Serialize;
 
 use crate::config_store;
 
-/// Connect to RC003.
+/// 连接 RC003。
 #[derive(Serialize)]
 pub struct Rc003Connection {
     pub device: core_ble::BleDevice,
     pub endpoints: core_ble::gatt::AtvvEndpoints,
 }
 
-/// Persisted settings exposed to the UI.
+/// 暴露给界面的持久化设置。
 #[derive(Serialize)]
 pub struct PersistedSettings {
     pub selected_device_id: Option<String>,

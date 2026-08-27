@@ -1,4 +1,4 @@
-//! core-ble — WinRT Bluetooth Low Energy connection for the RC003.
+//! core-ble — RC003 的 WinRT 低功耗蓝牙（BLE）连接。
 
 pub mod capture;
 pub mod error;
@@ -9,17 +9,16 @@ use serde::{Deserialize, Serialize};
 pub use error::{BleError, Result};
 pub use profile::{matches_rc003, RC003_BLUETOOTH_NAMES};
 
-/// A Bluetooth device surfaced by Windows.
+/// Windows 暴露的一个蓝牙设备。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BleDevice {
-    /// Windows device instance id (used later to connect/GATT).
+    /// Windows 设备实例 ID（稍后用于连接/GATT）。
     pub id: String,
-    /// Friendly name reported by Windows.
+    /// Windows 报告的设备友好名称。
     pub name: String,
 }
 
-/// Perform a blocking scan for paired Bluetooth devices and return the RC003
-/// if found.
+/// 执行阻塞式扫描，查找已配对的蓝牙设备；如果找到则返回 RC003。
 #[cfg(target_os = "windows")]
 pub fn scan_for_rc003() -> Result<BleDevice> {
     core_log::log_info("[ble] starting scan_for_rc003...");
@@ -41,7 +40,7 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
     Err(BleError::DeviceNotFound)
 }
 
-/// Non-Windows placeholder so the crate still compiles and tests run.
+/// 非 Windows 占位实现，使 crate 仍能编译并通过测试。
 #[cfg(not(target_os = "windows"))]
 pub fn scan_for_rc003() -> Result<BleDevice> {
     Err(BleError::Windows(
@@ -57,7 +56,7 @@ pub use gatt::{discover_atvv, AtvvEndpoints};
 #[cfg(target_os = "windows")]
 mod winrt;
 
-/// Scan for the RC003 then discover its ATVV endpoints (Windows only).
+/// 扫描 RC003，然后发现其 ATVV 端点（仅 Windows）。
 #[cfg(target_os = "windows")]
 pub fn scan_and_connect() -> Result<(BleDevice, AtvvEndpoints)> {
     core_log::log_info("[ble] scan_and_connect initiated...");

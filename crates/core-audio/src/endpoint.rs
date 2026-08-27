@@ -1,33 +1,33 @@
-//! Audio endpoint model.
+//! 音频端点模型。
 //!
-//! An endpoint is a playback (or capture) device Windows exposes, e.g.
-//! `CABLE Input` from VB-CABLE. The whole audio layer talks to this model,
-//! so swapping to another virtual audio driver only changes this module.
+//! 端点是 Windows 暴露的播放（或采集）设备，例如
+//! VB-CABLE 的 `CABLE Input`。整个音频层都通过该模型交互，
+//! 因此更换虚拟音频驱动只需改动此模块。
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 
-/// Direction of an audio endpoint.
+/// 音频端点的方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EndpointKind {
-    /// A playback device we write the remote audio into (e.g. CABLE Input).
+    /// 我们向其中写入遥控器音频的播放设备（例如 CABLE Input）。
     Output,
-    /// A capture device seen as a microphone by apps (e.g. CABLE Output).
+    /// 被应用视为麦克风的采集设备（例如 CABLE Output）。
     Input,
 }
 
-/// A single audio endpoint (device).
+/// 单个音频端点（设备）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioEndpoint {
-    /// Stable device id used for persistence (never the raw HW id).
+    /// 用于持久化的稳定设备 ID（绝不是原始硬件 ID）。
     pub id: String,
-    /// Human-readable name shown in the settings UI.
+    /// 设置界面中显示的可读名称。
     pub name: String,
     pub kind: EndpointKind,
 }
 
-/// Default placeholder endpoint used before WASAPI enumeration is wired in.
+/// 在接入 WASAPI 枚举之前使用的默认占位端点。
 pub fn placeholder_output() -> AudioEndpoint {
     AudioEndpoint {
         id: "cable-input".to_string(),
@@ -36,11 +36,11 @@ pub fn placeholder_output() -> AudioEndpoint {
     }
 }
 
-/// List output endpoints the app can write voice into.
+/// 列出应用可以写入语音的输出端点。
 ///
-/// Windows: enumerate WASAPI playback endpoints and expose the ones the user
-/// can pick as a virtual sound card (VB-CABLE's CABLE Input).
-/// Non-Windows: return a single placeholder so the UI can be previewed.
+/// Windows：枚举 WASAPI 播放端点，并暴露用户可作为虚拟声卡选择的端点
+///（VB-CABLE 的 CABLE Input）。
+/// 非 Windows：返回单个占位端点，便于预览 UI。
 pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
     #[cfg(target_os = "windows")]
     {
@@ -53,10 +53,10 @@ pub fn list_output_endpoints() -> Result<Vec<AudioEndpoint>> {
     }
 }
 
-/// List capture endpoints (virtual microphone side, e.g. CABLE Output).
+/// 列出采集端点（虚拟麦克风侧，例如 CABLE Output）。
 ///
-/// Windows: enumerate WASAPI capture endpoints.
-/// Non-Windows: return an empty list so diagnostics stay honest in preview.
+/// Windows：枚举 WASAPI 采集端点。
+/// 非 Windows：返回空列表，让诊断在预览中保持真实。
 pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     #[cfg(target_os = "windows")]
     {
@@ -69,7 +69,7 @@ pub fn list_input_endpoints() -> Result<Vec<AudioEndpoint>> {
     }
 }
 
-/// Find the endpoint with the given persisted id.
+/// 根据持久化的 ID 查找端点。
 pub fn find_endpoint_by_id(id: &str) -> Result<AudioEndpoint> {
     list_output_endpoints()?
         .into_iter()
@@ -77,7 +77,7 @@ pub fn find_endpoint_by_id(id: &str) -> Result<AudioEndpoint> {
         .ok_or_else(|| crate::error::AudioError::EndpointNotFound(id.to_string()))
 }
 
-/// Return the current default capture (microphone) device name, if available.
+/// 返回当前默认采集（麦克风）设备名称（如果可用）。
 pub fn default_input_name() -> Option<String> {
     #[cfg(target_os = "windows")]
     {

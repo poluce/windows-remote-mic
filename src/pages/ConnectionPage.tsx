@@ -116,7 +116,7 @@ export function ConnectionPage() {
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
       } catch {
-        // ignore save error
+        // 忽略保存错误
       }
 
       // 连接成功后，自动启动后台语音桥

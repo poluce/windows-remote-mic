@@ -1,4 +1,4 @@
-//! core-voice — orchestration: ATVV bytes -> ADPCM decode -> 48k stereo frames.
+//! core-voice — 编排：ATVV 字节 -> ADPCM 解码 -> 48k 立体声帧。
 
 use core_atvv::adpcm::ImaAdpcmDecoder;
 use core_atvv::frame::AudioFrameAssembler;
@@ -6,10 +6,10 @@ use core_atvv::protocol::ControlEvent;
 use core_atvv::session::VoiceSession;
 use serde::Serialize;
 
-/// Default ATVV audio frame length (bytes) — may need real-device tuning.
+/// ATVV 音频帧的默认长度（字节）——可能需要根据真实设备调整。
 pub const ATVV_FRAME_BYTES: usize = 120;
 
-/// Result of feeding one batch of raw BLE bytes.
+/// 向引擎喂入一批原始 BLE 字节后的结果。
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct VoiceChunk {
     pub bytes_fed: usize,
@@ -17,11 +17,11 @@ pub struct VoiceChunk {
     pub pcm_samples: usize,
     pub output_samples: usize,
     pub dropped_bytes: usize,
-    /// 48 kHz stereo float frames ready to be written to the output device.
+    /// 准备写入输出设备的 48 kHz 立体声浮点帧。
     pub output: Vec<f32>,
 }
 
-/// Orchestrates the remote->system voice path for one session.
+/// 为单个会话编排从遥控器到系统的语音通路。
 pub struct VoiceEngine {
     decoder: ImaAdpcmDecoder,
     assembler: AudioFrameAssembler,
@@ -45,12 +45,12 @@ impl VoiceEngine {
         }
     }
 
-    /// Advance the logical clock (milliseconds).
+    /// 推进逻辑时钟（毫秒）。
     pub fn advance(&mut self, ms: u64) {
         self.now_ms = self.now_ms.saturating_add(ms);
     }
 
-    /// Feed a control event (MicOpen / StreamStart / StreamStop).
+    /// 送入一个控制事件（MicOpen / StreamStart / StreamStop）。
     pub fn on_control(&mut self, event: ControlEvent) -> Result<(), core_atvv::AtvvError> {
         if event == ControlEvent::StreamStart {
             self.decoder.reset();
@@ -58,7 +58,7 @@ impl VoiceEngine {
         self.session.on_control(event, self.now_ms)
     }
 
-    /// Feed raw Audio-characteristic bytes; decodes complete frames.
+    /// 送入 Audio 特征的原始字节；解码出完整帧。
     pub fn feed(&mut self, bytes: &[u8]) -> VoiceChunk {
         let mut chunk = VoiceChunk {
             bytes_fed: bytes.len(),
@@ -82,7 +82,7 @@ impl VoiceEngine {
             chunk.pcm_samples += pcm.len();
 
             let mut mono_f32: Vec<f32> = pcm.iter().map(|&s| f32::from(s) / 32768.0).collect();
-            // Keep any adaptive gain modest for now (unit-level; value verified later).
+            // 暂时让自适应增益保持适中（单位级；数值后续再验证）。
             let frame_out = core_audio::build_output_frame(&mono_f32, core_audio::DEFAULT_GAIN_DB);
             chunk.output_samples += frame_out.len();
             chunk.output.extend_from_slice(&frame_out);
@@ -92,17 +92,16 @@ impl VoiceEngine {
         chunk
     }
 
-    /// Whether the session is currently streaming.
+    /// 会话当前是否正在流式传输（streaming）。
     pub fn is_streaming(&self) -> bool {
         self.session.is_streaming()
     }
 
-    /// Inject already-decoded PCM into the output stage.
+    /// 将已解码的 PCM 注入输出阶段。
     ///
-    /// This is the extension point for adding a specified test audio after
-    /// remote-audio parsing/decoding: callers supply decoded 16-bit mono PCM
-    /// and it is converted to the same 48 kHz stereo output used by the real
-    /// bridge path.
+    /// 这是在远端音频解析/解码之后添加指定测试音频的扩展点：
+    /// 调用方提供已解码的 16 位单声道 PCM，
+    /// 它会被转换为与真实桥接路径相同的 48 kHz 立体声输出。
     pub fn feed_pcm(&mut self, samples: &[i16]) -> VoiceChunk {
         let mut chunk = VoiceChunk {
             bytes_fed: 0,
@@ -139,8 +138,8 @@ mod tests {
 
         let chunk = engine.feed(&[0x55; 120]);
         assert_eq!(chunk.complete_frames, 1);
-        assert_eq!(chunk.pcm_samples, 240); // 120 bytes * 2 samples
-        assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k stereo
+        assert_eq!(chunk.pcm_samples, 240); // 120 字节 * 2 采样
+        assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k 立体声
     }
 
     #[test]
@@ -148,7 +147,7 @@ mod tests {
         let mut engine = VoiceEngine::new();
         let chunk = engine.feed_pcm(&[0i16; 240]);
         assert_eq!(chunk.pcm_samples, 240);
-        assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k stereo
+        assert_eq!(chunk.output_samples, 240 * 3 * 2); // 48k 立体声
     }
 
     #[test]

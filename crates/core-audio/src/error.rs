@@ -1,6 +1,6 @@
-//! Error types for core-audio.
+//! core-audio 的错误类型。
 
-/// Audio layer error.
+/// 音频层错误。
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
     #[error("audio output is not supported on this platform")]
@@ -16,7 +16,7 @@ pub enum AudioError {
     Windows(String),
 }
 
-/// Convenient result alias.
+/// 便捷的 Result 别名。
 pub type Result<T> = std::result::Result<T, AudioError>;
 
 #[cfg(windows)]

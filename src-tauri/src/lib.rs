@@ -1,4 +1,4 @@
-//! Remote Mic Tauri application shell.
+//! Remote Mic Tauri 应用外壳。
 
 mod commands;
 
@@ -43,7 +43,7 @@ fn find_install_script() -> Option<std::path::PathBuf> {
     None
 }
 
-/// Simple command used to verify the frontend <-> backend bridge works.
+/// 用于验证前端 <-> 后端桥接是否正常工作的简单命令。
 #[tauri::command]
 fn ping() -> String {
     let mut decoder = ImaAdpcmDecoder::new();
@@ -51,7 +51,7 @@ fn ping() -> String {
     "后端已连接（ATVV 解码正常，ADPCM 就绪）".to_string()
 }
 
-/// Frontend-friendly mapping entry.
+/// 面向前端展示的映射条目。
 #[derive(Serialize)]
 struct MappingEntry {
     button: String,
@@ -61,13 +61,13 @@ struct MappingEntry {
     action_key: String,
 }
 
-/// Persisted settings helper.
+/// 持久化设置的辅助函数。
 fn config_store() -> Option<core_config::ConfigStore> {
     let base = std::env::var("LOCALAPPDATA").ok()?;
     core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
 }
 
-/// Mapping edit payload from the settings UI.
+/// 来自设置界面的映射编辑数据。
 #[derive(serde::Deserialize)]
 struct MappingEdit {
     button: String,
@@ -126,7 +126,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
     })
 }
 
-/// Stable lower-case button key used by the frontend.
+/// 前端使用的稳定小写按键标识。
 fn button_key(button: &ButtonId) -> String {
     match button {
         ButtonId::Power => "power",
@@ -146,7 +146,7 @@ fn button_key(button: &ButtonId) -> String {
     .to_string()
 }
 
-/// Stable lower-case trigger key used by the frontend.
+/// 前端使用的稳定小写触发方式标识。
 fn trigger_key(trigger: &Trigger) -> String {
     match trigger {
         Trigger::SingleClick => "single_click",
@@ -156,7 +156,7 @@ fn trigger_key(trigger: &Trigger) -> String {
     .to_string()
 }
 
-/// Stable action key used by the frontend action picker.
+/// 前端动作选择器使用的稳定动作标识。
 fn action_key(action: &ActionKind) -> String {
     match action {
         ActionKind::Disabled => "disabled",

@@ -1,4 +1,4 @@
-//! Windows-only SendInput helpers.
+//! 仅 Windows 的 SendInput 辅助函数。
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
@@ -8,7 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow
 
 use crate::Result;
 
-/// Press Win + H and release.
+/// 按下并释放 Win + H。
 pub fn press_win_h() -> Result<()> {
     crate::log_line("[input] 按下 Win+H");
     log_foreground_window("before");
@@ -33,7 +33,7 @@ pub fn press_win_h() -> Result<()> {
     Ok(())
 }
 
-/// Press Escape (used to close Windows voice typing).
+/// 按下 Escape（用于关闭 Windows 语音输入）。
 pub fn press_escape() -> Result<()> {
     crate::log_line("[input] 按下 Escape");
     let down = keyboard_input(VK_ESCAPE, false);
@@ -70,7 +70,7 @@ fn keyboard_input(vk: VIRTUAL_KEY, up: bool) -> INPUT {
     input
 }
 
-/// Log the current foreground window title/class before/after a key press.
+/// 在按键前后记录当前前台窗口的标题/类名。
 fn log_foreground_window(tag: &str) {
     unsafe {
         let hwnd = GetForegroundWindow();
@@ -89,7 +89,7 @@ fn log_foreground_window(tag: &str) {
     }
 }
 
-/// Play a sequence of virtual-key presses (modifiers + keys, press then release).
+/// 播放一组虚拟键按下序列（修饰键 + 普通键，先按下后释放）。
 pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
     let keys: Vec<(VIRTUAL_KEY, bool)> = {
         let mut seq = Vec::new();
@@ -98,7 +98,7 @@ pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
                 seq.push((vk, false));
             }
         }
-        // release in reverse order
+        // 按相反顺序释放
         let releases: Vec<(VIRTUAL_KEY, bool)> =
             seq.iter().rev().map(|(vk, _)| (*vk, true)).collect();
         seq.extend(releases);
@@ -116,7 +116,7 @@ pub fn send_key_combo(tokens: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Open an app via the shell (`cmd /c start "" <name>`).
+/// 通过 shell 打开应用（`cmd /c start "" <name>`）。
 pub fn open_app(name: &str) -> Result<()> {
     std::process::Command::new("cmd")
         .args(["/C", "start", "", name])

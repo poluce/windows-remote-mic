@@ -1,11 +1,11 @@
-//! Portable DSP used before writing decoded remote audio to the output.
+//! 将解码后的遥控器音频写入输出前使用的可移植 DSP。
 
-/// Remote (RC003) voice sample rate.
+/// 遥控器（RC003）语音采样率。
 pub const REMOTE_SAMPLE_RATE: u32 = 16_000;
-/// Sample rate Windows apps commonly prefer (also what VB-CABLE endpoints use).
+/// Windows 应用通常偏好的采样率（也是 VB-CABLE 端点使用的采样率）。
 pub const TARGET_SAMPLE_RATE: u32 = 48_000;
 
-/// 16 kHz -> 48 kHz linear-interpolation resampler (factor = 3).
+/// 16 kHz -> 48 kHz 线性插值重采样器（倍率 = 3）。
 pub fn resample_16k_to_48k(input: &[f32]) -> Vec<f32> {
     if input.is_empty() {
         return Vec::new();
@@ -15,7 +15,7 @@ pub fn resample_16k_to_48k(input: &[f32]) -> Vec<f32> {
     let mut out = Vec::with_capacity(out_len);
 
     for n in 0..out_len {
-        // Map output sample n back to a 16k time position.
+        // 将输出采样 n 映射回 16k 时间位置。
         let pos = n as f32 / 3.0; // 0..input.len()-1
         let i0 = pos.floor() as usize;
         let frac = pos - i0 as f32;
@@ -28,7 +28,7 @@ pub fn resample_16k_to_48k(input: &[f32]) -> Vec<f32> {
     out
 }
 
-/// Apply a fixed gain in dB (e.g. +10 dB) in place.
+/// 原地应用固定增益（dB，例如 +10 dB）。
 pub fn apply_gain_db(samples: &mut [f32], db: f32) {
     let linear = 10f32.powf(db / 20.0);
     for s in samples.iter_mut() {
@@ -36,7 +36,7 @@ pub fn apply_gain_db(samples: &mut [f32], db: f32) {
     }
 }
 
-/// One-pole high-pass (DC blocker) ~20 Hz.
+/// 单极点高通（DC 阻挡）约 20 Hz。
 #[derive(Debug, Clone, Copy)]
 pub struct DcBlock {
     x_prev: f32,
@@ -57,10 +57,10 @@ impl DcBlock {
         Self::default()
     }
 
-    /// Filter coefficient (≈20 Hz at 48 kHz). A larger R lowers the cutoff.
+    /// 滤波系数（48 kHz 时约 20 Hz）。R 越大截止频率越低。
     const R: f32 = 0.995;
 
-    /// Process one sample and return the filtered value.
+    /// 处理一个采样并返回滤波后的值。
     pub fn process(&mut self, sample: f32) -> f32 {
         let y = sample - self.x_prev + Self::R * self.y_prev;
         self.x_prev = sample;
@@ -75,7 +75,7 @@ impl DcBlock {
     }
 }
 
-/// Duplicate mono samples into the given channel count (e.g. stereo).
+/// 将单声道采样复制到指定声道数（例如立体声）。
 pub fn to_channels(input: &[f32], channels: u16) -> Vec<f32> {
     let channels = channels.max(1) as usize;
     let mut out = Vec::with_capacity(input.len() * channels);
@@ -87,7 +87,7 @@ pub fn to_channels(input: &[f32], channels: u16) -> Vec<f32> {
     out
 }
 
-/// Clamp samples to avoid clipping.
+/// 限制采样范围以避免削波。
 pub fn hard_limiter(samples: &mut [f32], limit: f32) {
     for s in samples.iter_mut() {
         *s = s.clamp(-limit, limit);

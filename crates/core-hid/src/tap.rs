@@ -1,7 +1,7 @@
-//! Optional HOGP tap for Back / Volume+ / Volume- only.
+//! 可选的 HOGP 旁路，仅用于返回 / 音量加 / 音量减。
 //!
-//! Starts after ATVV notifications are up. Missing gadget or declined UAC
-//! leaves voice and Raw Input keys working.
+//! 在 ATVV 通知就绪后启动。缺少 gadget 或用户拒绝 UAC 时，
+//! 语音和 Raw Input 按键仍可正常工作。
 
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
@@ -86,8 +86,8 @@ fn in_grace() -> bool {
     }
 }
 
-/// If this process was launched as `--hid-tap-inject --pid N`, inject and exit.
-/// Returns true when the caller should not start the UI.
+/// 如果本进程以 `--hid-tap-inject --pid N` 方式启动，则注入后退出。
+/// 返回 true 时调用方不应启动 UI。
 pub fn maybe_run_injector() -> bool {
     let args: Vec<String> = std::env::args().collect();
     let Some(pos) = args.iter().position(|a| a == "--hid-tap-inject") else {
@@ -115,8 +115,8 @@ pub fn maybe_run_injector() -> bool {
     }
 }
 
-/// Begin the localhost hub and (if needed) request elevation to inject.
-/// Safe to call more than once. Never opens the HID GATT service.
+/// 启动 localhost 服务，并在需要时请求提权以执行注入。
+/// 可安全地多次调用。绝不打开 HID GATT 服务。
 pub fn start_after_atvv() {
     if !gadget_available() {
         status("返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1");

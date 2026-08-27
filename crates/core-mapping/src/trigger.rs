@@ -1,26 +1,25 @@
-//! Trigger detection: single / double / long-press, plus hold-repeat.
+//! 触发检测：单击 / 双击 / 长按，以及按住重复。
 
 use serde::{Deserialize, Serialize};
 
 use crate::Trigger;
 
-/// Timing constants (ms), aligned with common remote conventions.
+/// 时间常量（毫秒），与常见遥控器惯例保持一致。
 pub const DOUBLE_CLICK_WINDOW_MS: u64 = 300;
 pub const LONG_PRESS_MS: u64 = 550;
-/// After long-press triggers, this is the interval for hold-repeat.
+/// 长按触发后，这是按住重复（hold-repeat）的间隔。
 pub const HOLD_REPEAT_MS: u64 = 120;
 
-/// An event produced by the trigger detector.
+/// 由触发检测器产生的事件。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TriggerEvent {
     pub trigger: Trigger,
 }
 
-/// Detects click triggers for one physical button.
+/// 检测单个物理按键的点击触发。
 ///
-/// Feed `press(now_ms)` and `release(now_ms)`; it emits triggers as they
-/// are confirmed (single click is delayed until the double-click window
-/// elapses).
+/// 依次送入 `press(now_ms)` 和 `release(now_ms)`；当触发被确认时发出事件
+/// （单击会延迟到双击窗口结束后才确认）。
 #[derive(Debug, Clone)]
 pub struct TriggerDetector {
     pressed_at: Option<u64>,
@@ -50,9 +49,9 @@ impl Default for TriggerDetector {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedOutcome {
-    /// No confirmed trigger yet.
+    /// 尚无已确认的触发。
     Pending,
-    /// A trigger was confirmed and should fire now.
+    /// 已确认一个触发，应立即触发。
     Fire(TriggerEvent),
 }
 
@@ -61,14 +60,14 @@ impl TriggerDetector {
         Self::default()
     }
 
-    /// A physical press happened.
+    /// 发生了物理按下。
     pub fn press(&mut self, now_ms: u64) {
         self.pressed_at = Some(now_ms);
         self.long_fired = false;
         self.repeat_armed = true;
     }
 
-    /// A physical release happened.
+    /// 发生了物理松开。
     pub fn release(&mut self, now_ms: u64) -> FeedOutcome {
         let Some(pressed) = self.pressed_at.take() else {
             return FeedOutcome::Pending;
@@ -77,7 +76,7 @@ impl TriggerDetector {
 
         let held = now_ms.saturating_sub(pressed);
 
-        // Long press: fired on release if the press exceeded the threshold.
+        // 长按：如果按住时间超过阈值，则在松开时触发。
         if held >= self.long_press_ms {
             if !self.long_fired {
                 self.long_fired = true;
@@ -90,13 +89,13 @@ impl TriggerDetector {
             return FeedOutcome::Pending;
         }
 
-        // First click: wait for the double-click window.
+        // 第一次点击：等待双击窗口。
         if self.last_single_at.is_none() {
             self.last_single_at = Some(now_ms);
             return FeedOutcome::Pending;
         }
 
-        // Second click: if within the window, fire double click.
+        // 第二次点击：如果在窗口内，则触发双击。
         if let Some(first_at) = self.last_single_at.take() {
             if now_ms.saturating_sub(first_at) <= self.double_click_window_ms {
                 return FeedOutcome::Fire(TriggerEvent {
@@ -105,14 +104,14 @@ impl TriggerDetector {
             }
         }
 
-        // Double-click window expired: remember this release as a new single.
+        // 双击窗口已过期：将这次松开记为新的单击。
         self.last_single_at = Some(now_ms);
         FeedOutcome::Pending
     }
 
-    /// Periodic tick to check for hold-repeat and expired single-clicks.
+    /// 周期性的 tick，用于检查按住重复和已过期的单击。
     pub fn tick(&mut self, now_ms: u64) -> FeedOutcome {
-        // While held past long-press threshold: emit repeat ticks.
+        // 当按住时间超过长按阈值时：发出重复 tick。
         if let Some(pressed) = self.pressed_at {
             if self.repeat_armed && now_ms.saturating_sub(pressed) >= self.long_press_ms {
                 let interval_due = match self.last_repeat_at {
@@ -128,7 +127,7 @@ impl TriggerDetector {
             }
         }
 
-        // Double-click window expired: confirm the single click.
+        // 双击窗口已过期：确认单击。
         if let Some(single_at) = self.last_single_at {
             if self.pressed_at.is_none()
                 && now_ms.saturating_sub(single_at) > self.double_click_window_ms
@@ -143,12 +142,12 @@ impl TriggerDetector {
         FeedOutcome::Pending
     }
 
-    /// Reset all state (e.g. on device disconnect).
+    /// 重置所有状态（例如设备断开连接时）。
     pub fn reset(&mut self) {
         *self = Self::default();
     }
 
-    /// Test helper: force-confirm any pending single click immediately.
+    /// 测试辅助：立即强制确认任何待处理的单击。
     pub fn confirm_single(&mut self) -> Option<TriggerEvent> {
         self.last_single_at.take().map(|_| TriggerEvent {
             trigger: Trigger::SingleClick,

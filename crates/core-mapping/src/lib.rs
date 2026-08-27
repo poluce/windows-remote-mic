@@ -1,11 +1,11 @@
-//! core-mapping — RC003 13-button key mapping and trigger rules.
+//! core-mapping — RC003 13 键按键映射与触发规则。
 
 pub mod trigger;
-pub use trigger as gesture; // Backwards-compatible alias
+pub use trigger as gesture; // 向后兼容的别名
 
 use serde::{Deserialize, Serialize};
 
-/// The 13 physical buttons on the RC003.
+/// RC003 上的 13 个物理按键。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ButtonId {
     Power,
@@ -59,7 +59,7 @@ impl ButtonId {
     }
 }
 
-/// Supported gestures for an ordinary button.
+/// 普通按键支持的触发手势。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trigger {
     SingleClick,
@@ -67,7 +67,7 @@ pub enum Trigger {
     LongPress,
 }
 
-/// What an action can do on Windows.
+/// 一个动作在 Windows 上可以执行的操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionKind {
     Disabled,
@@ -90,7 +90,7 @@ pub enum ActionKind {
     OpenApp(String),
 }
 
-/// A (button, gesture) -> action binding.
+/// 一个 (button, gesture) -> action 绑定。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyBinding {
     pub button: ButtonId,
@@ -98,7 +98,7 @@ pub struct KeyBinding {
     pub action: ActionKind,
 }
 
-/// Mapping configuration: bindings + the voice hotkey.
+/// 映射配置：绑定列表 + 语音热键。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MappingConfig {
     pub bindings: Vec<KeyBinding>,
@@ -120,7 +120,7 @@ impl MappingConfig {
             .collect()
     }
 
-    /// Resolve the single/double/long action for a button.
+    /// 解析某个按钮对应的单击/双击/长按动作。
     pub fn resolve(&self, button: ButtonId, trigger: Trigger) -> Option<&ActionKind> {
         self.bindings
             .iter()
@@ -129,7 +129,7 @@ impl MappingConfig {
     }
 }
 
-/// Whether an action stays repeatable while the physical key is held.
+/// 判断一个动作在物理按键按住期间是否保持可重复触发。
 pub fn action_allows_repeat(action: &ActionKind) -> bool {
     !matches!(
         action,
@@ -137,7 +137,7 @@ pub fn action_allows_repeat(action: &ActionKind) -> bool {
     )
 }
 
-/// Build the default 13-key single-click mapping.
+/// 构建默认的 13 键单击映射。
 pub fn default_mapping() -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
     use ActionKind as A;

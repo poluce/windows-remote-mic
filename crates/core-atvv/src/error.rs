@@ -1,6 +1,6 @@
-//! Error types for the ATVV voice layer.
+//! ATVV 语音层的错误类型。
 
-/// ATVV layer error.
+/// ATVV 层错误。
 #[derive(Debug, thiserror::Error)]
 pub enum AtvvError {
     #[error("invalid frame length: got {got}, expected {expected}")]
@@ -19,5 +19,5 @@ pub enum AtvvError {
     IndexOutOfRange(i32),
 }
 
-/// Convenient result alias.
+/// 便捷的 Result 别名。
 pub type Result<T> = std::result::Result<T, AtvvError>;

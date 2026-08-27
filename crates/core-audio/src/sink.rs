@@ -1,5 +1,5 @@
-//! Windows streaming audio sink: play continuous frames into a device
-//! (e.g. CABLE Input). Uses cpal/WASAPI with an internal frame queue.
+//! Windows 流式音频输出：将连续帧播放到设备
+//!（例如 CABLE Input）。使用 cpal/WASAPI，带内部帧队列。
 
 use std::collections::VecDeque;
 use std::sync::{
@@ -11,7 +11,7 @@ use cpal::traits::{DeviceTrait, StreamTrait};
 
 use crate::error::{AudioError, Result};
 
-/// A push-based audio sink that plays 32-bit-float stereo 48 kHz frames.
+/// 基于推送的音频输出，播放 32 位浮点立体声 48 kHz 帧。
 pub struct AudioSink {
     queue: Arc<Mutex<VecDeque<f32>>>,
     _stream: cpal::Stream,
@@ -19,7 +19,7 @@ pub struct AudioSink {
 }
 
 impl AudioSink {
-    /// Open the selected output device (`None` = default).
+    /// 打开选定的输出设备（`None` = 默认设备）。
     pub fn new(device_name: Option<&str>) -> Result<Self> {
         let host = cpal::default_host();
         let device = super::playback::pick_output_device_public(&host, device_name)?;
@@ -69,14 +69,14 @@ impl AudioSink {
         })
     }
 
-    /// Queue frames for playback (48 kHz stereo float).
+    /// 将帧加入播放队列（48 kHz 立体声浮点）。
     pub fn push(&self, frames: &[f32]) {
         if let Ok(mut q) = self.queue.lock() {
             q.extend(frames);
         }
     }
 
-    /// Whether the audio callback has run at least once.
+    /// 音频回调是否至少运行过一次。
     pub fn is_started(&self) -> bool {
         self.started.load(Ordering::Relaxed)
     }

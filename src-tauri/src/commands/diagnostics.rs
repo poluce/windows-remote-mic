@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use core_mapping::trigger::TriggerDetector;
 
-/// One self-test item with a PASS / FAIL / SKIP verdict.
+/// 一个自检项，结论为 PASS / FAIL / SKIP。
 #[derive(Serialize)]
 pub struct SelfTestItem {
     name: String,
@@ -10,7 +10,7 @@ pub struct SelfTestItem {
     detail: String,
 }
 
-/// Decode a batch of ATVV audio bytes through the voice engine (self-test).
+/// 通过语音引擎解码一批 ATVV 音频字节（自检）。
 #[tauri::command]
 pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
     let mut engine = core_voice::VoiceEngine::new();
@@ -18,12 +18,12 @@ pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
     engine.feed(&bytes)
 }
 
-/// Run a hardware-independent capability self-test (Windows does the audio part).
+/// 运行与硬件无关的能力自检（Windows 负责音频部分）。
 #[tauri::command]
 pub fn run_self_test() -> Vec<SelfTestItem> {
     let mut items = Vec::new();
 
-    // 1) Audio endpoints
+    // 1) 音频端点
     match core_audio::endpoint::list_output_endpoints() {
         Ok(list) if !list.is_empty() => items.push(SelfTestItem {
             name: "音频端点枚举".into(),
@@ -42,7 +42,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }),
     }
 
-    // 2) Voice decode preview (synthetic ATVV bytes)
+    // 2) 语音解码预览（合成 ATVV 字节）
     {
         let mut engine = core_voice::VoiceEngine::new();
         let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
@@ -62,7 +62,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 3) Trigger detection
+    // 3) 触发条件识别
     {
         let mut d = TriggerDetector::new();
         d.press(0);
@@ -85,7 +85,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 4) Local stats write/read
+    // 4) 本地统计写入/读取
     {
         let dir = std::env::temp_dir().join("remote-mic-self-test");
         let _ = std::fs::remove_dir_all(&dir);
@@ -116,7 +116,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 5) Test tone playback (Windows only)
+    // 5) 测试音播放（仅 Windows）
     #[cfg(target_os = "windows")]
     {
         match core_audio::playback::play_test_tone(None) {

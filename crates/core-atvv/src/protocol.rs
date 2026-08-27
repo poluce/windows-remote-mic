@@ -1,36 +1,36 @@
-//! ATVV (Android TV Voice-over-BLE) protocol constants and structures.
+//! ATVV（Android TV 蓝牙语音）协议常量与结构。
 //!
-//! Protocol facts consolidated from community-tested implementations
-//! (see docs/PROTOCOL.md). Values here are interoperability facts.
+//! 协议事实来自社区验证过的实现汇总
+//!（参见 docs/PROTOCOL.md）。这里的值是互操作事实。
 
-/// ATVV GATT Service UUID.
+/// ATVV GATT 服务 UUID。
 pub const ATVV_SERVICE_UUID: &str = "AB5E0001-5A21-4F05-BC7D-AF01F617B664";
-/// Transmit (TX) characteristic.
+/// 发送（TX）特征。
 pub const ATVV_TRANSMIT_UUID: &str = "AB5E0002-5A21-4F05-BC7D-AF01F617B664";
-/// Audio characteristic.
+/// 音频特征。
 pub const ATVV_AUDIO_UUID: &str = "AB5E0003-5A21-4F05-BC7D-AF01F617B664";
-/// Control characteristic.
+/// 控制特征。
 pub const ATVV_CONTROL_UUID: &str = "AB5E0004-5A21-4F05-BC7D-AF01F617B664";
 
-/// Voice sample rate of the RC003 codec.
+/// RC003 编解码器的语音采样率。
 pub const REMOTE_SAMPLE_RATE_HZ: u32 = 16_000;
-/// Compression format.
+/// 压缩格式。
 pub const CODEC_NAME: &str = "IMA/DVI ADPCM";
 
-/// Nominal audio frame length in bytes.
+/// 标称音频帧长度（字节）。
 pub const DEFAULT_FRAME_BYTES: usize = 120;
 
-// Device -> host control opcodes.
+// 设备 -> 主机控制操作码。
 pub const OPCODE_AUDIO_STOP: u8 = 0x00;
 pub const OPCODE_AUDIO_START: u8 = 0x04;
 pub const OPCODE_MIC_BUTTON: u8 = 0x08;
 pub const OPCODE_AUDIO_SYNC: u8 = 0x0A;
 pub const OPCODE_CAPS: u8 = 0x0B;
 
-/// Host -> device capability request (v1.0).
+/// 主机 -> 设备能力请求（v1.0）。
 pub const GET_CAPABILITIES_V10: [u8; 6] = [0x0A, 0x01, 0x00, 0x00, 0x03, 0x03];
 
-/// Host -> device MIC_OPEN command.
+/// 主机 -> 设备 MIC_OPEN 命令。
 pub fn mic_open_command(version: u16) -> Vec<u8> {
     if version >= 0x0100 {
         vec![0x0C, 0x00]
@@ -39,7 +39,7 @@ pub fn mic_open_command(version: u16) -> Vec<u8> {
     }
 }
 
-/// Host -> device MIC_CLOSE command.
+/// 主机 -> 设备 MIC_CLOSE 命令。
 pub fn mic_close_command(version: u16, session_id: u8) -> Vec<u8> {
     if version >= 0x0100 {
         vec![0x0D, session_id]
@@ -48,7 +48,7 @@ pub fn mic_close_command(version: u16, session_id: u8) -> Vec<u8> {
     }
 }
 
-/// Codec capabilities the remote reports during capability negotiation.
+/// 遥控器在能力协商期间报告的编解码器能力。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AtvvCapabilities {
     pub version: u16,
@@ -105,7 +105,7 @@ impl AtvvCapabilities {
     }
 }
 
-/// Semantic events used by the session state machine (lower-level API kept stable).
+/// 会话状态机使用的语义事件（底层 API 保持稳定）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlEvent {
     MicOpen,
@@ -114,7 +114,7 @@ pub enum ControlEvent {
     MicExtend,
 }
 
-/// Raw events parsed from Control characteristic notifications.
+/// 从 Control 特征通知解析出的原始事件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RawControlEvent {
     Caps(AtvvCapabilities),
@@ -125,7 +125,7 @@ pub enum RawControlEvent {
     Unknown(u8),
 }
 
-/// Parse a Control characteristic notification payload.
+/// 解析 Control 特征通知载荷。
 pub fn parse_control(payload: &[u8]) -> Option<RawControlEvent> {
     let opcode = *payload.first()?;
     Some(match opcode {
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn parse_v10_caps() {
-        // 0B 01 00 00 02 00 78 -> version 0x0100, codecs 0x02, frame 120
+        // 0B 01 00 00 02 00 78 -> 版本 0x0100，codecs 0x02，帧长 120
         let caps = AtvvCapabilities::parse(&[0x0B, 0x01, 0x00, 0x02, 0x00, 0x00, 0x78]).unwrap();
         assert_eq!(caps.version, 0x0100);
         assert_eq!(caps.sample_rate_hz, 16_000);

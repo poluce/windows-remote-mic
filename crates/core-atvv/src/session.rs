@@ -1,13 +1,13 @@
-//! Voice session state machine.
+//! 语音会话状态机。
 //!
-//! The decoder is kept outside this state machine so it can be reset across
-//! sessions; the state machine only tracks *lifecycle* and *gate* decisions,
-//! e.g. dropping the audio tail that arrives right after STREAM_STOP.
+//! 解码器被放在该状态机之外，以便跨会话重置；
+//! 状态机只跟踪*生命周期*和*门控*决策，
+//! 例如丢弃 STREAM_STOP 之后紧接着到达的音频尾部。
 
 use crate::error::{AtvvError, Result};
 use crate::protocol::ControlEvent;
 
-/// Tail window after STREAM_STOP during which audio is silently ignored.
+/// STREAM_STOP 之后的尾部窗口，在此期间音频会被静默忽略。
 pub const STOP_TAIL_DROP_MS: u64 = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub enum VoiceState {
     Stopping,
 }
 
-/// Pure voice-session controller.
+/// 纯语音会话控制器。
 #[derive(Debug, Clone)]
 pub struct VoiceSession {
     state: VoiceState,
@@ -59,8 +59,8 @@ impl VoiceSession {
         self.state == VoiceState::Streaming
     }
 
-    /// Feed a control event. `now_ms` is a logical monotonic millisecond
-    /// clock supplied by the caller (e.g. from a BLE event loop).
+    /// 输入一个控制事件。`now_ms` 是调用方提供的逻辑单调毫秒
+    /// 时钟（例如来自 BLE 事件循环）。
     pub fn on_control(&mut self, event: ControlEvent, now_ms: u64) -> Result<()> {
         match (self.state, event) {
             (VoiceState::Idle, ControlEvent::MicOpen) => {
@@ -93,8 +93,8 @@ impl VoiceSession {
         }
     }
 
-    /// Feed one decoded source sample (PCM). Audio is only counted while
-    /// streaming; anything inside the post-stop tail window is dropped.
+    /// 输入一个已解码的源采样（PCM）。只有流式传输期间才会计数；
+    /// 停止后尾部窗口内的数据会被丢弃。
     pub fn on_audio_frame(&mut self, now_ms: u64, sample_count: usize) -> Result<bool> {
         match self.state {
             VoiceState::Streaming => {
@@ -110,7 +110,7 @@ impl VoiceSession {
                 if within_tail {
                     Ok(false)
                 } else {
-                    // Tail window elapsed: session is finished, drop forever.
+                    // 尾部窗口已过：会话结束，永远丢弃。
                     self.state = VoiceState::Idle;
                     self.stop_at_ms = None;
                     Ok(false)
@@ -141,7 +141,7 @@ mod tests {
         let mut s = VoiceSession::new();
         s.on_control(ControlEvent::StreamStart, 0).unwrap();
         s.on_control(ControlEvent::StreamStop, 1000).unwrap();
-        // 100ms later is inside the 300ms tail window.
+        // 100ms 之后仍在 300ms 尾部窗口内。
         assert!(!s.on_audio_frame(1100, 240).unwrap());
     }
 

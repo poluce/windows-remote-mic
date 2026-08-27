@@ -1,11 +1,11 @@
-//! Windows WinRT BLE scanning (Windows only).
+//! Windows WinRT BLE 扫描（仅 Windows）。
 
 use windows::Devices::Bluetooth::BluetoothLEDevice;
 use windows::Devices::Enumeration::DeviceInformation;
 
 use crate::{BleDevice, BleError, Result};
 
-/// Enumerate Bluetooth LE devices currently known to Windows.
+/// 枚举 Windows 当前已知的蓝牙低功耗设备。
 pub fn scan_paired() -> Result<Vec<BleDevice>> {
     core_log::log_info("[ble/winrt] 正在通过 WinRT DeviceInformation 扫描蓝牙设备…");
     let selector = BluetoothLEDevice::GetDeviceSelector().map_err(|e| {

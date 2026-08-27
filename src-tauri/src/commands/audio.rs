@@ -14,7 +14,7 @@ pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
     }
 }
 
-/// Start the real-device voice bridge (Windows only). Runs on a worker thread.
+/// 启动真实设备的语音桥（仅 Windows）。在工作线程中运行。
 #[tauri::command]
 pub fn start_voice_bridge(
     app: tauri::AppHandle,
@@ -67,7 +67,7 @@ pub fn start_voice_bridge(
     }
 }
 
-/// Simulate the full voice chain without a real remote.
+/// 在没有真实遥控器的情况下模拟完整语音链路。
 #[tauri::command]
 pub fn simulate_voice_chain(
     output_device: String,
@@ -101,7 +101,7 @@ pub fn vb_cable_status() -> VbCableStatus {
     }
 }
 
-/// One-click VB-CABLE install: runs the official installer helper.
+/// 一键安装 VB-CABLE：运行官方安装辅助脚本。
 #[tauri::command]
 pub fn install_vb_cable() -> String {
     let d = core_audio::diagnostics::run();
@@ -147,13 +147,13 @@ pub fn install_vb_cable() -> String {
     }
 }
 
-/// Run audio diagnostics: endpoints + VB-CABLE presence.
+/// 运行音频诊断：端点 + VB-CABLE 是否存在。
 #[tauri::command]
 pub fn audio_diagnostics() -> core_audio::diagnostics::AudioDiagnostics {
     core_audio::diagnostics::run()
 }
 
-/// Loop the test tone several times into the selected endpoint.
+/// 向所选端点循环播放数次测试音。
 #[tauri::command]
 pub fn play_test_tone_loop(device_name: Option<String>, repetitions: Option<u32>) -> String {
     let reps = repetitions.unwrap_or(3).clamp(1, 10);
@@ -172,7 +172,7 @@ pub fn play_test_tone_loop(device_name: Option<String>, repetitions: Option<u32>
     }
 }
 
-/// Play a 1 s test tone into the selected output endpoint (fuzzy name match).
+/// 向所选输出端点播放 1 秒测试音（模糊名称匹配）。
 #[tauri::command]
 pub fn play_test_tone(device_name: Option<String>) -> String {
     #[cfg(target_os = "windows")]
@@ -189,7 +189,7 @@ pub fn play_test_tone(device_name: Option<String>) -> String {
     }
 }
 
-/// Trigger Windows Voice Typing (Win+H) to help the user configure CABLE Output in onboarding.
+/// 触发 Windows 语音输入（Win+H），帮助用户在引导流程中配置 CABLE Output。
 #[tauri::command]
 pub fn trigger_voice_typing() -> Result<String, String> {
     #[cfg(target_os = "windows")]

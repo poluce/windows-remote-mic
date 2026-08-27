@@ -1,8 +1,8 @@
-//! Windows-only helpers for temporarily switching the default microphone.
+//! 仅 Windows 的辅助函数，用于临时切换默认麦克风。
 //!
-//! Win+H listens to the default input device, so while the app is driving a
-//! voice session it switches the default input to CABLE Output and restores
-//! the previous device when the session ends.
+//! Win+H 监听默认输入设备，因此当应用驱动语音会话时，
+//! 它会将默认输入切换到 CABLE Output，并在会话结束时恢复
+//! 之前的设备。
 
 #![allow(non_snake_case, non_upper_case_globals)]
 
@@ -12,7 +12,7 @@ use windows_core::{interface, IUnknown, IUnknown_Vtbl, GUID, HRESULT, PCWSTR};
 use crate::endpoint::list_input_endpoints;
 use crate::error::{AudioError, Result};
 
-/// `PolicyConfigClient` coclass CLSID.
+/// `PolicyConfigClient` coclass 的 CLSID。
 const CLSID_PolicyConfigClient: GUID = GUID::from_values(
     0x870af99c,
     0x171d,
@@ -20,7 +20,7 @@ const CLSID_PolicyConfigClient: GUID = GUID::from_values(
     [0xaf, 0x0d, 0xe6, 0x3d, 0xf4, 0x0c, 0x2b, 0xc9],
 );
 
-/// Undocumented `IPolicyConfig` COM interface used to set the default endpoint.
+/// 用于设置默认端点的未文档化 `IPolicyConfig` COM 接口。
 #[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
 unsafe trait IPolicyConfig: IUnknown {
     fn GetMixFormat(&self, device: PCWSTR, format: *mut *mut core::ffi::c_void) -> HRESULT;
@@ -65,14 +65,14 @@ unsafe trait IPolicyConfig: IUnknown {
     fn SetEndpointVisibility(&self, device: PCWSTR, visible: bool) -> HRESULT;
 }
 
-/// RAII guard: switches the default input to CABLE Output, then restores the
-/// previous default input when dropped.
+/// RAII 守卫：将默认输入切换到 CABLE Output，并在析构时恢复
+/// 之前的默认输入。
 pub struct DefaultInputGuard {
     previous: Option<String>,
 }
 
 impl DefaultInputGuard {
-    /// Find CABLE Output, remember the previous default input, and switch.
+    /// 查找 CABLE Output，记住之前的默认输入，然后切换。
     pub fn switch_to_cable_output() -> Result<Self> {
         let cable_id = find_cable_output_id()?;
         let previous = crate::wasapi::default_input_endpoint_id().ok();
@@ -133,7 +133,7 @@ pub(crate) fn ensure_com_initialized() {
     }
 }
 
-/// Set the default input (microphone) endpoint to `endpoint_id` for all roles.
+/// 将默认输入（麦克风）端点设置为 `endpoint_id`（适用于所有角色）。
 pub fn set_default_input(endpoint_id: &str) -> Result<()> {
     ensure_com_initialized();
     unsafe {

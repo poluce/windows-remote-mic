@@ -1,9 +1,9 @@
-//! Windows playback of a generated test tone through a selected output device.
+//! 通过选定的输出设备播放生成的测试音（Windows）。
 //!
-//! Uses `cpal` (WASAPI backend on Windows). The tone is short (1 s by default)
-//! so it can be used to verify the virtual sound-card route:
-//! CABLE Input is selected as the output device, then the tone should be
-//! visible on CABLE Output (a.k.a. the virtual microphone).
+//! 使用 `cpal`（Windows 上为 WASAPI 后端）。测试音很短（默认 1 秒），
+//! 可用于验证虚拟声卡链路：
+//! 选择 CABLE Input 作为输出设备后，应该能在 CABLE Output
+//!（即虚拟麦克风）上看到测试音。
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -13,10 +13,10 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::error::{AudioError, Result};
 
-/// Play the default 1 kHz / 1 s test tone to an output device.
+/// 向输出设备播放默认 1 kHz / 1 秒测试音。
 ///
-/// `device_name` filters by fuzzy device name (e.g. "CABLE Input");
-/// `None` uses the system default output device.
+/// `device_name` 按模糊设备名过滤（例如 "CABLE Input"）；
+/// `None` 使用系统默认输出设备。
 pub fn play_test_tone(device_name: Option<&str>) -> Result<()> {
     let host = cpal::default_host();
     let device = pick_output_device(&host, device_name)?;
@@ -60,12 +60,12 @@ pub fn play_test_tone(device_name: Option<&str>) -> Result<()> {
         .play()
         .map_err(|e| AudioError::Windows(format!("stream.play: {e}")))?;
 
-    // Leave the stream alive a bit longer than the tone so it finishes cleanly.
+    // 让流比测试音多存活一会儿，以便干净地结束。
     std::thread::sleep(Duration::from_millis(1200));
     Ok(())
 }
 
-/// Play the test tone several times with a short gap between each run.
+/// 多次播放测试音，每次之间短暂间隔。
 pub fn play_test_tone_loop(device_name: Option<&str>, repetitions: u32, gap_ms: u64) -> Result<()> {
     let repetitions = repetitions.clamp(1, 20);
     for i in 0..repetitions {

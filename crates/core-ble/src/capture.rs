@@ -1,25 +1,25 @@
-//! Protocol capture: appends raw BLE Control/Audio bytes to timestamped log files.
+//! 协议抓包：将原始 BLE Control/Audio 字节追加到带时间戳的日志文件。
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Writes raw protocol bytes for later analysis without a real device.
+/// 写入原始协议字节，供后续在无真机情况下分析。
 #[derive(Debug, Clone)]
 pub struct CaptureRecorder {
     dir: PathBuf,
 }
 
 impl CaptureRecorder {
-    /// Create a recorder rooted at `dir` (e.g. `.../RemoteMic/RC003/captures`).
+    /// 创建以 `dir` 为根目录的抓包记录器（例如 `.../RemoteMic/RC003/captures`）。
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
         let _ = fs::create_dir_all(&dir);
         Self { dir }
     }
 
-    /// Append one observation. `kind` is `"control"` or `"audio"`.
+    /// 追加一条记录。`kind` 为 `"control"` 或 `"audio"`。
     pub fn record(&self, kind: &str, bytes: &[u8]) {
         let path = self.path_for(kind);
         let line = format!("{} {} {}\n", epoch_ms(), bytes.len(), hex(bytes));

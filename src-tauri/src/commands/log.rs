@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-/// Frontend-facing log helper: append a line to the shared Remote Mic log.
+/// 面向前端的日志辅助函数：向共享的 Remote Mic 日志追加一行。
 #[tauri::command]
 pub fn log_message(message: String) {
     core_log::log_line(&format!("[前端] {message}"));
@@ -14,7 +14,7 @@ pub struct LogInfo {
     pub files: Vec<core_log::LogFileInfo>,
 }
 
-/// Return the active log path, current size, DEBUG state and rotated files.
+/// 返回当前活动日志路径、大小、DEBUG 状态以及轮转文件。
 #[tauri::command]
 pub fn get_log_info() -> LogInfo {
     let path = core_log::log_path();
@@ -27,20 +27,20 @@ pub fn get_log_info() -> LogInfo {
     }
 }
 
-/// Read the tail of the active log. `max_bytes` is clamped to [1024, 1 MiB].
+/// 读取活动日志的尾部。`max_bytes` 会被限制在 [1024, 1 MiB] 范围内。
 #[tauri::command]
 pub fn read_log_tail(max_bytes: Option<usize>) -> String {
     let max = max_bytes.unwrap_or(64 * 1024).clamp(1024, 1024 * 1024);
     core_log::read_log_tail(max)
 }
 
-/// Clear the active log file.
+/// 清空活动日志文件。
 #[tauri::command]
 pub fn clear_log() -> Result<(), String> {
     core_log::clear_log().map_err(|e| e.to_string())
 }
 
-/// Open the log directory in Windows Explorer / system file manager.
+/// 在 Windows 资源管理器 / 系统文件管理器中打开日志目录。
 #[tauri::command]
 pub fn open_log_dir() -> Result<(), String> {
     let dir = core_log::log_dir();
@@ -60,7 +60,7 @@ pub fn open_log_dir() -> Result<(), String> {
     }
 }
 
-/// Enable/disable verbose DEBUG logging at runtime.
+/// 在运行时启用/禁用详细 DEBUG 日志。
 #[tauri::command]
 pub fn set_debug_logging(enabled: bool) -> bool {
     core_log::set_debug_enabled(enabled);

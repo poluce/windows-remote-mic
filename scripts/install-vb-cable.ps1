@@ -1,6 +1,6 @@
-# One-click VB-CABLE install helper (Windows).
-# Downloads the official VB-Audio driver pack, verifies its SHA-256, extracts
-# it, and launches the official setup (UAC prompt appears).
+# VB-CABLE 一键安装辅助脚本（Windows）。
+# 下载官方 VB-Audio 驱动包，校验其 SHA-256，解压
+# 并启动官方安装程序（会弹出 UAC 提示）。
 param(
     [string]$VbCableUrl = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"
 )
@@ -24,9 +24,9 @@ New-Item -ItemType Directory -Force -Path $local | Out-Null
 $zip = Join-Path $local "VBCABLE_Driver_Pack45.zip"
 $extract = Join-Path $local "vbcable"
 
-# Get-FileHash / Expand-Archive live in autoloaded modules and are missing in
-# some GUI-spawned powershell.exe sessions (IWR still works: it is a DLL cmdlet).
-# Hash and unzip via .NET so the in-app install button does not depend on them.
+# Get-FileHash / Expand-Archive 位于自动加载模块中，但在某些 GUI 启动的
+# powershell.exe 会话中缺失（IWR 仍可用：它是 DLL cmdlet）。
+# 通过 .NET 计算哈希和解压，使应用内安装按钮不依赖它们。
 function Get-Sha256Hex([string]$Path) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {

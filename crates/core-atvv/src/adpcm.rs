@@ -1,6 +1,6 @@
-//! IMA/DVI ADPCM decoder used by the RC003 16 kHz voice channel.
+//! RC003 16 kHz 语音通道使用的 IMA/DVI ADPCM 解码器。
 
-/// IMA ADPCM step size table (89 entries).
+/// IMA ADPCM 步长表（89 项）。
 pub const STEP_TABLE: [i32; 89] = [
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66,
     73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
@@ -9,10 +9,10 @@ pub const STEP_TABLE: [i32; 89] = [
     10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
 ];
 
-/// IMA ADPCM index adjustment table.
+/// IMA ADPCM 索引调整表。
 pub const INDEX_TABLE: [i32; 16] = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
 
-/// Streaming decoder that carries predictor + step index between frames.
+/// 流式解码器，在帧之间保持 predictor + step index。
 #[derive(Debug, Clone, Default)]
 pub struct ImaAdpcmDecoder {
     predictor: i32,
@@ -24,7 +24,7 @@ impl ImaAdpcmDecoder {
         Self::default()
     }
 
-    /// Reset predictor and index (e.g. on a sync frame / stream start).
+    /// 重置 predictor 和 index（例如在同步帧 / 流开始时）。
     pub fn reset(&mut self) {
         self.predictor = 0;
         self.step_index = 0;
@@ -38,7 +38,7 @@ impl ImaAdpcmDecoder {
         self.step_index
     }
 
-    /// Decode one 4-bit nibble into a 16-bit PCM sample.
+    /// 将一个 4 位 nibble 解码为 16 位 PCM 采样。
     pub fn decode_nibble(&mut self, nibble: u8) -> i16 {
         let nibble = nibble & 0x0F;
         let idx = self.step_index.clamp(0, (STEP_TABLE.len() - 1) as i32);
@@ -70,7 +70,7 @@ impl ImaAdpcmDecoder {
         pred as i16
     }
 
-    /// Decode a byte as two 16-bit PCM samples, **high nibble first**.
+    /// 将一个字节解码为两个 16 位 PCM 采样，**高 nibble 优先**。
     pub fn decode_byte(&mut self, byte: u8) -> [i16; 2] {
         [
             self.decode_nibble(byte >> 4),
@@ -78,7 +78,7 @@ impl ImaAdpcmDecoder {
         ]
     }
 
-    /// Decode a whole buffer, producing 2 samples per byte.
+    /// 解码整个缓冲区，每字节产生 2 个采样。
     pub fn decode_bytes(&mut self, data: &[u8]) -> Vec<i16> {
         let mut out = Vec::with_capacity(data.len() * 2);
         for &byte in data {
@@ -90,7 +90,7 @@ impl ImaAdpcmDecoder {
     }
 }
 
-/// Streaming IMA ADPCM encoder used to build simulated voice/test vectors.
+/// 用于构建模拟语音/测试向量的流式 IMA ADPCM 编码器。
 #[derive(Debug, Clone, Default)]
 pub struct ImaAdpcmEncoder {
     predictor: i32,
@@ -149,8 +149,8 @@ impl ImaAdpcmEncoder {
             let low = if chunk.len() > 1 {
                 self.encode_nibble(chunk[1])
             } else {
-                // Re-encode the last sample for the low nibble to keep
-                // decoder state aligned.
+                // 对低 nibble 重新编码最后一个采样，以保持
+                // 解码器状态对齐。
                 self.encode_nibble(chunk[0])
             };
             out.push((high << 4) | low);
@@ -194,8 +194,8 @@ mod tests {
     #[test]
     fn round_trip_smooth_sine_is_close() {
         let mut encoder = ImaAdpcmEncoder::new();
-        // Smooth sine avoids the huge slew at a sawtooth wraparound, which is
-        // where IMA adaptation legitimately lags.
+        // 平滑正弦避免了锯齿回绕时的大幅跳变，这正是
+        // IMA 自适应合理滞后的地方。
         let samples: Vec<i16> = (0..800)
             .map(|i| {
                 let t = i as f32 / 800.0 * std::f32::consts::TAU * 4.0;
@@ -213,7 +213,7 @@ mod tests {
             let err = (i32::from(*src) - i32::from(*dst)).abs();
             max_err = max_err.max(err);
         }
-        // IMA has bounded steady-state error for smooth signals.
+        // IMA 对平滑信号具有有界的稳态误差。
         assert!(max_err < 96, "max sample error too large: {max_err}");
     }
 

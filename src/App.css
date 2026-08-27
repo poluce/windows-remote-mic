@@ -41,7 +41,7 @@ button {
   font-family: inherit;
 }
 
-/* ---------- Shell ---------- */
+/* ---------- 布局外壳 ---------- */
 .app-shell {
   height: 100vh;
   display: flex;
@@ -49,7 +49,7 @@ button {
   background: var(--bg);
 }
 
-/* ---------- Sidebar ---------- */
+/* ---------- 侧边栏 ---------- */
 .sidebar {
   width: 240px;
   flex-shrink: 0;
@@ -141,7 +141,7 @@ button {
   border-top: 1px solid var(--border);
 }
 
-/* ---------- Main ---------- */
+/* ---------- 主内容区 ---------- */
 .main {
   flex: 1;
   display: flex;
@@ -159,7 +159,7 @@ button {
   width: 100%;
 }
 
-/* ---------- Pages ---------- */
+/* ---------- 页面 ---------- */
 .page h2 {
   margin: 4px 0 4px;
   font-size: 24px;
@@ -189,7 +189,7 @@ button {
   color: var(--text);
 }
 
-/* ---------- Connection ---------- */
+/* ---------- 连接 ---------- */
 .device-card {
   display: flex;
   align-items: center;
@@ -210,7 +210,7 @@ button {
   flex-basis: 100%;
 }
 
-/* ---------- VB-CABLE compact row ---------- */
+/* ---------- VB-CABLE 紧凑行 ---------- */
 .vbcable-card {
   display: flex;
   align-items: center;
@@ -247,7 +247,7 @@ button {
   margin: 0;
 }
 
-/* ---------- Diagnostics actions compact row ---------- */
+/* ---------- 诊断操作紧凑行 ---------- */
 .diag-actions-card {
   display: flex;
   align-items: center;
@@ -318,7 +318,7 @@ button {
   margin-top: 2px;
 }
 
-/* ---------- Badges ---------- */
+/* ---------- 徽标 ---------- */
 .badge {
   font-size: 12px;
   padding: 3px 10px;
@@ -341,7 +341,7 @@ button {
   color: #cf222e;
 }
 
-/* ---------- Mapping ---------- */
+/* ---------- 按键映射 ---------- */
 .mapping-list {
   display: flex;
   flex-direction: column;
@@ -370,7 +370,7 @@ button {
   color: var(--text-2);
 }
 
-/* ---------- Voice ---------- */
+/* ---------- 语音 ---------- */
 .voice-route {
   display: flex;
   align-items: center;
@@ -429,7 +429,7 @@ button {
   }
 }
 
-/* ---------- Diagnostics ---------- */
+/* ---------- 诊断 ---------- */
 .check-list {
   display: flex;
   flex-direction: column;
@@ -465,7 +465,7 @@ button {
   border-bottom: none;
 }
 
-/* ---------- Controls ---------- */
+/* ---------- 控件 ---------- */
 .actions {
   display: flex;
   gap: 10px;
@@ -644,7 +644,7 @@ button {
   font-size: 14px;
 }
 
-/* ---------- Onboarding ---------- */
+/* ---------- 引导 ---------- */
 .onboarding-list {
   list-style: none;
   margin: 0;
@@ -687,7 +687,7 @@ button {
   font-size: 13px;
 }
 
-/* ---------- Log preview ---------- */
+/* ---------- 日志预览 ---------- */
 .log-preview {
   max-height: 300px;
   overflow: auto;
@@ -749,7 +749,7 @@ button {
   }
 }
 
-/* ---------- Mapping wizard ---------- */
+/* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
   grid-template-columns: minmax(170px, 195px) 1fr;
@@ -790,7 +790,7 @@ button {
   }
 }
 
-/* ---------- Bar chart ---------- */
+/* ---------- 柱状图 ---------- */
 .bar-chart {
   display: flex;
   align-items: flex-end;

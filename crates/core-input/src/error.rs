@@ -1,4 +1,4 @@
-//! Error types for the input injection layer.
+//! 输入注入层的错误类型。
 
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {

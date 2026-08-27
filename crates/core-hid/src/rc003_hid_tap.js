@@ -1,4 +1,4 @@
-// Read-only HOGP report probe. Does not patch buffers so keyboard Raw Input stays intact.
+// 只读的 HOGP 报告探针。不修改缓冲区，因此键盘 Raw Input 保持完整。
 const READ_CHARACTERISTIC_IOCTL = 0x80018483;
 const EXPECTED_OUTPUT_LENGTH = 9;
 const HEARTBEAT_MS = 5000;

@@ -1,10 +1,10 @@
-//! Audio diagnostics: endpoint visibility + virtual sound-card checks.
+//! 音频诊断：端点可见性 + 虚拟声卡检查。
 
 use serde::Serialize;
 
 use crate::endpoint::{list_input_endpoints, list_output_endpoints, AudioEndpoint};
 
-/// Snapshot of the audio route health.
+/// 音频链路健康状况快照。
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct AudioDiagnostics {
     pub output_endpoints: Vec<AudioEndpoint>,
@@ -14,7 +14,7 @@ pub struct AudioDiagnostics {
     pub cable_output_present: bool,
 }
 
-/// Run endpoint enumeration and derive the virtual sound-card verdict.
+/// 运行端点枚举并得出虚拟声卡判断。
 pub fn run() -> AudioDiagnostics {
     let output = list_output_endpoints().unwrap_or_default();
     let input = list_input_endpoints().unwrap_or_default();

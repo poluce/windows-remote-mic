@@ -1,7 +1,7 @@
-//! core-config — application configuration persistence.
+//! core-config — 应用配置持久化。
 //!
-//! Writes are atomic (temp file + fsync + rename) so a crash never leaves a
-//! half-written JSON.
+//! 写入是原子的（临时文件 + fsync + rename），因此崩溃不会留下
+//! 写入一半的 JSON。
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -12,15 +12,15 @@ use thiserror::Error;
 
 use core_mapping::MappingConfig;
 
-/// Voice input target. We start with Windows built-in voice typing (Win+H).
+/// 语音输入目标。目前从 Windows 内置语音输入（Win+H）开始。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VoiceMode {
     WindowsVoiceTyping,
-    // ImeDoubao, ImeWeChat — reserved for later.
+    // ImeDoubao、ImeWeChat —— 预留待后续使用。
 }
 
-/// User-calibrated physical key signature.
+/// 用户校准后的物理按键特征。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyCalibration {
     pub button: String,
@@ -29,7 +29,7 @@ pub struct KeyCalibration {
     pub vkey: Option<u32>,
 }
 
-/// Top-level application configuration.
+/// 顶层应用配置。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     pub selected_device_id: Option<String>,
@@ -56,7 +56,7 @@ impl Default for Config {
     }
 }
 
-/// Configuration store bound to a directory (e.g. `%LOCALAPPDATA%\RemoteMic\RC003`).
+/// 绑定到某个目录的配置存储（例如 `%LOCALAPPDATA%\RemoteMic\RC003`）。
 #[derive(Debug, Clone)]
 pub struct ConfigStore {
     pub dir: PathBuf,
@@ -77,7 +77,7 @@ pub enum ConfigError {
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
 impl ConfigStore {
-    /// Create a store rooted at `dir` (created if missing).
+    /// 创建以 `dir` 为根目录的存储（目录不存在时会创建）。
     pub fn new(dir: impl Into<PathBuf>) -> Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
@@ -88,7 +88,7 @@ impl ConfigStore {
         self.dir.join("config.json")
     }
 
-    /// Load config; returns defaults when the file does not exist.
+    /// 加载配置；文件不存在时返回默认值。
     pub fn load(&self) -> Result<Config> {
         let path = self.config_path();
         if !path.exists() {
@@ -96,8 +96,8 @@ impl ConfigStore {
         }
         let text = fs::read_to_string(&path)?;
         serde_json::from_str(&text).map_err(|e| {
-            // Keep last-good behavior: on corruption return defaults (the
-            // corrupt file is left untouched for diagnosis).
+            // 保持“最后一次可用”行为：配置损坏时返回默认值
+            // （损坏文件原样保留，便于诊断）。
             ConfigError::Json(e)
         })
     }
@@ -106,7 +106,7 @@ impl ConfigStore {
         self.load().unwrap_or_default()
     }
 
-    /// Atomically save: write `<config.json.tmp>` -> fsync -> rename.
+    /// 原子保存：写入 `<config.json.tmp>` -> fsync -> rename。
     pub fn save(&self, config: &Config) -> Result<()> {
         let path = self.config_path();
         let tmp = self.dir.join("config.json.tmp");
@@ -120,7 +120,7 @@ impl ConfigStore {
 
         fs::rename(&tmp, &path)?;
 
-        // Best-effort fsync of the directory so the rename is durable.
+        // 尽力对目录执行 fsync，确保 rename 持久化。
         #[cfg(unix)]
         if let Ok(dir_file) = File::open(&self.dir) {
             let _ = dir_file.sync_all();

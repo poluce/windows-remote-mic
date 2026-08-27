@@ -1,5 +1,5 @@
-//! Windows Raw Input capture framework (hidden window + message loop).
-//! Only compiled on Windows.
+//! Windows Raw Input 捕获框架（隐藏窗口 + 消息循环）。
+//! 仅在 Windows 上编译。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -27,7 +27,7 @@ static CALLBACK: Mutex<Option<RawInputCallback>> = Mutex::new(None);
 static HID_DOWN: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 static LOGGED_SIZE_FAIL: AtomicBool = AtomicBool::new(false);
 
-/// One raw keyboard event from the remote.
+/// 来自遥控器的一个原始键盘事件。
 #[derive(Debug, Clone, Copy)]
 pub struct RawInputEvent {
     pub vkey: u16,
@@ -35,13 +35,12 @@ pub struct RawInputEvent {
     pub pressed: bool,
 }
 
-/// A running Raw Input listener thread (hidden window + message loop).
+/// 运行中的 Raw Input 监听线程（隐藏窗口 + 消息循环）。
 pub struct RawInputListener {
     _thread: thread::JoinHandle<()>,
 }
 
-/// Start listening for keyboard Raw Input. The callback runs on the message
-/// loop thread.
+/// 开始监听键盘 Raw Input。回调在消息循环线程上运行。
 pub fn start_listener(
     callback: impl Fn(RawInputEvent) + Send + 'static,
 ) -> Result<RawInputListener, String> {
@@ -99,20 +98,20 @@ pub fn start_listener(
 
         let devices = [
             RAWINPUTDEVICE {
-                usUsagePage: 0x01, // Generic Desktop
-                usUsage: 0x06,     // Keyboard
+                usUsagePage: 0x01, // 通用桌面
+                usUsage: 0x06,     // 键盘
                 dwFlags: RAWINPUTDEVICE_FLAGS(RIDEV_INPUTSINK.0),
                 hwndTarget: hwnd,
             },
             RAWINPUTDEVICE {
-                usUsagePage: 0x0C, // Consumer Audio / Remote Controls
-                usUsage: 0x01,     // Consumer Control
+                usUsagePage: 0x0C, // 消费类音频 / 遥控器
+                usUsage: 0x01,     // 消费类控制
                 dwFlags: RAWINPUTDEVICE_FLAGS(RIDEV_INPUTSINK.0),
                 hwndTarget: hwnd,
             },
             RAWINPUTDEVICE {
-                usUsagePage: 0x01, // Generic Desktop
-                usUsage: 0x80,     // System Control (Power)
+                usUsagePage: 0x01, // 通用桌面
+                usUsage: 0x80,     // 系统控制（电源）
                 dwFlags: RAWINPUTDEVICE_FLAGS(RIDEV_INPUTSINK.0),
                 hwndTarget: hwnd,
             },
@@ -144,11 +143,11 @@ pub fn start_listener(
 
 fn emit_appcommand(cmd: u32) -> bool {
     let vk = match cmd {
-        1 => Some(166),  // APPCOMMAND_BROWSER_BACKWARD
-        7 => Some(172),  // APPCOMMAND_BROWSER_HOME
-        8 => Some(173),  // APPCOMMAND_VOLUME_MUTE
-        9 => Some(175),  // APPCOMMAND_VOLUME_UP
-        10 => Some(174), // APPCOMMAND_VOLUME_DOWN
+        1 => Some(166),  // 浏览器后退
+        7 => Some(172),  // 浏览器主页
+        8 => Some(173),  // 音量静音
+        9 => Some(175),  // 音量加
+        10 => Some(174), // 音量减
         _ => None,
     };
     if let Some(vkey) = vk {
@@ -181,7 +180,7 @@ fn is_bluetooth_device(name: &str) -> bool {
     u.contains("BTH") || u.contains("BLUETOOTH") || u.contains("1812")
 }
 
-/// Letters, digits, space, tab, backspace — PC typing, never an RC003 key.
+/// 字母、数字、空格、Tab、退格——PC 打字键，绝不会是 RC003 按键。
 fn is_pc_typing_vkey(vk: u16) -> bool {
     matches!(
         vk,
@@ -245,7 +244,7 @@ unsafe fn read_raw_input(lparam: LPARAM) -> Option<Vec<u8>> {
 
 fn hid_payload(buf: &[u8]) -> &[u8] {
     let header_size = std::mem::size_of::<RAWINPUTHEADER>();
-    // RAWHID: dwSizeHid (u32) + dwCount (u32) + bRawData[]
+    // RAWHID：dwSizeHid (u32) + dwCount (u32) + bRawData[]
     if buf.len() < header_size + 8 {
         return &[];
     }
@@ -294,8 +293,8 @@ unsafe extern "system" fn wnd_proc(
                 }
 
                 let from_remote = is_bluetooth_device(&name);
-                // PC keyboard still reaches WebView; only forward Bluetooth HID
-                // plus unmapped usages (VKey 0 / 255) that the tester cannot see.
+                // PC 键盘仍会到达 WebView；只转发蓝牙 HID
+                // 以及测试器看不到的未映射 usage（VKey 0 / 255）。
                 let unmapped = keyboard.VKey == 0 || keyboard.VKey == 0xFF;
                 if from_remote || unmapped {
                     let mut vkey = keyboard.VKey;

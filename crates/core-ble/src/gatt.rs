@@ -1,4 +1,4 @@
-//! Windows GATT discovery + ATVV transport (Windows only).
+//! Windows GATT 发现 + ATVV 传输（仅 Windows）。
 
 use std::sync::{Arc, Mutex};
 
@@ -16,13 +16,13 @@ use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
 use crate::{BleError, Result};
 
-/// ATVV service/characteristic UUIDs (match core-atvv constants).
+/// ATVV 服务/特征 UUID（与 core-atvv 常量一致）。
 const ATVV_SERVICE_GUID: GUID = GUID::from_u128(0xAB5E0001_5A21_4F05_BC7D_AF01F617B664);
 const ATVV_TX_GUID: GUID = GUID::from_u128(0xAB5E0002_5A21_4F05_BC7D_AF01F617B664);
 const ATVV_AUDIO_GUID: GUID = GUID::from_u128(0xAB5E0003_5A21_4F05_BC7D_AF01F617B664);
 const ATVV_CONTROL_GUID: GUID = GUID::from_u128(0xAB5E0004_5A21_4F05_BC7D_AF01F617B664);
 
-/// ATVV endpoints discovered on the remote (for UI overview).
+/// 在遥控器上发现的 ATVV 端点（用于 UI 概览）。
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AtvvEndpoints {
     pub tx: Option<String>,
@@ -36,7 +36,7 @@ impl AtvvEndpoints {
     }
 }
 
-/// An open ATVV connection with TX/Audio/Control characteristics kept alive.
+/// 一个保持 TX/Audio/Control 特征存活的 ATVV 连接。
 pub struct AtvvLink {
     _device: BluetoothLEDevice,
     _service: GattDeviceService,
@@ -45,7 +45,7 @@ pub struct AtvvLink {
     control: GattCharacteristic,
 }
 
-/// Discover the ATVV service/characteristics and return their ids for the UI.
+/// 发现 ATVV 服务/特征，并返回其 ID 供 UI 使用。
 pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
     core_log::log_info(&format!(
         "[ble/gatt] 开始发现 ATVV 端点，设备 ID='{device_id}'"
@@ -75,7 +75,7 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
     }
 }
 
-/// Connect and open the ATVV transport (keeps characteristics alive).
+/// 连接并打开 ATVV 传输（保持特征存活）。
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     core_log::log_info(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
@@ -90,8 +90,8 @@ pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     })
 }
 
-/// Open the ATVV service and return the three characteristics.
-// Helper to split found list into tx/audio/control + service.
+/// 打开 ATVV 服务并返回三个特征。
+// 辅助：将找到的特征列表拆分为 tx/audio/control + 服务。
 type FoundChars = Vec<(GUID, GattCharacteristic)>;
 type AtvvChars = (
     GattCharacteristic,
@@ -337,12 +337,12 @@ fn read_atvv_characteristics_by_uuid(
 }
 
 impl AtvvLink {
-    /// Connect using an already-scanned device id.
+    /// 使用已扫描到的设备 ID 进行连接。
     pub fn connect(device_id: &str) -> Result<Self> {
         connect_atvv(device_id)
     }
 
-    /// Enable notifications on the Audio characteristic so voice data flows.
+    /// 启用 Audio 特征的通知，使语音数据可以流动。
     pub fn enable_audio_notifications(&self) -> Result<()> {
         core_log::log_info("[ble/gatt] 正在启用音频通知（CCCD Notify）…");
         self.enable_notifications(&self.audio)?;
@@ -350,7 +350,7 @@ impl AtvvLink {
         Ok(())
     }
 
-    /// Enable notifications on the Control characteristic (device events).
+    /// 启用 Control 特征的通知（设备事件）。
     pub fn enable_control_notifications(&self) -> Result<()> {
         core_log::log_info("[ble/gatt] 正在启用控制通知（CCCD Notify）…");
         self.enable_notifications(&self.control)?;
@@ -375,7 +375,7 @@ impl AtvvLink {
         Ok(())
     }
 
-    /// Host -> device command bytes are written to the TX characteristic.
+    /// 主机 -> 设备的命令字节写入 TX 特征。
     pub fn write_tx(&self, bytes: &[u8]) -> Result<()> {
         core_log::log_info(&format!(
             "[ble/gatt] 正在向 TX 写入 {} 字节: {:02X?}",
@@ -401,13 +401,13 @@ impl AtvvLink {
         Ok(())
     }
 
-    /// Backwards-compatible alias used by older callers.
+    /// 旧调用方使用的向后兼容别名。
     pub fn write_control(&self, bytes: &[u8]) -> Result<()> {
         self.write_tx(bytes)
     }
 
-    /// Register a callback receiving raw Audio characteristic bytes.
-    /// Returns the event cookie; call `remove_audio_handler` to stop.
+    /// 注册一个接收原始 Audio 特征字节的回调。
+    /// 返回事件 cookie；调用 `remove_audio_handler` 停止。
     pub fn register_audio_handler<F>(&self, callback: F) -> Result<i64>
     where
         F: FnMut(Vec<u8>) + Send + 'static,
@@ -444,7 +444,7 @@ impl AtvvLink {
         Ok(cookie)
     }
 
-    /// Register a callback receiving Control characteristic notification bytes.
+    /// 注册一个接收 Control 特征通知字节的回调。
     pub fn register_control_handler<F>(&self, callback: F) -> Result<i64>
     where
         F: FnMut(Vec<u8>) + Send + 'static,
@@ -452,7 +452,7 @@ impl AtvvLink {
         self.register_value_changed_handler(&self.control, callback)
     }
 
-    /// Remove a previously registered audio handler.
+    /// 移除之前注册的音频处理器。
     pub fn remove_audio_handler(&self, cookie: i64) -> Result<()> {
         self.audio
             .RemoveValueChanged(cookie)
@@ -497,7 +497,7 @@ impl AtvvLink {
         Ok(cookie)
     }
 
-    /// Register a callback invoked when the BLE connection status changes.
+    /// 注册一个在 BLE 连接状态变化时触发的回调。
     pub fn register_connection_status_changed<F>(&self, callback: F) -> Result<i64>
     where
         F: FnMut(bool) + Send + 'static,
@@ -522,7 +522,7 @@ impl AtvvLink {
             .map_err(|e| BleError::Windows(e.to_string()))
     }
 
-    /// Keep the link alive until the process exits (for a standalone bridge).
+    /// 保持链路存活直到进程退出（用于独立桥接程序）。
     pub fn run_forever(&self) -> Result<()> {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(60));
@@ -530,7 +530,7 @@ impl AtvvLink {
     }
 }
 
-/// Read all bytes out of an IBuffer.
+/// 从 IBuffer 中读取全部字节。
 fn buffer_to_vec(buffer: &IBuffer) -> Result<Vec<u8>> {
     let len = buffer
         .Length()

@@ -1,4 +1,4 @@
-//! core-atvv — Android TV Voice-over-BLE protocol + IMA/DVI ADPCM voice decoder.
+//! core-atvv — Android TV 蓝牙语音（ATVV）协议 + IMA/DVI ADPCM 语音解码器。
 
 pub mod adpcm;
 pub mod error;

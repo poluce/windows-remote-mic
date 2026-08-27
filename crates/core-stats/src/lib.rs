@@ -1,4 +1,4 @@
-//! core-stats — local-only usage statistics (key presses, voice time).
+//! core-stats — 仅本地的使用统计（按键次数、语音时长）。
 
 use std::collections::HashMap;
 use std::fs;
@@ -7,18 +7,18 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// One day of local statistics.
+/// 一天的本地统计数据。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DailyStats {
-    /// Physical button id / logical action name -> press count.
+    /// 物理按键 id / 逻辑动作名称 -> 按键次数。
     pub key_presses: HashMap<String, u64>,
-    /// Total voice input seconds.
+    /// 语音输入总秒数。
     pub voice_seconds: u64,
-    /// Number of voice sessions started.
+    /// 已启动的语音会话数量。
     pub voice_sessions: u64,
 }
 
-/// Store rooted at a directory (e.g. `%LOCALAPPDATA%\RemoteMic\RC003`).
+/// 以某个目录为根目录的存储（例如 `%LOCALAPPDATA%\RemoteMic\RC003`）。
 #[derive(Debug, Clone)]
 pub struct StatsStore {
     pub dir: PathBuf,
@@ -49,8 +49,8 @@ impl StatsStore {
         Self::date_key_now()
     }
 
-    /// Current local day key (day-count from epoch; a real impl should use
-    /// the local calendar date as YYYY-MM-DD).
+    /// 当前本地日期键（从纪元起的天数；真实实现应使用本地日历日期，
+    /// 格式为 YYYY-MM-DD）。
     pub fn date_key_now() -> String {
         let secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

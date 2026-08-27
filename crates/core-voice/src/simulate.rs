@@ -1,4 +1,4 @@
-//! Windows-only simulated voice chain: no real remote required.
+//! 仅 Windows 的模拟语音链路：无需真实遥控器。
 
 use core_atvv::protocol::ControlEvent;
 use core_input::{press_escape, press_win_h};
@@ -9,9 +9,9 @@ use std::process::Command;
 
 use crate::VoiceEngine;
 
-/// PowerShell TTS script: synthesize a Chinese phrase to a WAV file.
-/// Deliberately ASCII-only; the spoken text is passed through an environment
-/// variable so no non-ASCII characters live in the script file.
+/// PowerShell TTS 脚本：将一段中文短语合成为 WAV 文件。
+/// 刻意保持纯 ASCII；朗读文本通过环境变量传入，
+/// 因此脚本文件中不包含任何非 ASCII 字符。
 const TTS_PS1: &str = r#"param([string]$OutputPath)
 $text = $env:REMOTE_MIC_TTS_TEXT
 Add-Type -AssemblyName System.Speech
@@ -23,7 +23,7 @@ $synthesizer.Speak($text)
 $synthesizer.Dispose()
 "#;
 
-/// Result of the simulated voice chain.
+/// 模拟语音链路的结果。
 #[derive(Debug, Clone, Serialize)]
 pub struct SimulatedVoiceResult {
     pub frames: usize,
@@ -34,12 +34,12 @@ pub struct SimulatedVoiceResult {
     pub test_audio_ms: u64,
 }
 
-/// Run: Win+H start -> StreamStart -> inject a real speech WAV after the
-/// remote-audio parsing stage (via `VoiceEngine::feed_pcm`) -> CABLE output
-/// -> StreamStop -> Win+H stop.
+/// 运行流程：Win+H 启动 -> StreamStart -> 在远端音频解析阶段之后
+/// 注入真实语音 WAV（通过 `VoiceEngine::feed_pcm`）-> CABLE 输出
+/// -> StreamStop -> Win+H 停止。
 ///
-/// `test_audio_path` is optional. When `None`, a built-in public-domain speech
-/// sample is used; when `Some(path)`, the given PCM WAV file is loaded.
+/// `test_audio_path` 是可选的。为 `None` 时使用内置的公共领域语音样本；
+/// 为 `Some(path)` 时加载指定的 PCM WAV 文件。
 pub fn simulate_voice_chain(
     output_device: &str,
     test_audio_path: Option<&str>,
@@ -103,13 +103,13 @@ pub fn simulate_voice_chain(
         .on_control(ControlEvent::StreamStart)
         .map_err(|e| e.to_string())?;
 
-    // Close any stray voice typing first so Win+H starts from a known state.
+    // 先关闭可能残留的语音输入，让 Win+H 从已知状态启动。
     let _ = press_escape();
     std::thread::sleep(std::time::Duration::from_millis(150));
 
     core_input::log_line("[simulate] Win+H start");
     press_win_h().map_err(|e| e.to_string())?;
-    // Give Windows voice typing a moment to become ready before playing audio.
+    // 播放音频前，给 Windows 语音输入一点时间准备就绪。
     std::thread::sleep(std::time::Duration::from_millis(400));
 
     let chunk = engine.feed_pcm(&samples);
@@ -119,7 +119,7 @@ pub fn simulate_voice_chain(
     ));
     sink.push(&chunk.output);
 
-    // Let the sink finish playing the speech sample.
+    // 让 sink 播完语音样本。
     core_input::log_debug(&format!(
         "[simulate] sleeping {} ms for playback",
         duration_ms + 300
@@ -143,7 +143,7 @@ pub fn simulate_voice_chain(
     })
 }
 
-/// Synthesize a short Chinese phrase to a WAV file using Windows SAPI TTS.
+/// 使用 Windows SAPI TTS 将一段简短中文短语合成为 WAV 文件。
 fn synthesize_chinese_speech(output_path: &Path) -> Result<(), String> {
     let script_path =
         std::env::temp_dir().join(format!("remote_mic_tts_{}.ps1", std::process::id()));
@@ -174,7 +174,7 @@ fn synthesize_chinese_speech(output_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Parse a standard PCM WAV and return `(sample_rate, mono i16 samples)`.
+/// 解析标准 PCM WAV，返回 `(sample_rate, mono i16 samples)`。
 fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
     if data.len() < 44 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
         return Err("不是有效的 WAV 文件".to_string());
@@ -260,7 +260,7 @@ fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
     Ok((sample_rate, pcm))
 }
 
-/// Simple linear resampler to the 16 kHz rate used by the voice pipeline.
+/// 简单的线性重采样器，转换为语音链路使用的 16 kHz 采样率。
 fn resample_to_16k(samples: &[i16], from_rate: u32) -> Vec<i16> {
     if from_rate == 16_000 {
         return samples.to_vec();

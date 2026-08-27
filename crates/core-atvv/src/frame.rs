@@ -1,6 +1,6 @@
-//! Frame accumulation for the BLE audio characteristic.
+//! BLE 音频特征的帧累积。
 
-/// Packs small BLE notifications into complete fixed-length audio frames.
+/// 将小的 BLE 通知打包为完整的定长音频帧。
 #[derive(Debug, Clone)]
 pub struct AudioFrameAssembler {
     frame_len: usize,
@@ -15,7 +15,7 @@ impl AudioFrameAssembler {
         }
     }
 
-    /// Feed bytes from a BLE notification; returns any complete frames.
+    /// 输入来自 BLE 通知的字节；返回所有完整帧。
     pub fn push(&mut self, data: &[u8]) -> Vec<Vec<u8>> {
         self.pending.extend_from_slice(data);
 

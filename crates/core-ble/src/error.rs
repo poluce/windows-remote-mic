@@ -1,6 +1,6 @@
-//! Error types for the BLE layer.
+//! BLE 层的错误类型。
 
-/// BLE layer error.
+/// BLE 层错误。
 #[derive(Debug, thiserror::Error)]
 pub enum BleError {
     #[error("failed to scan Bluetooth devices: {0}")]
@@ -13,5 +13,5 @@ pub enum BleError {
     Windows(String),
 }
 
-/// Convenient result alias.
+/// 便捷的 Result 别名。
 pub type Result<T> = std::result::Result<T, BleError>;

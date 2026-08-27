@@ -1,6 +1,6 @@
 use tauri::Manager;
 
-/// Show/hide the bottom-right quick menu window.
+/// 显示/隐藏右下角的快捷菜单窗口。
 #[tauri::command]
 pub fn toggle_quick_menu(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("quick-menu") {

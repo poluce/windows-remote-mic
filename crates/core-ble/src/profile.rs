@@ -1,18 +1,18 @@
-//! RC003 identity + name matching (pure logic, unit-testable).
+//! RC003 身份与名称匹配（纯逻辑，可单元测试）。
 
-/// Bluetooth names the RC003 / Remote 2 Pro is paired as.
+/// RC003 / Remote 2 Pro 配对时使用的蓝牙名称。
 pub const RC003_BLUETOOTH_NAMES: [&str; 3] = [
     "MI RC",
     "Xiaomi Bluetooth Remote 2 Pro",
     "小米蓝牙语音遥控器",
 ];
 
-/// Normalize a name for comparison (trim + case-insensitive).
+/// 规范化名称用于比较（去除首尾空格 + 不区分大小写）。
 pub fn normalize_name(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-/// Whether a device name matches the RC003 we target.
+/// 判断设备名称是否匹配目标 RC003。
 pub fn matches_rc003(name: &str) -> bool {
     let name = normalize_name(name);
     RC003_BLUETOOTH_NAMES

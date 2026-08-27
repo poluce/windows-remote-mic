@@ -1,4 +1,4 @@
-//! Windows-only real-device bridge: BLE -> decode -> CABLE output -> Win+H.
+//! 仅 Windows 的真实设备桥接：BLE -> 解码 -> CABLE 输出 -> Win+H。
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -13,10 +13,9 @@ use core_input::{press_escape, press_win_h};
 
 use crate::VoiceEngine;
 
-/// Run the voice bridge using real ATVV control events.
+/// 使用真实的 ATVV 控制事件运行语音桥接。
 ///
-/// `on_status` is invoked with `true` when the BLE connection becomes
-/// connected and `false` when it becomes disconnected.
+/// BLE 连接建立时以 `true` 调用 `on_status`，断开时以 `false` 调用。
 pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Result<(), String>
 where
     F: Fn(bool) + Send + 'static,
@@ -68,8 +67,8 @@ where
     })?;
     core_log::log_info("[bridge] 已向遥控器发送能力查询（GET_CAPABILITIES_V10）");
 
-    // ATVV notify is live. Start the optional Back/Volume tap only now so the
-    // HOGP inject cannot steal the GATT session during characteristic setup.
+    // ATVV 通知已生效。仅在此时启动可选的 Back/Volume 轻触注入，
+    // 以免 HOGP 注入在特征设置期间抢占 GATT 会话。
     core_hid::tap::start_after_atvv();
 
     let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
@@ -182,14 +181,14 @@ where
                     }
                 }
                 RawControlEvent::AudioSynced { .. } => {
-                    // TODO: feed predictor/step_index to decoder for resync.
+                    // TODO: 将 predictor/step_index 提供给解码器以重新同步。
                 }
                 RawControlEvent::Unknown(_) => {}
             }
         })
         .map_err(|e| e.to_string())?;
 
-    // Main loop: keep link alive and push decoded frames to the sink.
+    // 主循环：保持链路存活，并将解码后的帧推送到 sink。
     loop {
         if disconnected.load(Ordering::SeqCst) {
             core_log::log_line("[bridge] BLE 已断开，停止语音桥以等待自动重连");

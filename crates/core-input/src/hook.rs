@@ -1,6 +1,6 @@
-//! Windows Low-Level Keyboard Hook (WH_KEYBOARD_LL).
-//! Captures all hardware keystrokes (including BrowserBack, Media, App keys)
-//! directly from the OS before WebView2 or other windows can consume them.
+//! Windows 低层键盘钩子（WH_KEYBOARD_LL）。
+//! 在 WebView2 或其他窗口消费按键之前，直接从操作系统捕获所有硬件按键
+//! （包括浏览器返回、媒体键、应用键等）。
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -32,7 +32,7 @@ unsafe impl Send for SendHhook {}
 #[cfg(target_os = "windows")]
 static HOOK_HANDLE: Mutex<Option<SendHhook>> = Mutex::new(None);
 
-/// Start listening to global keyboard events via WH_KEYBOARD_LL.
+/// 通过 WH_KEYBOARD_LL 开始监听全局键盘事件。
 pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result<(), String> {
     *HOOK_CALLBACK.lock().unwrap() = Some(Box::new(callback));
 
@@ -67,12 +67,12 @@ pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result
     }
 }
 
-/// Virtual-keys WebView2 often eats or never turns into a KeyboardEvent.
+/// WebView2 经常吞掉或不会转为 KeyboardEvent 的虚拟键。
 #[cfg(target_os = "windows")]
 fn is_gap_vkey(vk: u32) -> bool {
     matches!(
         vk,
-        93 | 166..=183 | 255 // Apps, Browser*, Volume*, Media*, Launch*, Power
+        93 | 166..=183 | 255 // 应用键、浏览器、音量、媒体、启动、电源
     )
 }
 
@@ -95,9 +95,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 "[hook] 低层键盘事件: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, 按下={}",
                 vk, scan, flags, is_down
             ));
-            // Do not forward ordinary typing. The tester was collecting laptop
-            // keystrokes as remote calibration; only gap keys that WebView2
-            // swallows (Back / Home / Volume / App / Power) go to the UI.
+            // 不转发普通打字输入。测试器曾收集笔记本键盘
+            // 作为遥控器校准；只有 WebView2 会吞掉的补充键
+            // （返回 / 主页 / 音量 / 应用 / 电源）才转发到 UI。
             if !is_gap_vkey(vk) {
                 return CallNextHookEx(None, code, wparam, lparam);
             }
