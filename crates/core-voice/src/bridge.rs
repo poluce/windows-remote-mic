@@ -11,7 +11,17 @@ use core_input::{press_escape, press_win_h};
 use crate::VoiceEngine;
 
 /// Run the voice bridge using real ATVV control events.
-pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
+///
+/// `on_status` is invoked with `true` when the BLE connection becomes
+/// connected and `false` when it becomes disconnected.
+pub fn run_bridge<F>(
+    device_id: &str,
+    output_device: &str,
+    on_status: F,
+) -> Result<(), String>
+where
+    F: Fn(bool) + Send + 'static,
+{
     core_log::log_info(&format!(
         "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
     ));
@@ -21,6 +31,14 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
         e.to_string()
     })?;
     core_log::log_info("[bridge] AtvvLink connected");
+
+    link.register_connection_status_changed(move |connected| {
+        let msg = if connected { "connected" } else { "disconnected" };
+        core_log::log_line(&format!("[bridge] BLE connection status changed: {msg}"));
+        on_status(connected);
+    })
+    .map_err(|e| e.to_string())?;
+    core_log::log_info("[bridge] BLE connection status handler registered");
 
     link.enable_audio_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] enable_audio_notifications failed: {e}"));

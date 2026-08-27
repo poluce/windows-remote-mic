@@ -2,13 +2,15 @@
 
 use std::sync::{Arc, Mutex};
 
-use windows::core::{GUID, HSTRING};
+use windows::core::{GUID, HSTRING, IInspectable};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristic, GattClientCharacteristicConfigurationDescriptorValue,
     GattCommunicationStatus, GattDeviceService, GattOpenStatus, GattSharingMode,
     GattValueChangedEventArgs,
 };
-use windows::Devices::Bluetooth::{BluetoothCacheMode, BluetoothLEDevice};
+use windows::Devices::Bluetooth::{
+    BluetoothCacheMode, BluetoothConnectionStatus, BluetoothLEDevice,
+};
 use windows::Foundation::TypedEventHandler;
 use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
@@ -36,6 +38,7 @@ impl AtvvEndpoints {
 
 /// An open ATVV connection with TX/Audio/Control characteristics kept alive.
 pub struct AtvvLink {
+    _device: BluetoothLEDevice,
     _service: GattDeviceService,
     _tx: GattCharacteristic,
     audio: GattCharacteristic,
@@ -76,8 +79,10 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     core_log::log_info(&format!("[ble/gatt] connect_atvv called for device_id='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
+    let device = open_ble_device(device_id)?;
     core_log::log_info("[ble/gatt] connect_atvv established AtvvLink successfully");
     Ok(AtvvLink {
+        _device: device,
         _service: service,
         _tx: tx,
         audio,
@@ -132,12 +137,9 @@ fn open_atvv_chars_and_service(
     }
 }
 
-fn try_open_atvv(
-    device_id: &str,
-    mode: BluetoothCacheMode,
-) -> Result<(FoundChars, GattDeviceService)> {
+fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
     core_log::log_info(&format!(
-        "[ble/gatt] opening BluetoothLEDevice from ID: '{device_id}' mode={mode:?}"
+        "[ble/gatt] opening BluetoothLEDevice from ID: '{device_id}'"
     ));
     let hstr = HSTRING::from(device_id);
     let device = pollster::block_on(async {
@@ -152,6 +154,18 @@ fn try_open_atvv(
             Err(e) => core_log::log_warn(&format!("[ble/gatt] RequestAccessAsync failed: {e}")),
         }
     }
+
+    Ok(device)
+}
+
+fn try_open_atvv(
+    device_id: &str,
+    mode: BluetoothCacheMode,
+) -> Result<(FoundChars, GattDeviceService)> {
+    core_log::log_info(&format!(
+        "[ble/gatt] opening ATVV service from device ID: '{device_id}' mode={mode:?}"
+    ));
+    let device = open_ble_device(device_id)?;
 
     let services_result = pollster::block_on(async {
         let op = device
@@ -472,6 +486,32 @@ impl AtvvLink {
             .ValueChanged(&event_handler)
             .map_err(|e| BleError::Windows(e.to_string()))?;
         Ok(cookie)
+    }
+
+    /// Register a callback invoked when the BLE connection status changes.
+    pub fn register_connection_status_changed<F>(&self, callback: F) -> Result<i64>
+    where
+        F: FnMut(bool) + Send + 'static,
+    {
+        let handler = Arc::new(Mutex::new(callback));
+        let event_handler = handler.clone();
+
+        let typed = TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(
+            move |sender, _args| {
+                if let Some(device) = sender.as_ref() {
+                    if let Ok(status) = device.ConnectionStatus() {
+                        if let Ok(mut guard) = event_handler.lock() {
+                            guard(status == BluetoothConnectionStatus::Connected);
+                        }
+                    }
+                }
+                Ok(())
+            },
+        );
+
+        self._device
+            .ConnectionStatusChanged(&typed)
+            .map_err(|e| BleError::Windows(e.to_string()))
     }
 
     /// Keep the link alive until the process exits (for a standalone bridge).

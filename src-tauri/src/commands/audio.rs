@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Emitter;
 
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
 
@@ -14,14 +15,22 @@ pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
 
 /// Start the real-device voice bridge (Windows only). Runs on a worker thread.
 #[tauri::command]
-pub fn start_voice_bridge(device_id: String, output_device: String) -> String {
+pub fn start_voice_bridge(
+    app: tauri::AppHandle,
+    device_id: String,
+    output_device: String,
+) -> String {
     #[cfg(target_os = "windows")]
     {
         core_log::log_info(&format!(
             "[commands/audio] start_voice_bridge requested for device_id='{device_id}', output='{output_device}'"
         ));
+        let app_for_thread = app.clone();
         std::thread::spawn(move || {
-            if let Err(e) = core_voice::run_bridge(&device_id, &output_device) {
+            let on_status = move |connected: bool| {
+                let _ = app_for_thread.emit("ble-connection-status", connected);
+            };
+            if let Err(e) = core_voice::run_bridge(&device_id, &output_device, on_status) {
                 core_log::log_error(&format!("[commands/audio] voice bridge worker thread exited with error: {e}"));
             } else {
                 core_log::log_info("[commands/audio] voice bridge worker thread finished normally");
@@ -31,7 +40,7 @@ pub fn start_voice_bridge(device_id: String, output_device: String) -> String {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (device_id, output_device);
+        let _ = (app, device_id, output_device);
         "语音桥仅在 Windows 可用".to_string()
     }
 }

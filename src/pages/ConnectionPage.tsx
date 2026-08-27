@@ -29,14 +29,24 @@ export function ConnectionPage() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    let unlisten: (() => void) | undefined;
+    let unlistenTap: (() => void) | undefined;
+    let unlistenBle: (() => void) | undefined;
     listen<string>("hid-tap-status", (event) => {
       setTapStatus(event.payload);
     }).then((fn) => {
-      unlisten = fn;
+      unlistenTap = fn;
+    });
+    listen<boolean>("ble-connection-status", (event) => {
+      setConnected(event.payload);
+      if (!event.payload) {
+        setBridgeRunning(false);
+      }
+    }).then((fn) => {
+      unlistenBle = fn;
     });
     return () => {
-      unlisten?.();
+      unlistenTap?.();
+      unlistenBle?.();
     };
   }, []);
 
