@@ -160,9 +160,6 @@ export function DiagnosticsPage() {
 
   async function clearLogFile() {
     if (!isTauri()) return;
-    if (!window.confirm("确定清空当前日志文件？此操作不可撤销。")) {
-      return;
-    }
     setLogMsg("");
     try {
       await invoke("clear_log");
@@ -209,49 +206,38 @@ export function DiagnosticsPage() {
   return (
     <div className="page">
 
-      <section className="card">
-        <div className="card-title">虚拟声卡（VB-CABLE）</div>
-        <div className="brief-grid">
-          <div className={`brief ${data.has_vb_cable ? "ok" : "warn"}`}>
-            <div className="brief-value">{data.has_vb_cable ? "正常" : "未就绪"}</div>
-            <div className="brief-label">VB-CABLE 链路</div>
-          </div>
-          <div className={`brief ${data.cable_input_present ? "ok" : "warn"}`}>
-            <div className="brief-value">{data.cable_input_present ? "有" : "无"}</div>
-            <div className="brief-label">CABLE 输入</div>
-          </div>
-          <div className={`brief ${data.cable_output_present ? "ok" : "warn"}`}>
-            <div className="brief-value">{data.cable_output_present ? "有" : "无"}</div>
-            <div className="brief-label">CABLE 输出（麦克风）</div>
-          </div>
-        </div>
+      <section className="card vbcable-card">
+        <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
+        <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
+          {data.has_vb_cable ? "正常" : "未就绪"}
+        </span>
+        <span className={`vbcable-status ${data.cable_input_present ? "ok" : "warn"}`}>
+          CABLE 输入
+        </span>
+        <span className={`vbcable-status ${data.cable_output_present ? "ok" : "warn"}`}>
+          CABLE 输出
+        </span>
         {checked && !data.has_vb_cable && (
-          <div className="actions">
-            <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
-              {installing ? "正在安装…" : "一键安装 VB-CABLE"}
-            </button>
-            {!isTauri() && <span className="hint">请在桌面应用内安装</span>}
-          </div>
+          <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
+            {installing ? "正在安装…" : "一键安装 VB-CABLE"}
+          </button>
         )}
-        {installMsg && <p className="hint">{installMsg}</p>}
+        {installMsg && <span className="hint vbcable-msg">{installMsg}</span>}
       </section>
 
-      <section className="card">
-        <div className="card-title">诊断与自检操作</div>
-        <div className="actions">
-          <button className="btn primary" onClick={runSelfTest}>
-            🔍 运行系统全自检
-          </button>
-          <button className="btn" onClick={loopTone} disabled={looping}>
-            {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
-          </button>
-          <button className="btn" onClick={toggleQuickMenu}>
-            打开/关闭快捷菜单
-          </button>
-        </div>
-        {status && <p className="hint">{status}</p>}
+      <section className="card diag-actions-card">
+        <button className="btn primary" onClick={runSelfTest}>
+          🔍 运行系统全自检
+        </button>
+        <button className="btn" onClick={loopTone} disabled={looping}>
+          {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
+        </button>
+        <button className="btn" onClick={toggleQuickMenu}>
+          打开/关闭快捷菜单
+        </button>
+        {status && <span className="hint diag-actions-msg">{status}</span>}
         {selfTests && (
-          <div className="check-list">
+          <div className="check-list diag-actions-list">
             {selfTests.map((t) => (
               <div key={t.name} className="check-row">
                 <span>{t.name}</span>
@@ -268,15 +254,33 @@ export function DiagnosticsPage() {
       </section>
 
       <section className="card">
-        <div className="card-title">日志</div>
         <div className="log-actions">
-          <button className="btn" onClick={loadLogTail} disabled={logLoading}>
-            {logLoading ? "读取中…" : "刷新日志"}
-          </button>
           <button className="btn" onClick={clearLogFile}>清空日志</button>
           <button className="btn" onClick={openLogDir}>打开日志目录</button>
           <button className="btn" onClick={toggleDebugLogging}>
             {logInfo?.debug_enabled ? "关闭 DEBUG" : "开启 DEBUG"}
+          </button>
+          <button
+            className="log-refresh-btn log-refresh-right"
+            onClick={loadLogTail}
+            disabled={logLoading}
+            title="刷新日志"
+            aria-label="刷新日志"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={logLoading ? "spinning" : ""}
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
           </button>
         </div>
         {logInfo && (

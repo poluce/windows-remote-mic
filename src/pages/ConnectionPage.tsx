@@ -18,28 +18,62 @@ type Rc003Connection = {
   endpoints: AtvvEndpoints;
 };
 
+type BridgeStatus = "idle" | "running" | "failed";
+type TapStatus = "idle" | "attached" | "pending" | "unavailable";
+
+function mapTapStatus(msg: string): TapStatus {
+  if (msg.includes("已附着")) return "attached";
+  if (msg.includes("缺少") || msg.includes("拒绝") || msg.includes("失败")) return "unavailable";
+  if (msg) return "pending";
+  return "idle";
+}
+
+function tapStatusLabel(status: TapStatus, connected: boolean): string {
+  switch (status) {
+    case "attached":
+      return "已附着";
+    case "pending":
+      return "处理中";
+    case "unavailable":
+      return "未启用";
+    case "idle":
+      return connected ? "等待语音通道" : "未启用";
+  }
+}
+
+function tapStatusTone(status: TapStatus): string {
+  return status === "attached" ? "ok" : "warn";
+}
+
+function endpointsLabel(endpoints: AtvvEndpoints | null): string {
+  if (!endpoints) return "未知";
+  const audio = endpoints.audio ? "音频 ✓" : "音频 ✗";
+  const control = endpoints.control ? "控制 ✓" : "控制 ✗";
+  return `${audio} / ${control}`;
+}
+
 export function ConnectionPage() {
-  const [scanResult, setScanResult] = useState("未开始扫描");
-  const [scanning, setScanning] = useState(false);
-  const [connectResult, setConnectResult] = useState("");
-  const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [bridgeRunning, setBridgeRunning] = useState(false);
-  const [tapStatus, setTapStatus] = useState("");
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
+  const [tapStatus, setTapStatus] = useState<TapStatus>("idle");
+  const [endpoints, setEndpoints] = useState<AtvvEndpoints | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   useEffect(() => {
     if (!isTauri()) return;
     let unlistenTap: (() => void) | undefined;
     let unlistenBle: (() => void) | undefined;
     listen<string>("hid-tap-status", (event) => {
-      setTapStatus(event.payload);
+      setTapStatus(mapTapStatus(event.payload));
     }).then((fn) => {
       unlistenTap = fn;
     });
     listen<boolean>("ble-connection-status", (event) => {
       setConnected(event.payload);
       if (!event.payload) {
-        setBridgeRunning(false);
+        setBridgeStatus("idle");
       }
     }).then((fn) => {
       unlistenBle = fn;
@@ -50,29 +84,18 @@ export function ConnectionPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isTauri()) return;
-    invoke<{ selected_device_id?: string }>("get_persisted_settings")
-      .then((cfg) => {
-        if (cfg.selected_device_id) {
-          setScanResult(`已记忆设备 ID: ${cfg.selected_device_id}`);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
   async function scan() {
     if (!isTauri()) {
-      setScanResult("浏览器预览：请在桌面应用内扫描");
+      setFeedback("请在桌面应用内扫描");
       return;
     }
     setScanning(true);
-    setScanResult("正在扫描蓝牙…（请确认遥控器已在 Windows 蓝牙中配对）");
+    setFeedback("正在扫描蓝牙…（请确认遥控器已在 Windows 蓝牙中配对）");
     try {
       const device = await invoke<Rc003Device>("scan_for_rc003");
-      setScanResult(`已找到：${device.name}`);
+      setFeedback(`扫描成功：${device.name}`);
     } catch (err) {
-      setScanResult(`未找到：${err}`);
+      setFeedback(`扫描失败：${err}`);
     } finally {
       setScanning(false);
     }
@@ -80,17 +103,16 @@ export function ConnectionPage() {
 
   async function connect() {
     if (!isTauri()) {
-      setConnectResult("浏览器预览：请在桌面应用内连接");
+      setFeedback("请在桌面应用内连接");
       return;
     }
     setConnecting(true);
-    setConnectResult("正在连接并枚举 GATT 特征…（如长时间无响应，请按一下遥控器按键以唤醒蓝牙）");
+    setFeedback("正在连接并枚举 GATT 特征…");
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       setConnected(true);
-      setConnectResult(
-        `已连接 ${result.device.name}；ATVV：音频=${result.endpoints.audio ? "有" : "无"}，控制=${result.endpoints.control ? "有" : "无"}`
-      );
+      setEndpoints(result.endpoints);
+      setFeedback("连接成功");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
       } catch {
@@ -103,15 +125,16 @@ export function ConnectionPage() {
           deviceId: result.device.id,
           outputDevice: "CABLE Input",
         });
-        setBridgeRunning(true);
-        setConnectResult((prev) => `${prev} · ${bridgeRes}`);
+        setBridgeStatus("running");
+        setFeedback(bridgeRes);
       } catch (bridgeErr) {
-        setConnectResult((prev) => `${prev}（启动语音桥失败：${bridgeErr}）`);
+        setBridgeStatus("failed");
+        setFeedback(`连接成功，但语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
       setConnected(false);
-      setBridgeRunning(false);
-      setConnectResult(`连接失败：${err}`);
+      setBridgeStatus("idle");
+      setFeedback(`连接失败：${err}`);
     } finally {
       setConnecting(false);
     }
@@ -119,28 +142,19 @@ export function ConnectionPage() {
 
   const briefs = [
     {
-      label: "蓝牙",
-      value: connected ? "已连接" : "待连接",
-      tone: connected ? "ok" : "warn",
-    },
-    { label: "设备", value: "RC003 / 2 Pro", tone: "ok" },
-    {
       label: "ATVV 语音桥",
-      value: bridgeRunning ? "运行中" : "未启用",
-      tone: bridgeRunning ? "ok" : "warn",
+      value: bridgeStatus === "running" ? "运行中" : bridgeStatus === "failed" ? "启动失败" : "未启用",
+      tone: bridgeStatus === "running" ? "ok" : "warn",
     },
     {
       label: "返回/音量旁路",
-      value: tapStatus.includes("已附着")
-        ? "已附着"
-        : tapStatus.includes("缺少") || tapStatus.includes("拒绝") || tapStatus.includes("失败")
-          ? "未启用"
-          : tapStatus
-            ? "处理中"
-            : connected
-              ? "等待语音通道"
-              : "未启用",
-      tone: tapStatus.includes("已附着") ? "ok" : "warn",
+      value: tapStatusLabel(tapStatus, connected),
+      tone: tapStatusTone(tapStatus),
+    },
+    {
+      label: "ATVV 端点",
+      value: endpointsLabel(endpoints),
+      tone: endpoints?.audio && endpoints.control ? "ok" : "warn",
     },
   ];
 
@@ -154,9 +168,24 @@ export function ConnectionPage() {
             <div className="device-model">RC003 · VID 0x2717 · PID 0x32B8</div>
           </div>
         </div>
-        <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-          {connected ? "已连接" : "未连接"}
-        </span>
+        <div className="device-actions">
+          <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
+            {connected ? "已连接" : "未连接"}
+          </span>
+          <div className="actions">
+            <button className="btn" onClick={scan} disabled={!isTauri() || scanning}>
+              {scanning ? "扫描中…" : "扫描"}
+            </button>
+            <button
+              className="btn primary"
+              onClick={connect}
+              disabled={!isTauri() || connecting}
+            >
+              {connecting ? "连接中…" : "连接"}
+            </button>
+          </div>
+        </div>
+        {feedback && <p className="hint device-feedback">{feedback}</p>}
       </section>
 
       <section className="card">
@@ -169,25 +198,6 @@ export function ConnectionPage() {
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="card">
-        <div className="card-title">连接遥控器</div>
-        <div className="actions">
-          <button className="btn" onClick={scan} disabled={!isTauri() || scanning}>
-            {scanning ? "扫描中…" : "扫描遥控器"}
-          </button>
-          <button
-            className="btn primary"
-            onClick={connect}
-            disabled={!isTauri() || connecting}
-          >
-            {connecting ? "连接中…" : "连接并启动语音桥"}
-          </button>
-        </div>
-        {scanResult && <p className="hint">{scanResult}</p>}
-        {connectResult && <p className="hint">{connectResult}</p>}
-        {tapStatus && <p className="hint">{tapStatus}</p>}
       </section>
     </div>
   );
