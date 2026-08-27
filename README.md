@@ -73,5 +73,8 @@ cargo test --workspace --exclude remote-mic
 
 - [规划文档](docs/项目/规划.md)
 - [ToDo / 任务清单](docs/项目/任务清单.md)
+- [发布说明](docs/项目/发布说明.md)
+- [真机验收](docs/项目/真机验收.md)
+- [CHANGELOG / 发版流程](CHANGELOG.md)
 - [ATVV 协议事实表](docs/协议/ATVV/协议.md)
 - [社区参考资料](docs/协议/ATVV/社区资料/来源清单.md)

@@ -2,7 +2,6 @@
 
 ## macOS
 
-- Source: <https://github.com/HD838A/remote-mic-app>
 - Imported tag: `v1.2.3`
 - Imported commit: `32edebde6a221c84b921a13a61f8cbdceb41c686`
 - License: `GPL-3.0-only`

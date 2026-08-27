@@ -177,7 +177,6 @@ cargo check -p remote-mic
 ## 约定与注意事项
 
 - **UI 全部使用简体中文。**
-- 项目是 clean-room 实现：不要在文档/代码中引用外部仓库（如 HD838A/remote-mic-app）作为来源。
 - **crate 边界**：
   - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
@@ -187,6 +186,26 @@ cargo check -p remote-mic
 - WSL 与 Windows 共享 node_modules 会产生平台冲突；如遇 esbuild/rollup 平台错误，在 Windows 端重新 `npm install`。
 - Vite dev 端口固定为 `1420`；启动前确认端口未被占用。
 - Rust 编译请使用 Windows 端 `cargo`；WSL 直接交叉检查 Windows target 可能缺 `llvm-rc`。
+
+## 分支 / PR / 提交规范
+
+- 分支策略：
+  - `main` 为受保护主干，始终应保持可构建、可运行。
+  - 功能/修复请从 `main` 切分支，命名如 `feat/xxx`、`fix/xxx`、`docs/xxx`。
+  - 完成并通过本地验证后，通过 Pull Request 合入 `main`。
+- PR 要求：
+  - 标题简明，说明改动内容。
+  - 描述关联的 issue / 任务项（如有）。
+  - 必须通过 CI：前端 typecheck/build、Rust fmt/clippy/test、Tauri check。
+  - 涉及 UI 改动时附上简短的改动说明或截图（可选）。
+- 提交信息规范（Conventional Commits 风格）：
+  - `feat: 新功能`
+  - `fix: 修复问题`
+  - `docs: 文档变更`
+  - `chore: 构建/工具/依赖等杂项`
+  - `refactor: 重构`
+  - `test: 测试相关`
+- 发版流程见 `CHANGELOG.md`：更新版本号 → 更新 CHANGELOG → 打 tag → CI 自动出 Release。
 
 ## 工作流提示
 
