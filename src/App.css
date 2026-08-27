@@ -192,6 +192,12 @@ button {
 /* ---------- 连接 ---------- */
 .device-card {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.device-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -208,6 +214,31 @@ button {
 
 .device-feedback {
   flex-basis: 100%;
+}
+
+.device-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.device-status-pill {
+  font-size: 12px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.device-status-pill.ok {
+  background: #e6f4ea;
+  color: #1a7f37;
+}
+
+.device-status-pill.warn {
+  background: #fff4e5;
+  color: #9a6700;
 }
 
 /* ---------- VB-CABLE 紧凑行 ---------- */
