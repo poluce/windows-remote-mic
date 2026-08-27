@@ -111,6 +111,35 @@ fn push_unique(out: &mut Vec<u16>, vk: u16) {
     }
 }
 
+/// HidOverGatt characteristic-read IOCTL payload on RC003: 3-byte prefix + 6-byte usage array.
+pub fn hogp_ioctl_payload(data: &[u8]) -> Option<&[u8]> {
+    if data.len() == 9 && data.starts_with(&[0x01, 0x00, 0x00]) {
+        Some(&data[3..9])
+    } else {
+        None
+    }
+}
+
+/// Little-endian keyboard-page usages from a 6-byte HOGP payload.
+pub fn hogp_payload_usages(payload: &[u8]) -> Vec<u16> {
+    if payload.len() != 6 {
+        return Vec::new();
+    }
+    payload
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .filter(|u| *u != 0)
+        .collect()
+}
+
+/// Back / Volume+ / Volume- only. Direction and OK stay on Raw Input.
+pub fn hogp_special_usages(payload: &[u8]) -> Vec<u16> {
+    hogp_payload_usages(payload)
+        .into_iter()
+        .filter(|u| matches!(*u, 0x00F1 | 0x0080 | 0x0081))
+        .collect()
+}
+
 /// Extract Windows virtual-keys from a raw HID input report.
 ///
 /// Handles both keyboard-page arrays (byte `0xF1` = Back) and Consumer
@@ -214,7 +243,26 @@ mod tests {
     fn hid_report_release_is_empty() {
         assert!(parse_hid_report_vkeys(&[0x00, 0x00, 0x00, 0x00]).is_empty());
     }
+
+    #[test]
+    fn hogp_ioctl_keeps_only_back_and_volume() {
+        let back = [0x01, 0x00, 0x00, 0xF1, 0x00, 0x00, 0x00, 0x00, 0x00];
+        assert_eq!(hogp_special_usages(hogp_ioctl_payload(&back).unwrap()), vec![0x00F1]);
+
+        let vol = [0x01, 0x00, 0x00, 0x80, 0x00, 0x81, 0x00, 0x00, 0x00];
+        let mut got = hogp_special_usages(hogp_ioctl_payload(&vol).unwrap());
+        got.sort_unstable();
+        assert_eq!(got, vec![0x0080, 0x0081]);
+
+        let ok_only = [0x01, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00];
+        assert!(hogp_special_usages(hogp_ioctl_payload(&ok_only).unwrap()).is_empty());
+
+        assert!(hogp_ioctl_payload(&[0x00, 0x00, 0x00]).is_none());
+    }
 }
 
 #[cfg(target_os = "windows")]
 pub mod raw_input;
+
+#[cfg(target_os = "windows")]
+pub mod tap;

@@ -40,6 +40,10 @@ pub fn run_bridge(device_id: &str, output_device: &str) -> Result<(), String> {
     })?;
     core_log::log_info("[bridge] GET_CAPABILITIES_V10 sent to remote");
 
+    // ATVV notify is live. Start the optional Back/Volume tap only now so the
+    // HOGP inject cannot steal the GATT session during characteristic setup.
+    core_hid::tap::start_after_atvv();
+
     let sink = Arc::new(
         core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
             core_log::log_error(&format!("[bridge] failed to initialize AudioSink: {e}"));

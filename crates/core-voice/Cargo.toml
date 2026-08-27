@@ -16,3 +16,4 @@ core-log = { path = "../core-log" }
 [target.'cfg(windows)'.dependencies]
 core-ble = { path = "../core-ble" }
 core-input = { path = "../core-input" }
+core-hid = { path = "../core-hid" }

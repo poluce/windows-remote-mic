@@ -652,6 +652,7 @@ dependencies = [
  "core-log",
  "core-mapping",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "windows 0.62.2",
 ]
@@ -698,6 +699,7 @@ dependencies = [
  "core-atvv",
  "core-audio",
  "core-ble",
+ "core-hid",
  "core-input",
  "core-log",
  "serde",

@@ -206,6 +206,11 @@ fn action_label(action: &ActionKind) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    if core_hid::tap::maybe_run_injector() {
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -304,6 +309,11 @@ pub fn run() {
                 }) {
                     core_log::log_error(&format!("[raw_input] start_listener failed: {e}"));
                 }
+
+                let handle_tap = app.handle().clone();
+                core_hid::tap::set_status_callback(move |msg| {
+                    let _ = handle_tap.emit("hid-tap-status", msg);
+                });
             }
 
             core_log::log_info("[app] Remote Mic application setup completed, windows and global hook initialized");

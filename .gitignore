@@ -25,3 +25,7 @@ dist-ssr
 
 # Rust
 /target
+
+# Optional HID tap gadget (fetched locally, never committed)
+*.dll.xz
+frida-gadget.dll

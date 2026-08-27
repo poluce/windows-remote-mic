@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 type Rc003Device = {
   id: string;
@@ -24,6 +25,20 @@ export function ConnectionPage() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [bridgeRunning, setBridgeRunning] = useState(false);
+  const [tapStatus, setTapStatus] = useState("");
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    listen<string>("hid-tap-status", (event) => {
+      setTapStatus(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -104,6 +119,19 @@ export function ConnectionPage() {
       value: bridgeRunning ? "运行中" : "未启用",
       tone: bridgeRunning ? "ok" : "warn",
     },
+    {
+      label: "返回/音量旁路",
+      value: tapStatus.includes("已附着")
+        ? "已附着"
+        : tapStatus.includes("缺少") || tapStatus.includes("拒绝") || tapStatus.includes("失败")
+          ? "未启用"
+          : tapStatus
+            ? "处理中"
+            : connected
+              ? "等待语音通道"
+              : "未启用",
+      tone: tapStatus.includes("已附着") ? "ok" : "warn",
+    },
   ];
 
   return (
@@ -149,6 +177,7 @@ export function ConnectionPage() {
         </div>
         {scanResult && <p className="hint">{scanResult}</p>}
         {connectResult && <p className="hint">{connectResult}</p>}
+        {tapStatus && <p className="hint">{tapStatus}</p>}
       </section>
     </div>
   );
