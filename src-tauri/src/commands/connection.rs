@@ -2,6 +2,25 @@ use serde::Serialize;
 
 use crate::config_store;
 
+/// 连接页需要恢复的运行时状态快照。
+#[derive(Serialize)]
+pub struct RuntimeStatus {
+    pub connected: bool,
+    pub bridge_running: bool,
+    pub tap_status: Option<String>,
+    pub endpoints_ready: bool,
+}
+
+#[tauri::command]
+pub fn get_runtime_status() -> RuntimeStatus {
+    RuntimeStatus {
+        connected: core_voice::connection_active(),
+        bridge_running: core_voice::bridge_running(),
+        tap_status: core_hid::tap::last_status(),
+        endpoints_ready: core_voice::atvv_endpoints_ready(),
+    }
+}
+
 /// 连接 RC003。
 #[derive(Serialize)]
 pub struct Rc003Connection {
@@ -56,6 +75,12 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// 返回当前 ATVV/BLE 链路是否已连接。
+#[tauri::command]
+pub fn get_connection_status() -> bool {
+    core_voice::connection_active()
 }
 
 #[tauri::command]

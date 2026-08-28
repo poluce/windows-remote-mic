@@ -313,6 +313,20 @@ pub fn run() {
                 });
             }
 
+            // 日志推送：文件写入与 UI 推送互不干扰。
+            // 1) 先发一次历史尾部（过滤高频刷屏行），前端打开页面即可显示；
+            // 2) 再持续推送新写入的日志行。
+            let log_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let history = core_log::read_log_tail(256 * 1024);
+                let _ = log_handle.emit("log-history", history);
+
+                let rx = core_log::subscribe_log_lines();
+                while let Ok(line) = rx.recv() {
+                    let _ = log_handle.emit("log-line", line);
+                }
+            });
+
             core_log::log_info("[app] Remote Mic 应用初始化完成，窗口与全局钩子已就绪");
             Ok(())
         })
@@ -321,6 +335,8 @@ pub fn run() {
             commands::connection::scan_for_rc003,
             commands::connection::connect_rc003,
             commands::connection::get_persisted_settings,
+            commands::connection::get_connection_status,
+            commands::connection::get_runtime_status,
             commands::connection::save_selected_device,
             commands::connection::save_output_endpoint,
             commands::connection::open_system_settings,

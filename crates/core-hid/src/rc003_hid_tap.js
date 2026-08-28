@@ -91,21 +91,28 @@ function installHook() {
   }
   Interceptor.attach(target, {
     onEnter(args) {
-      this.capture = args[5].toUInt32() === READ_CHARACTERISTIC_IOCTL;
-      if (this.capture) {
-        this.output = args[8];
-        this.outputLength = args[9].toUInt32();
-      }
+      this.ioctl = args[5].toUInt32();
+      this.output = args[8];
+      this.outputLength = args[9].toUInt32();
+      // 诊断：先记录所有输出长度 >= 9 的 IOCTL，看返回键实际走哪个。
+      this.capture = this.outputLength >= 9;
     },
     onLeave(retval) {
       if (!this.capture || retval.toUInt32() !== 0 || this.output.isNull()) {
         return;
       }
       try {
-        if (this.outputLength === EXPECTED_OUTPUT_LENGTH) {
+        if (this.ioctl === READ_CHARACTERISTIC_IOCTL && this.outputLength === EXPECTED_OUTPUT_LENGTH) {
           emit({
             kind: "gatt_read",
             raw: hex(this.output, this.outputLength),
+          });
+        } else {
+          // 诊断：记录所有长度 >= 9 的 IOCTL，便于确认实际路径。
+          emit({
+            kind: "gatt_read_other",
+            raw: hex(this.output, Math.min(this.outputLength, 32)),
+            message: `ioctl=0x${this.ioctl.toString(16)} len=${this.outputLength}`,
           });
         }
       } catch (error) {

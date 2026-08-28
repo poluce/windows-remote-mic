@@ -22,6 +22,7 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 type StatusCallback = Box<dyn Fn(String) + Send>;
 
 static STATUS_CB: Mutex<Option<StatusCallback>> = Mutex::new(None);
+static LAST_STATUS: Mutex<Option<String>> = Mutex::new(None);
 static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
@@ -45,11 +46,12 @@ fn tap_port() -> u16 {
 }
 
 fn gadget_dir() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base)
-        .join("RemoteMic")
-        .join("RC003")
-        .join("hid-tap")
+    // 运行时文件放在 ProgramData：
+    // - SYSTEM（WUDFHost）一定能读取/加载 DLL；
+    // - 通过 ensure_runtime_acl 给 Users 加 Modify 权限，普通用户也能更新 JS/config；
+    // - 避免 LocalAppData 下 SYSTEM 访问不确定的问题。
+    let base = std::env::var("PROGRAMDATA").unwrap_or_else(|_| r"C:\ProgramData".into());
+    PathBuf::from(base).join("RemoteMic").join("hid-tap")
 }
 
 fn gadget_dll_path() -> PathBuf {
@@ -64,8 +66,16 @@ pub fn set_status_callback(cb: impl Fn(String) + Send + 'static) {
     *STATUS_CB.lock().unwrap() = Some(Box::new(cb));
 }
 
+/// 返回最近一次旁路状态消息，供页面挂载时恢复显示。
+pub fn last_status() -> Option<String> {
+    LAST_STATUS.lock().unwrap().clone()
+}
+
 fn status(msg: &str) {
     core_log::log_info(&format!("[hid-tap] {msg}"));
+    if let Ok(mut last) = LAST_STATUS.lock() {
+        *last = Some(msg.to_string());
+    }
     if let Ok(cb) = STATUS_CB.lock() {
         if let Some(f) = cb.as_ref() {
             f(msg.to_string());
@@ -119,17 +129,18 @@ pub fn maybe_run_injector() -> bool {
 /// 启动 localhost 服务，并在需要时请求提权以执行注入。
 /// 可安全地多次调用。绝不打开 HID GATT 服务。
 pub fn start_after_atvv() {
+    // 先准备运行时（从旧位置复制 DLL 到 ProgramData、写 config/script、设置 ACL），
+    // 再检查 Gadget 是否可用。
+    if let Err(e) = prepare_runtime() {
+        status(&format!("返回/音量旁路未启用：{e}"));
+        return;
+    }
     if !gadget_available() {
         status("返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1");
         return;
     }
     if RUNNING.swap(true, Ordering::SeqCst) {
         core_log::log_info("[hid-tap] 旁路服务已在运行");
-        return;
-    }
-    if let Err(e) = prepare_runtime() {
-        RUNNING.store(false, Ordering::SeqCst);
-        status(&format!("返回/音量旁路准备失败：{e}"));
         return;
     }
     std::thread::Builder::new()
@@ -142,8 +153,27 @@ pub fn start_after_atvv() {
 fn prepare_runtime() -> Result<(), String> {
     let dir = gadget_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let mut wrote_new_file = false;
+
+    // 运行时目录固定为 ProgramData（SYSTEM 可读）。DLL 缺失时直接提示运行下载脚本，
+    // 不再从 LocalAppData 等历史位置复制兜底。
+    let dll_path = gadget_dll_path();
+    if !dll_path.is_file() {
+        return Err(
+            "frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into(),
+        );
+    }
+
+    // 写脚本。ProgramData 已给 Users Modify 权限，正常可写；失败则说明环境异常，阻断并提示。
     let script_path = dir.join("rc003-hid-tap.js");
-    std::fs::write(&script_path, GADGET_SCRIPT).map_err(|e| e.to_string())?;
+    if !file_has_content(&script_path, GADGET_SCRIPT.as_bytes()) {
+        std::fs::write(&script_path, GADGET_SCRIPT)
+            .map_err(|e| format!("写入 rc003-hid-tap.js 失败: {e}"))?;
+        wrote_new_file = true;
+    }
+
+    // 写 config（文件名必须与 DLL 名匹配：frida-gadget.config）
     let cfg = serde_json::json!({
         "interaction": {
             "type": "script",
@@ -154,11 +184,60 @@ fn prepare_runtime() -> Result<(), String> {
         "runtime": "qjs",
         "teardown": "minimal"
     });
-    std::fs::write(
-        dir.join("frida-gadget.config"),
-        serde_json::to_vec_pretty(&cfg).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
+    let cfg_bytes = serde_json::to_vec_pretty(&cfg).unwrap();
+    let cfg_path = dir.join("frida-gadget.config");
+    if !file_has_content(&cfg_path, &cfg_bytes) {
+        std::fs::write(&cfg_path, cfg_bytes)
+            .map_err(|e| format!("写入 frida-gadget.config 失败: {e}"))?;
+        wrote_new_file = true;
+    }
+
+    // 给目录添加 SYSTEM/Administrators 读权限（不改变当前用户写权限），
+    // 确保 WUDFHost（SYSTEM）能加载 DLL/脚本。只在实际写入/新建后执行。
+    if wrote_new_file {
+        ensure_runtime_acl(&dir)?;
+    }
+
+    Ok(())
+}
+
+/// 文件存在且内容与给定字节一致时返回 true（用于跳过不必要的写入）。
+fn file_has_content(path: &std::path::Path, expected: &[u8]) -> bool {
+    match std::fs::read(path) {
+        Ok(existing) => existing == expected,
+        Err(_) => false,
+    }
+}
+
+/// 确保运行时目录权限：
+/// - SYSTEM / Administrators 完全控制（保证 WUDFHost 加载 DLL）
+/// - Users 具备 Modify（保证普通用户能更新 JS/config）
+/// 使用 `/grant` 追加，不破坏已有权限。
+fn ensure_runtime_acl(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let output = std::process::Command::new("icacls.exe")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg(path)
+            .args([
+                "/grant",
+                "*S-1-5-18:(OI)(CI)F",
+                "/grant",
+                "*S-1-5-32-544:(OI)(CI)F",
+                "/grant",
+                "*S-1-5-32-545:(OI)(CI)M",
+                "/C",
+                "/Q",
+            ])
+            .output()
+            .map_err(|e| format!("icacls 启动失败: {e}"))?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!("设置 Gadget 目录 ACL 失败: {}", stdout.trim()));
+        }
+    }
     Ok(())
 }
 
@@ -203,9 +282,7 @@ fn hub_loop() {
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
-                        status(&format!(
-                            "已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"
-                        ));
+                        status(&format!("已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"));
                     }
                     Ok(false) => {
                         status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。");
@@ -238,7 +315,9 @@ fn hub_loop() {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let _ = stream.set_nonblocking(false);
-                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                    // 不设置读超时：Frida 脚本每 5 秒发心跳维持连接，
+                    // 只有对端真正关闭时 read_line 才返回 Ok(0)，避免误报“关闭”。
+                    let _ = stream.set_read_timeout(None);
                     client = Some(stream);
                     break;
                 }
@@ -259,7 +338,9 @@ fn hub_loop() {
         arm_grace();
         serve_client(stream);
         *ACTIVE.lock().unwrap() = Vec::new();
-        core_log::log_info("[hid-tap] 旁路连接已关闭，稍后重试");
+        // 连接关闭也通过 status() 通知前端，避免只有日志没有状态。
+        // 内部会重试，但对用户显示为“等待旁路重连”而不是“已关闭”。
+        status("返回/音量旁路连接已断开，正在等待重连");
     }
 }
 
@@ -281,6 +362,12 @@ fn serve_client(stream: std::net::TcpStream) {
                 if let Some(bytes) = decode_hex(&msg.raw) {
                     on_ioctl_bytes(&bytes);
                 }
+            }
+            "gatt_read_other" => {
+                core_log::log_warn(&format!(
+                    "[hid-tap] 目标 IOCTL 但长度异常: length={}, raw={}",
+                    msg.message, msg.raw
+                ));
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}
@@ -687,6 +774,8 @@ fn inject_into(pid: u32) -> Result<(), String> {
         .into_os_string()
         .into_string()
         .map_err(|_| "gadget path is not UTF-8".to_string())?;
+    // LoadLibraryW 需要 DOS 路径；去掉 \\?\ 前缀，否则远程 LoadLibraryW 可能返回 NULL。
+    let dll_os = dll_os.strip_prefix(r"\\?\").unwrap_or(&dll_os).to_string();
 
     unsafe {
         let access = PROCESS_CREATE_THREAD

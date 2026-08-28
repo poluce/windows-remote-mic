@@ -48,8 +48,9 @@ pub fn start_voice_bridge(
                         core_log::log_error(&format!("[commands/audio] 语音桥错误: {e}"));
                     }
                 }
-
-                let _ = app_for_thread.emit("ble-connection-status", false);
+                // 注意：不要在这里无条件 emit ble-connection-status=false。
+                // run_bridge 内部已通过 on_status 在 BLE 真正连接/断开时推送状态；
+                // 这里只是“语音桥本次会话结束”，不代表遥控器连接断开。
                 attempt += 1;
                 let delay_secs = (attempt * 2).min(10);
                 core_log::log_line(&format!(

@@ -5,9 +5,51 @@ use core_atvv::frame::AudioFrameAssembler;
 use core_atvv::protocol::ControlEvent;
 use core_atvv::session::VoiceSession;
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// ATVV 音频帧的默认长度（字节）——可能需要根据真实设备调整。
 pub const ATVV_FRAME_BYTES: usize = 120;
+
+/// 当前 ATVV/BLE 链路是否处于已连接状态。
+/// 由 [`run_bridge`] 在连接成功/断开时更新，供 UI 查询初始状态。
+static CONNECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// 当前语音桥是否处于运行状态。
+static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// 最近一次成功发现/缓存的 ATVV 端点是否齐全。
+static ATVV_ENDPOINTS_READY: Mutex<bool> = Mutex::new(false);
+
+/// 查询当前 ATVV/BLE 链路是否已连接。
+pub fn connection_active() -> bool {
+    CONNECTION_ACTIVE.load(Ordering::Relaxed)
+}
+
+/// 设置当前 ATVV/BLE 链路连接状态（内部使用）。
+pub fn set_connection_active(active: bool) {
+    CONNECTION_ACTIVE.store(active, Ordering::Relaxed);
+}
+
+/// 查询当前语音桥是否运行中。
+pub fn bridge_running() -> bool {
+    BRIDGE_RUNNING.load(Ordering::Relaxed)
+}
+
+/// 设置当前语音桥运行状态（内部使用）。
+pub fn set_bridge_running(running: bool) {
+    BRIDGE_RUNNING.store(running, Ordering::Relaxed);
+}
+
+/// 查询 ATVV 端点是否已就绪（audio + control 均存在）。
+pub fn atvv_endpoints_ready() -> bool {
+    *ATVV_ENDPOINTS_READY.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 设置 ATVV 端点就绪状态（内部使用）。
+pub fn set_atvv_endpoints_ready(ready: bool) {
+    *ATVV_ENDPOINTS_READY.lock().unwrap_or_else(|e| e.into_inner()) = ready;
+}
 
 /// 向引擎喂入一批原始 BLE 字节后的结果。
 #[derive(Debug, Clone, Default, Serialize)]

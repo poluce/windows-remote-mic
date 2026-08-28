@@ -29,6 +29,10 @@ where
         e.to_string()
     })?;
     core_log::log_info("[bridge] ATVV 链路已连接");
+    crate::set_connection_active(true);
+    crate::set_bridge_running(true);
+    // ATVV 端点已由 connect_rc003 发现并传入，这里标记为就绪。
+    crate::set_atvv_endpoints_ready(true);
 
     let disconnected = Arc::new(AtomicBool::new(false));
     let disconnected_cb = disconnected.clone();
@@ -39,6 +43,7 @@ where
             "disconnected"
         };
         core_log::log_line(&format!("[bridge] BLE 连接状态变化: {msg}"));
+        crate::set_connection_active(connected);
         if !connected {
             disconnected_cb.store(true, Ordering::SeqCst);
         }
@@ -200,6 +205,10 @@ where
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+
+    // 语音桥会话结束，标记链路不再活动（由外层自动重连再次置 true）。
+    crate::set_connection_active(false);
+    crate::set_bridge_running(false);
 
     Ok(())
 }

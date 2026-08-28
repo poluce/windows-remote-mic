@@ -12,8 +12,12 @@ $url = "https://github.com/frida/frida/releases/download/$Version/$archiveName"
 # Official GitHub Release SHA-256 for the 17.15.3 windows-x86_64 gadget xz.
 $expectedArchiveSha256 = "b566d70189b6d551ad8f4e0bea24de08a3d4c0f559bb35b2bdb67d45182240c2"
 
-$dest = Join-Path $env:LOCALAPPDATA "RemoteMic\RC003\hid-tap"
+$dest = Join-Path $env:PROGRAMDATA "RemoteMic\hid-tap"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
+
+# ProgramData 默认对普通用户只读，但应用需要在运行时更新 JS/config。
+# 给 Users 添加 Modify 权限（幂等；SYSTEM/Administrators 保持完全控制）。
+& icacls.exe $dest /grant "*S-1-5-18:(OI)(CI)F" /grant "*S-1-5-32-544:(OI)(CI)F" /grant "*S-1-5-32-545:(OI)(CI)M" /C /Q | Out-Null
 
 $archivePath = Join-Path $dest $archiveName
 $dllPath = Join-Path $dest "frida-gadget.dll"
