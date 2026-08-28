@@ -1,5 +1,6 @@
-# 下载可选的 RC003 HID 旁路所需的官方 Frida Gadget。
-# 仅 ASCII。不会注入任何内容；应用在 ATVV 就绪后启动旁路。
+# Fetch the official Frida Gadget used by the optional RC003 HID tap.
+# ASCII-only so Windows PowerShell 5.1 can parse this file.
+# Does not inject; the app starts the tap after ATVV is ready.
 param(
     [string]$Version = "17.15.3"
 )
@@ -8,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $archiveName = "frida-gadget-$Version-windows-x86_64.dll.xz"
 $url = "https://github.com/frida/frida/releases/download/$Version/$archiveName"
-# 17.15.3 windows-x86_64 gadget xz 的官方 GitHub Release 摘要。
+# Official GitHub Release SHA-256 for the 17.15.3 windows-x86_64 gadget xz.
 $expectedArchiveSha256 = "b566d70189b6d551ad8f4e0bea24de08a3d4c0f559bb35b2bdb67d45182240c2"
 
 $dest = Join-Path $env:LOCALAPPDATA "RemoteMic\RC003\hid-tap"
@@ -49,14 +50,29 @@ if (Test-Path $extractedPath) {
     Remove-Item -Force $extractedPath
 }
 
+$extracted = $false
 Push-Location $dest
 try {
     & tar.exe -xf $archiveName
-    if ($LASTEXITCODE -ne 0) {
-        throw "tar.exe failed to extract $archiveName (exit $LASTEXITCODE)"
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $extractedPath)) {
+        $extracted = $true
     }
 } finally {
     Pop-Location
+}
+
+if (-not $extracted) {
+    $python = Get-Command python.exe -ErrorAction SilentlyContinue
+    if (-not $python) {
+        $python = Get-Command py.exe -ErrorAction SilentlyContinue
+    }
+    if (-not $python) {
+        throw "tar.exe cannot extract xz; python.exe not found for lzma fallback"
+    }
+    & $python.Source -c "import lzma, shutil, sys; shutil.copyfileobj(lzma.open(sys.argv[1], 'rb'), open(sys.argv[2], 'wb'))" $archivePath $extractedPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $extractedPath)) {
+        throw "python lzma extract failed for $archiveName"
+    }
 }
 
 if (-not (Test-Path $extractedPath)) {

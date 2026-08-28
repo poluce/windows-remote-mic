@@ -53,10 +53,24 @@ function tapStatusTone(status: TapStatus): string {
   return status === "attached" ? "ok" : "warn";
 }
 
+function tapStatusLabel(status: TapStatus): string {
+  switch (status) {
+    case "attached":
+      return "返回/音量旁路已附着";
+    case "pending":
+      return "返回/音量旁路处理中";
+    case "unavailable":
+      return "返回/音量旁路未启用";
+    default:
+      return "返回/音量旁路";
+  }
+}
+
 export function ConnectionPage() {
   const [connected, setConnected] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
   const [tapStatus, setTapStatus] = useState<TapStatus>("idle");
+  const [tapMessage, setTapMessage] = useState("");
   const [endpoints, setEndpoints] = useState<AtvvEndpoints | null>(null);
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -79,6 +93,7 @@ export function ConnectionPage() {
     let unlistenBle: (() => void) | undefined;
     listen<string>("hid-tap-status", (event) => {
       setTapStatus(mapTapStatus(event.payload));
+      setTapMessage(event.payload);
     }).then((fn) => {
       unlistenTap = fn;
     });
@@ -243,16 +258,20 @@ export function ConnectionPage() {
           ? "搜狗输入法"
           : "第三方输入法";
 
-  const briefs = [
+  const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
+      key: "bridge",
       label: "ATVV 语音桥",
       tone: bridgeStatus === "running" ? "ok" : "warn",
     },
     {
-      label: "返回/音量旁路",
+      key: "tap",
+      label: tapStatusLabel(tapStatus),
       tone: tapStatusTone(tapStatus),
+      title: tapMessage || undefined,
     },
     {
+      key: "endpoints",
       label: "ATVV 端点",
       tone: endpoints?.audio && endpoints.control ? "ok" : "warn",
     },
@@ -288,9 +307,14 @@ export function ConnectionPage() {
           </div>
         </div>
         {feedback && <p className="hint device-feedback">{feedback}</p>}
+        {tapMessage && <p className="hint device-feedback">{tapMessage}</p>}
         <div className="device-status">
           {briefs.map((b) => (
-            <span key={b.label} className={`device-status-pill ${b.tone}`}>
+            <span
+              key={b.key}
+              className={`device-status-pill ${b.tone}`}
+              title={b.title}
+            >
               {b.label}
             </span>
           ))}

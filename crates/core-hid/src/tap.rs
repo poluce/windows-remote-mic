@@ -23,6 +23,8 @@ type StatusCallback = Box<dyn Fn(String) + Send>;
 
 static STATUS_CB: Mutex<Option<StatusCallback>> = Mutex::new(None);
 static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
+/// PID we already asked UAC / inject for. Never prompt again for the same host.
+static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 static ACTIVE: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 
@@ -90,15 +92,13 @@ fn in_grace() -> bool {
 /// 返回 true 时调用方不应启动 UI。
 pub fn maybe_run_injector() -> bool {
     let args: Vec<String> = std::env::args().collect();
-    let Some(pos) = args.iter().position(|a| a == "--hid-tap-inject") else {
+    if !args.iter().any(|a| a == "--hid-tap-inject") {
         return false;
-    };
+    }
     let pid = args
-        .iter()
-        .skip(pos + 1)
-        .position(|a| a == "--pid")
-        .and_then(|i| args.get(pos + 1 + i + 1))
-        .and_then(|s| s.parse::<u32>().ok());
+        .windows(2)
+        .find(|pair| pair[0] == "--pid")
+        .and_then(|pair| pair[1].parse::<u32>().ok());
     let Some(pid) = pid else {
         core_log::log_error("[hid-tap] 注入器缺少 --pid 参数");
         std::process::exit(2);
@@ -110,6 +110,7 @@ pub fn maybe_run_injector() -> bool {
         }
         Err(e) => {
             core_log::log_error(&format!("[hid-tap] 注入 pid={pid} 失败: {e}"));
+            write_last_inject_error(&e);
             std::process::exit(1);
         }
     }
@@ -164,8 +165,15 @@ fn prepare_runtime() -> Result<(), String> {
 fn hub_loop() {
     let port = tap_port();
     let retry = Duration::from_secs(2);
+    let mut last_miss = Instant::now()
+        .checked_sub(Duration::from_secs(30))
+        .unwrap_or_else(Instant::now);
     loop {
         let Some(pid) = find_rc003_host_pid() else {
+            if last_miss.elapsed() >= Duration::from_secs(10) {
+                status("未找到 HOGP 宿主进程（HostPid），返回/音量旁路等待中");
+                last_miss = Instant::now();
+            }
             std::thread::sleep(retry);
             continue;
         };
@@ -183,23 +191,32 @@ fn hub_loop() {
         };
 
         {
+            let mut attempted = INJECT_ATTEMPTED_PID.lock().unwrap();
             let mut injected = INJECTED_PID.lock().unwrap();
+            if *attempted == Some(pid) && *injected != Some(pid) {
+                drop(listener);
+                std::thread::sleep(retry);
+                continue;
+            }
             if *injected != Some(pid) {
+                *attempted = Some(pid);
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
                         status(&format!(
-                            "已请求注入 HOGP 宿主 pid={pid}（若弹出 UAC 请允许）"
+                            "已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"
                         ));
                     }
                     Ok(false) => {
-                        status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响");
+                        status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。");
                         drop(listener);
-                        std::thread::sleep(Duration::from_secs(8));
+                        std::thread::sleep(retry);
                         continue;
                     }
                     Err(e) => {
-                        status(&format!("注入失败：{e}"));
+                        status(&format!(
+                            "注入失败：{e}。普通键与语音不受影响，本次会话不再弹 UAC。"
+                        ));
                         drop(listener);
                         std::thread::sleep(retry);
                         continue;
@@ -208,11 +225,14 @@ fn hub_loop() {
             }
         }
 
-        let deadline = Instant::now() + Duration::from_secs(1);
+        let deadline = Instant::now() + Duration::from_secs(15);
         let mut client = None;
         while Instant::now() < deadline {
             if find_rc003_host_pid() != Some(pid) {
-                *INJECTED_PID.lock().unwrap() = None;
+                let mut attempted = INJECT_ATTEMPTED_PID.lock().unwrap();
+                let mut injected = INJECTED_PID.lock().unwrap();
+                *attempted = None;
+                *injected = None;
                 break;
             }
             match listener.accept() {
@@ -367,6 +387,26 @@ fn request_inject(pid: u32) -> Result<bool, String> {
     elevate_and_inject(pid)
 }
 
+fn last_inject_error_path() -> PathBuf {
+    gadget_dir().join("last-inject-error.txt")
+}
+
+fn write_last_inject_error(msg: &str) {
+    let _ = std::fs::write(last_inject_error_path(), msg);
+}
+
+fn take_last_inject_error() -> Option<String> {
+    let path = last_inject_error_path();
+    let text = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
 fn gadget_dll() -> Result<PathBuf, String> {
     let path = gadget_dll_path();
     if path.is_file() {
@@ -381,7 +421,7 @@ fn find_rc003_host_pid() -> Option<u32> {
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::System::Registry::{
         RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE,
-        KEY_READ, REG_DWORD, REG_SZ, REG_VALUE_TYPE,
+        KEY_READ, REG_DWORD, REG_QWORD, REG_SZ, REG_VALUE_TYPE,
     };
 
     fn open_sub(parent: HKEY, path: &str) -> Option<HKEY> {
@@ -439,6 +479,14 @@ fn find_rc003_host_pid() -> Option<u32> {
         if kind == REG_DWORD && size >= 4 {
             return Some(u32::from_le_bytes(data[0..4].try_into().ok()?));
         }
+        // Windows 10/11 HidOverGatt writes HostPid as REG_QWORD.
+        if kind == REG_QWORD && size >= 8 {
+            let pid = u64::from_le_bytes(data[0..8].try_into().ok()?);
+            if pid > 0 && pid <= u64::from(u32::MAX) {
+                return Some(pid as u32);
+            }
+            return None;
+        }
         if kind == REG_SZ {
             let n = (size as usize / 2).saturating_sub(1);
             let wide: Vec<u16> = data[..size as usize]
@@ -448,6 +496,9 @@ fn find_rc003_host_pid() -> Option<u32> {
                 .collect();
             return String::from_utf16_lossy(&wide).parse().ok();
         }
+        core_log::log_warn(&format!(
+            "[hid-tap] HostPid 类型未识别 kind={kind:?} size={size}"
+        ));
         None
     }
 
@@ -540,7 +591,9 @@ fn is_elevated() -> bool {
 #[cfg(windows)]
 fn enable_debug_privilege() -> Result<(), String> {
     use windows::core::w;
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};
+    use windows::Win32::Foundation::{
+        CloseHandle, GetLastError, SetLastError, ERROR_NOT_ALL_ASSIGNED, HANDLE, LUID, WIN32_ERROR,
+    };
     use windows::Win32::Security::{
         AdjustTokenPrivileges, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
         TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
@@ -568,9 +621,14 @@ fn enable_debug_privilege() -> Result<(), String> {
                 Attributes: SE_PRIVILEGE_ENABLED,
             }],
         };
+        SetLastError(WIN32_ERROR(0));
         let adj = AdjustTokenPrivileges(token, false, Some(&tp), 0, None, None);
+        let last_error = GetLastError();
         let _ = CloseHandle(token);
         adj.map_err(|e| e.to_string())?;
+        if last_error == ERROR_NOT_ALL_ASSIGNED {
+            return Err("SeDebugPrivilege 未授予".into());
+        }
         let _ = tp;
         Ok(())
     }
@@ -615,13 +673,13 @@ fn inject_into(pid: u32) -> Result<(), String> {
         PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
     };
 
+    enable_debug_privilege().map_err(|e| format!("无法启用 SeDebugPrivilege: {e}"))?;
     if find_rc003_host_pid() != Some(pid) {
         return Err("HOGP host pid changed before inject".into());
     }
     if !process_is_wudfhost(pid)? {
         return Err("target is not WUDFHost.exe".into());
     }
-    let _ = enable_debug_privilege();
     let dll = gadget_dll()?;
     let dll_os = dll
         .canonicalize()
@@ -674,11 +732,16 @@ fn inject_into(pid: u32) -> Result<(), String> {
             }
         };
         let wait = WaitForSingleObject(thread, 15_000);
+        let mut thread_code = 0u32;
+        let _ = windows::Win32::System::Threading::GetExitCodeThread(thread, &mut thread_code);
         let _ = CloseHandle(thread);
         let _ = VirtualFreeEx(process, remote, 0, MEM_RELEASE);
         let _ = CloseHandle(process);
         if wait != WAIT_OBJECT_0 {
             return Err("inject wait timed out".into());
+        }
+        if thread_code == 0 {
+            return Err("LoadLibraryW 返回空（Gadget 未被加载，可能被内存完整性拦截）".into());
         }
     }
     let _ = Path::new(&dll_os);
@@ -694,7 +757,7 @@ fn inject_into(_pid: u32) -> Result<(), String> {
 fn elevate_and_inject(pid: u32) -> Result<bool, String> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
-    use windows::Win32::System::Threading::WaitForSingleObject;
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
@@ -718,13 +781,18 @@ fn elevate_and_inject(pid: u32) -> Result<bool, String> {
             return Ok(false);
         }
         if !info.hProcess.is_invalid() {
-            let _ = WaitForSingleObject(info.hProcess, 30_000);
-            if WaitForSingleObject(info.hProcess, 0) != WAIT_OBJECT_0 {
-                core_log::log_warn(
-                    "[hid-tap] elevated injector still running; hub will wait for gadget",
-                );
-            }
+            let wait = WaitForSingleObject(info.hProcess, 30_000);
+            let mut code = 0u32;
+            let _ = GetExitCodeProcess(info.hProcess, &mut code);
             let _ = CloseHandle(info.hProcess);
+            if wait != WAIT_OBJECT_0 {
+                return Err("提权注入未在 30 秒内结束（UAC 可能未确认）".into());
+            }
+            if code != 0 {
+                let detail = take_last_inject_error()
+                    .unwrap_or_else(|| format!("提权注入失败，退出码 {code}"));
+                return Err(detail);
+            }
         }
     }
     Ok(true)
