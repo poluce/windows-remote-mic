@@ -437,6 +437,15 @@ export function RemoteKeyTester() {
     };
   }, [active]);
 
+  // 测试 / 校准进行时暂停按键调度，避免测试按键触发真实动作。
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke("set_dispatch_enabled", { enabled: !active }).catch(() => {});
+    return () => {
+      invoke("set_dispatch_enabled", { enabled: true }).catch(() => {});
+    };
+  }, [active]);
+
   function switchToLive() {
     setMode("live");
     setActive(false);

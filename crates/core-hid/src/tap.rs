@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{hogp_ioctl_payload, hogp_payload_usages, raw_input, usage_to_vkey};
 
@@ -19,10 +19,32 @@ const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
-type StatusCallback = Box<dyn Fn(String) + Send>;
+
+/// 旁路子系统的机器可读状态，与前端 `TapStatus` 一一对应。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TapState {
+    /// 未启动或尚未产生任何状态。
+    Idle,
+    /// 启动中 / 等待注入或旁路连接。
+    Pending,
+    /// 已附着 HOGP 宿主，旁路可用。
+    Attached,
+    /// 确定不可用（缺 Gadget、UAC 被拒、注入失败等）。
+    Unavailable,
+}
+
+/// 推送给前端的旁路状态事件：状态枚举 + 展示消息。
+#[derive(Debug, Clone, Serialize)]
+pub struct TapStatusEvent {
+    pub state: TapState,
+    pub message: String,
+}
+
+type StatusCallback = Box<dyn Fn(TapStatusEvent) + Send>;
 
 static STATUS_CB: Mutex<Option<StatusCallback>> = Mutex::new(None);
-static LAST_STATUS: Mutex<Option<String>> = Mutex::new(None);
+static LAST_STATUS: Mutex<Option<TapStatusEvent>> = Mutex::new(None);
 static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
@@ -62,23 +84,27 @@ pub fn gadget_available() -> bool {
     gadget_dll_path().is_file()
 }
 
-pub fn set_status_callback(cb: impl Fn(String) + Send + 'static) {
+pub fn set_status_callback(cb: impl Fn(TapStatusEvent) + Send + 'static) {
     *STATUS_CB.lock().unwrap() = Some(Box::new(cb));
 }
 
-/// 返回最近一次旁路状态消息，供页面挂载时恢复显示。
-pub fn last_status() -> Option<String> {
+/// 返回最近一次旁路状态，供页面挂载时恢复显示。
+pub fn last_status() -> Option<TapStatusEvent> {
     LAST_STATUS.lock().unwrap().clone()
 }
 
-fn status(msg: &str) {
+fn status(state: TapState, msg: &str) {
     core_log::log_info(&format!("[hid-tap] {msg}"));
+    let event = TapStatusEvent {
+        state,
+        message: msg.to_string(),
+    };
     if let Ok(mut last) = LAST_STATUS.lock() {
-        *last = Some(msg.to_string());
+        *last = Some(event.clone());
     }
     if let Ok(cb) = STATUS_CB.lock() {
         if let Some(f) = cb.as_ref() {
-            f(msg.to_string());
+            f(event);
         }
     }
 }
@@ -132,11 +158,14 @@ pub fn start_after_atvv() {
     // 先准备运行时（从旧位置复制 DLL 到 ProgramData、写 config/script、设置 ACL），
     // 再检查 Gadget 是否可用。
     if let Err(e) = prepare_runtime() {
-        status(&format!("返回/音量旁路未启用：{e}"));
+        status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
         return;
     }
     if !gadget_available() {
-        status("返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1");
+        status(
+            TapState::Unavailable,
+            "返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1",
+        );
         return;
     }
     if RUNNING.swap(true, Ordering::SeqCst) {
@@ -147,7 +176,7 @@ pub fn start_after_atvv() {
         .name("rc003-hid-tap".into())
         .spawn(hub_loop)
         .ok();
-    status("返回/音量旁路已启动（首次可能弹出 UAC）");
+    status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
 }
 
 fn prepare_runtime() -> Result<(), String> {
@@ -160,9 +189,7 @@ fn prepare_runtime() -> Result<(), String> {
     // 不再从 LocalAppData 等历史位置复制兜底。
     let dll_path = gadget_dll_path();
     if !dll_path.is_file() {
-        return Err(
-            "frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into(),
-        );
+        return Err("frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into());
     }
 
     // 写脚本。ProgramData 已给 Users Modify 权限，正常可写；失败则说明环境异常，阻断并提示。
@@ -212,6 +239,7 @@ fn file_has_content(path: &std::path::Path, expected: &[u8]) -> bool {
 /// 确保运行时目录权限：
 /// - SYSTEM / Administrators 完全控制（保证 WUDFHost 加载 DLL）
 /// - Users 具备 Modify（保证普通用户能更新 JS/config）
+///
 /// 使用 `/grant` 追加，不破坏已有权限。
 fn ensure_runtime_acl(path: &std::path::Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -250,7 +278,10 @@ fn hub_loop() {
     loop {
         let Some(pid) = find_rc003_host_pid() else {
             if last_miss.elapsed() >= Duration::from_secs(10) {
-                status("未找到 HOGP 宿主进程（HostPid），返回/音量旁路等待中");
+                status(
+                    TapState::Pending,
+                    "未找到 HOGP 宿主进程（HostPid），返回/音量旁路等待中",
+                );
                 last_miss = Instant::now();
             }
             std::thread::sleep(retry);
@@ -282,18 +313,25 @@ fn hub_loop() {
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
-                        status(&format!("已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"));
+                        status(
+                            TapState::Pending,
+                            &format!("已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"),
+                        );
                     }
                     Ok(false) => {
-                        status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。");
+                        status(
+                            TapState::Unavailable,
+                            "UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。",
+                        );
                         drop(listener);
                         std::thread::sleep(retry);
                         continue;
                     }
                     Err(e) => {
-                        status(&format!(
-                            "注入失败：{e}。普通键与语音不受影响，本次会话不再弹 UAC。"
-                        ));
+                        status(
+                            TapState::Unavailable,
+                            &format!("注入失败：{e}。普通键与语音不受影响，本次会话不再弹 UAC。"),
+                        );
                         drop(listener);
                         std::thread::sleep(retry);
                         continue;
@@ -332,15 +370,16 @@ fn hub_loop() {
             continue;
         };
         drop(listener);
-        status(&format!(
-            "返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"
-        ));
+        status(
+            TapState::Attached,
+            &format!("返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"),
+        );
         arm_grace();
         serve_client(stream);
         *ACTIVE.lock().unwrap() = Vec::new();
         // 连接关闭也通过 status() 通知前端，避免只有日志没有状态。
         // 内部会重试，但对用户显示为“等待旁路重连”而不是“已关闭”。
-        status("返回/音量旁路连接已断开，正在等待重连");
+        status(TapState::Pending, "返回/音量旁路连接已断开，正在等待重连");
     }
 }
 

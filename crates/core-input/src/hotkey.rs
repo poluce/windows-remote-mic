@@ -2,7 +2,9 @@
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    VIRTUAL_KEY, VK_ESCAPE, VK_H, VK_LWIN,
+    VIRTUAL_KEY, VK_APPS, VK_BACK, VK_D, VK_DOWN, VK_ESCAPE, VK_H, VK_LCONTROL, VK_LEFT, VK_LMENU,
+    VK_LSHIFT, VK_LWIN, VK_MEDIA_PLAY_PAUSE, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU, VK_RSHIFT,
+    VK_RWIN, VK_SPACE, VK_TAB, VK_UP, VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow, GetWindowTextW};
 
@@ -126,7 +128,6 @@ pub fn open_app(name: &str) -> Result<()> {
 }
 
 fn token_to_vk(tok: &str) -> Option<VIRTUAL_KEY> {
-    use windows::Win32::UI::Input::KeyboardAndMouse::*;
     match tok.to_lowercase().as_str() {
         "win" | "lwin" => Some(VK_LWIN),
         "rwin" => Some(VK_RWIN),
@@ -147,6 +148,13 @@ fn token_to_vk(tok: &str) -> Option<VIRTUAL_KEY> {
         "left" => Some(VK_LEFT),
         "right" => Some(VK_RIGHT),
         "backspace" => Some(VK_BACK),
+        // 应用上下文菜单键（右键菜单）
+        "apps" | "context_menu" => Some(VK_APPS),
+        // 系统音量与媒体键
+        "volume_up" => Some(VK_VOLUME_UP),
+        "volume_down" => Some(VK_VOLUME_DOWN),
+        "volume_mute" => Some(VK_VOLUME_MUTE),
+        "play_pause" | "media_play_pause" => Some(VK_MEDIA_PLAY_PAUSE),
         _ => None,
     }
 }

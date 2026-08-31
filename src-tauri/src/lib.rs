@@ -2,10 +2,14 @@
 
 mod commands;
 
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use serde::Serialize;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use core_atvv::ImaAdpcmDecoder;
+use core_dispatch::KeyDispatcher;
 use core_mapping::{ActionKind, ButtonId, Trigger};
 
 #[cfg(target_os = "windows")]
@@ -49,6 +53,37 @@ fn ping() -> String {
     let mut decoder = ImaAdpcmDecoder::new();
     let _ = decoder.decode_bytes(&[0x00, 0x11]);
     "后端已连接（ATVV 解码正常，ADPCM 就绪）".to_string()
+}
+
+/// 共享给 Tauri 命令的运行时状态：按键调度器。
+pub struct AppState {
+    pub dispatcher: Arc<KeyDispatcher>,
+}
+
+/// 短窗口去重：同一虚拟键的按下/松开若在 40ms 内被钩子与 Raw Input
+/// 各投递一次，只向前端发一条，避免测试器矩阵翻倍计数。
+struct KeyEmitDedup {
+    last: Mutex<Option<(u32, bool, Instant)>>,
+}
+
+impl KeyEmitDedup {
+    fn new() -> Self {
+        Self {
+            last: Mutex::new(None),
+        }
+    }
+
+    fn take(&self, vkey: u32, pressed: bool) -> bool {
+        let mut last = self.last.lock().unwrap();
+        let now = Instant::now();
+        if let Some((vk, p, t)) = *last {
+            if vk == vkey && p == pressed && now.duration_since(t) < Duration::from_millis(40) {
+                return false;
+            }
+        }
+        *last = Some((vkey, pressed, now));
+        true
+    }
 }
 
 /// 面向前端展示的映射条目。
@@ -128,22 +163,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
 
 /// 前端使用的稳定小写按键标识。
 fn button_key(button: &ButtonId) -> String {
-    match button {
-        ButtonId::Power => "power",
-        ButtonId::Up => "up",
-        ButtonId::Down => "down",
-        ButtonId::Left => "left",
-        ButtonId::Right => "right",
-        ButtonId::Ok => "ok",
-        ButtonId::Back => "back",
-        ButtonId::Home => "home",
-        ButtonId::Menu => "menu",
-        ButtonId::Tv => "tv",
-        ButtonId::VolumeUp => "volume_up",
-        ButtonId::VolumeDown => "volume_down",
-        ButtonId::Mic => "mic",
-    }
-    .to_string()
+    button.key().to_string()
 }
 
 /// 前端使用的稳定小写触发方式标识。
@@ -277,12 +297,37 @@ pub fn run() {
                 });
             }
 
+            #[cfg(target_os = "windows")]
+            let dispatcher = {
+                let cfg = config_store()
+                    .map(|s| s.load_or_default())
+                    .unwrap_or_default();
+                let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
+                let stats_dir = std::env::var("LOCALAPPDATA")
+                    .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                dispatcher.spawn_runtime(stats_dir);
+                app.manage(AppState {
+                    dispatcher: dispatcher.clone(),
+                });
+                dispatcher
+            };
+
+            // 钩子与 Raw Input 可能对同一物理按键各投递一次；短窗口去重后
+            // 只向前端发一条。调度器只吃 Raw Input（能辨设备），避免注入
+            // 回声与双路重复进入触发状态机。
+            let emit_dedup = Arc::new(KeyEmitDedup::new());
+
             let handle = app.handle().clone();
+            let dedup_hook = emit_dedup.clone();
             if let Err(e) = core_input::start_key_hook(move |evt| {
                 core_log::log_debug(&format!(
                     "[hook] 键盘事件: vkey={}, 按下={}",
                     evt.vkey, evt.pressed
                 ));
+                if !dedup_hook.take(evt.vkey, evt.pressed) {
+                    return;
+                }
                 let _ = handle.emit("raw-remote-key", evt);
             }) {
                 core_log::log_error(&format!("[hook] 启动键盘钩子失败: {e}"));
@@ -291,11 +336,17 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 let handle_raw = app.handle().clone();
+                let dispatcher_raw = dispatcher.clone();
+                let dedup_raw = emit_dedup.clone();
                 if let Err(e) = core_hid::raw_input::start_listener(move |evt| {
                     core_log::log_info(&format!(
                         "[raw_input] 遥控器按键事件: vkey={}, 按下={}",
                         evt.vkey, evt.pressed
                     ));
+                    dispatcher_raw.on_vkey(evt.vkey, evt.pressed);
+                    if !dedup_raw.take(evt.vkey as u32, evt.pressed) {
+                        return;
+                    }
                     let _ = handle_raw.emit(
                         "raw-remote-key",
                         core_input::RawKeyEvent {
@@ -308,8 +359,8 @@ pub fn run() {
                 }
 
                 let handle_tap = app.handle().clone();
-                core_hid::tap::set_status_callback(move |msg| {
-                    let _ = handle_tap.emit("hid-tap-status", msg);
+                core_hid::tap::set_status_callback(move |evt| {
+                    let _ = handle_tap.emit("hid-tap-status", evt);
                 });
             }
 
@@ -350,6 +401,7 @@ pub fn run() {
             commands::mapping::get_mappings,
             commands::mapping::save_key_calibrations,
             commands::mapping::get_key_calibrations,
+            commands::mapping::set_dispatch_enabled,
             commands::audio::list_audio_endpoints,
             commands::audio::start_voice_bridge,
             commands::audio::simulate_voice_chain,

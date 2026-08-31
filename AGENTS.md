@@ -25,8 +25,9 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 .
 ├── src/                  # React 前端
 │   ├── App.tsx           # 主布局（无顶栏，左侧导航 + 内容区）
-│   ├── pages/            # 连接 / 按键映射 / 语音 / 诊断 / 引导
-│   └── components/       # Sidebar、Xiaomi2ProRemote 等
+│   ├── pages/            # 连接 / 按键映射 / 诊断 / 引导
+│   ├── store/            # 运行时状态（连接 / 语音桥 / 旁路）
+│   └── components/       # Sidebar、Xiaomi2ProRemote、RemoteKeyTester
 ├── src-tauri/            # Tauri 壳
 │   ├── tauri.conf.json   # 窗口、打包配置
 │   └── src/
@@ -43,13 +44,13 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-atvv         # ATVV 协议 + ADPCM 解码
 │   ├── core-audio        # WASAPI 端点、DSP、播放、VB-CABLE 诊断
 │   ├── core-mapping      # 按键映射、触发条件识别
+│   ├── core-dispatch     # 按键调度：触发检测 → 映射 → 动作执行
 │   ├── core-config       # 配置持久化（JSON，原子写入）
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
 │   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input）
-│   ├── core-input        # Windows 按键注入、热键、输入钩子
-│   └── core-diagnostics  # 自检 / 解码预览
+│   └── core-input        # Windows 按键注入、热键、输入钩子
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
 ├── scripts/              # Windows PowerShell 辅助脚本
@@ -123,8 +124,11 @@ cargo check -p remote-mic
   | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风键（主路径） |
   | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 方向、OK、Home、Menu、Power、TV；麦克风键 F5 兜底 |
   | HID 非标准 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回、音量+、音量- |
-- 三类流最终汇聚到 `core-mapping` 统一做按键映射。
-- 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook 线程。
+- 三类流最终汇聚方式：
+  - 麦克风键仍由 `core-voice` 桥内硬编码处理（语音会话 toggle：Win+H / Escape），不走映射表。
+  - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
+  - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
+- 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。
 
 ### 4. ATVV / 音频要点
 - GATT 服务：`AB5E0001-...`
@@ -178,8 +182,10 @@ cargo check -p remote-mic
 
 - **UI 全部使用简体中文。**
 - **crate 边界**：
-  - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告）。
+  - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
+  - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
+  - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
   - 日志统一以 `core-log` 为唯一出口；`core-input` 现有的 `log_*` 薄封装仅为兼容旧调用，新代码不要再增加这类包装。
 - `scripts/*.ps1` 保持纯 ASCII，避免 PowerShell 编码问题。
 - Windows PowerShell 5.1 没有 `Join-String`，需要用 `-join`。

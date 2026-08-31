@@ -13,6 +13,11 @@ export type RuntimeStatusState = {
   endpointsReady: boolean;
 };
 
+type TapStatusEvent = {
+  state: TapStatus;
+  message: string;
+};
+
 const initial: RuntimeStatusState = {
   connected: false,
   bridgeStatus: "idle",
@@ -48,14 +53,15 @@ export function useRuntimeStatus(): RuntimeStatusState {
   return useSyncExternalStore(subscribe, getRuntimeStatus);
 }
 
-export function tapStatusFromMessage(msg: string): TapStatus {
-  if (msg.includes("已附着") || msg.includes("已注入")) return "attached";
-  if (msg.includes("处理中") || msg.includes("UAC")) return "pending";
-  if (msg.includes("未启用") || msg.includes("失败") || msg.includes("拒绝")) {
-    return "unavailable";
+function applyTapEvent(evt: TapStatusEvent | null | undefined) {
+  if (!evt) {
+    setState({ tapStatus: "idle", tapMessage: "" });
+    return;
   }
-  if (msg.includes("等待重连")) return "pending";
-  return "idle";
+  setState({
+    tapStatus: evt.state,
+    tapMessage: evt.message,
+  });
 }
 
 function tapStatusLabel(status: TapStatus): string {
@@ -82,16 +88,15 @@ export async function initRuntimeStatus() {
     const snap = await invoke<{
       connected: boolean;
       bridge_running: boolean;
-      tap_status: string | null;
+      tap_status: TapStatusEvent | null;
       endpoints_ready: boolean;
     }>("get_runtime_status");
     setState({
       connected: snap.connected,
       bridgeStatus: snap.bridge_running ? "running" : "idle",
-      tapStatus: snap.tap_status ? tapStatusFromMessage(snap.tap_status) : "idle",
-      tapMessage: snap.tap_status ?? "",
       endpointsReady: snap.endpoints_ready,
     });
+    applyTapEvent(snap.tap_status);
   } catch {
     // 忽略：后端暂不可用时保持默认
   }
@@ -103,12 +108,8 @@ export async function initRuntimeStatus() {
     });
   });
 
-  await listen<string>("hid-tap-status", (event) => {
-    const status = tapStatusFromMessage(event.payload);
-    setState({
-      tapStatus: status,
-      tapMessage: event.payload,
-    });
+  await listen<TapStatusEvent>("hid-tap-status", (event) => {
+    applyTapEvent(event.payload);
   });
 }
 

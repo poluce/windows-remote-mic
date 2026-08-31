@@ -7,7 +7,7 @@ use crate::config_store;
 pub struct RuntimeStatus {
     pub connected: bool,
     pub bridge_running: bool,
-    pub tap_status: Option<String>,
+    pub tap_status: Option<core_hid::tap::TapStatusEvent>,
     pub endpoints_ready: bool,
 }
 

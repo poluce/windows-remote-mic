@@ -19,8 +19,8 @@ static HOOK_CALLBACK: Mutex<Option<HookCallback>> = Mutex::new(None);
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL,
-    WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG,
+    WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 #[cfg(target_os = "windows")]
@@ -95,6 +95,11 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 "[hook] 低层键盘事件: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, 按下={}",
                 vk, scan, flags, is_down
             ));
+            // 本应用或系统注入的按键（SendInput）带 LLKHF_INJECTED 标记。
+            // 跳过它们，避免注入动作被钩子当作新的遥控器按键回声转发。
+            if (kbd.flags & LLKHF_INJECTED).0 != 0 {
+                return CallNextHookEx(None, code, wparam, lparam);
+            }
             // 不转发普通打字输入。测试器曾收集笔记本键盘
             // 作为遥控器校准；只有 WebView2 会吞掉的补充键
             // （返回 / 主页 / 音量 / 应用 / 电源）才转发到 UI。

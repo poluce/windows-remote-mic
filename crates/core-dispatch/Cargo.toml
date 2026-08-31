@@ -1,0 +1,15 @@
+[package]
+name = "core-dispatch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+core-config = { path = "../core-config" }
+core-hid = { path = "../core-hid" }
+core-input = { path = "../core-input" }
+core-log = { path = "../core-log" }
+core-mapping = { path = "../core-mapping" }
+core-stats = { path = "../core-stats" }
+
+[dev-dependencies]

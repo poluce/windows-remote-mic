@@ -4,6 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, WPARAM};
@@ -26,6 +27,11 @@ type RawInputCallback = Box<dyn Fn(RawInputEvent) + Send>;
 static CALLBACK: Mutex<Option<RawInputCallback>> = Mutex::new(None);
 static HID_DOWN: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 static LOGGED_SIZE_FAIL: AtomicBool = AtomicBool::new(false);
+/// 键盘路径最近一次上报某虚拟键的时刻，用于识别 WM_APPCOMMAND 回声。
+static LAST_KEYBOARD_EMIT: Mutex<Vec<(u16, Instant)>> = Mutex::new(Vec::new());
+/// 超过该间隔仍未从键盘路径见过同一虚拟键时，WM_APPCOMMAND 视为
+/// 独立来源（仅发应用命令的设备）予以放行。
+const APPCOMMAND_ECHO_WINDOW: Duration = Duration::from_millis(500);
 
 /// 来自遥控器的一个原始键盘事件。
 #[derive(Debug, Clone, Copy)]
@@ -151,6 +157,20 @@ fn emit_appcommand(cmd: u32) -> bool {
         _ => None,
     };
     if let Some(vkey) = vk {
+        // 键盘 Raw Input 路径通常已经上报过同一物理按键；WM_APPCOMMAND
+        // 附带的合成"按下+松开"会把按住时长截断为 0，破坏长按/按住
+        // 重复检测，因此近期上报过时直接吞掉。
+        let recent = LAST_KEYBOARD_EMIT
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(vk, t)| *vk == vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW);
+        if recent {
+            core_log::log_debug(&format!(
+                "[raw_input] 抑制 WM_APPCOMMAND 回声: vkey={vkey}（键盘路径已上报）"
+            ));
+            return true;
+        }
         emit(RawInputEvent {
             vkey,
             make_code: 0,
@@ -304,6 +324,13 @@ unsafe extern "system" fn wnd_proc(
                         }
                     }
                     if vkey != 0 && !is_pc_typing_vkey(vkey) {
+                        {
+                            let mut recent = LAST_KEYBOARD_EMIT.lock().unwrap();
+                            recent.retain(|(vk, t)| {
+                                vk != &vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW
+                            });
+                            recent.push((vkey, Instant::now()));
+                        }
                         emit(RawInputEvent {
                             vkey,
                             make_code: keyboard.MakeCode,

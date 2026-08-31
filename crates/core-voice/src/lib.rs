@@ -43,12 +43,16 @@ pub fn set_bridge_running(running: bool) {
 
 /// 查询 ATVV 端点是否已就绪（audio + control 均存在）。
 pub fn atvv_endpoints_ready() -> bool {
-    *ATVV_ENDPOINTS_READY.lock().unwrap_or_else(|e| e.into_inner())
+    *ATVV_ENDPOINTS_READY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 /// 设置 ATVV 端点就绪状态（内部使用）。
 pub fn set_atvv_endpoints_ready(ready: bool) {
-    *ATVV_ENDPOINTS_READY.lock().unwrap_or_else(|e| e.into_inner()) = ready;
+    *ATVV_ENDPOINTS_READY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = ready;
 }
 
 /// 向引擎喂入一批原始 BLE 字节后的结果。

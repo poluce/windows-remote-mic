@@ -32,6 +32,7 @@ core-atvv = { path = "../crates/core-atvv" }
 core-audio = { path = "../crates/core-audio" }
 core-hid = { path = "../crates/core-hid" }
 core-input = { path = "../crates/core-input" }
+core-dispatch = { path = "../crates/core-dispatch" }
 core-mapping = { path = "../crates/core-mapping" }
 core-config = { path = "../crates/core-config" }
 core-voice = { path = "../crates/core-voice" }
