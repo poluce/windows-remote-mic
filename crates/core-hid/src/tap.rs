@@ -3,6 +3,7 @@
 //! 在 ATVV 通知就绪后启动。缺少 gadget 或用户拒绝 UAC 时，
 //! 语音和 Raw Input 按键仍可正常工作。
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,11 @@ use crate::{hogp_ioctl_payload, hogp_payload_usages, raw_input, usage_to_vkey};
 const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
+
+/// 针对未发送显式松开报告的 HOGP 特殊键（如返回键），看门狗超时自动释放时间。
+const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(150);
+/// 看门狗轮询检查间隔。
+const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -49,7 +55,9 @@ static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
-static ACTIVE: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+/// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
+static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
+static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -376,7 +384,9 @@ fn hub_loop() {
         );
         arm_grace();
         serve_client(stream);
-        *ACTIVE.lock().unwrap() = Vec::new();
+        if let Ok(mut guard) = ACTIVE_USAGES.lock() {
+            *guard = None;
+        }
         // 连接关闭也通过 status() 通知前端，避免只有日志没有状态。
         // 内部会重试，但对用户显示为“等待旁路重连”而不是“已关闭”。
         status(TapState::Pending, "返回/音量旁路连接已断开，正在等待重连");
@@ -440,7 +450,43 @@ fn from_hex(c: u8) -> Option<u8> {
     }
 }
 
+fn ensure_watchdog() {
+    if WATCHDOG_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("hogp-watchdog".into())
+        .spawn(|| loop {
+            std::thread::sleep(WATCHDOG_INTERVAL);
+            let now = Instant::now();
+            let mut expired = Vec::new();
+            {
+                if let Ok(mut guard) = ACTIVE_USAGES.lock() {
+                    if let Some(active) = guard.as_mut() {
+                        active.retain(|&usage, &mut last_seen| {
+                            if now.duration_since(last_seen) > AUTO_RELEASE_TIMEOUT {
+                                expired.push(usage);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+            if in_grace() {
+                continue;
+            }
+            for usage in expired {
+                emit_usage(usage, false);
+            }
+        })
+        .ok();
+}
+
 fn on_ioctl_bytes(data: &[u8]) {
+    ensure_watchdog();
+
     core_log::log_debug(&format!(
         "[hid-tap] HOGP 原始数据: {} 字节, hex={}",
         data.len(),
@@ -465,21 +511,43 @@ fn on_ioctl_bytes(data: &[u8]) {
         core_log::log_info(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
     }
 
-    let mut prev = ACTIVE.lock().unwrap();
-    if *prev == next {
-        return;
+    let now = Instant::now();
+    let mut newly_pressed = Vec::new();
+    let mut explicitly_released = Vec::new();
+
+    {
+        let mut guard = ACTIVE_USAGES.lock().unwrap();
+        let active = guard.get_or_insert_with(HashMap::new);
+
+        // 1. 如果收到了全 0 的报告（显式松开）
+        if next.is_empty() {
+            explicitly_released.extend(active.keys().copied());
+            active.clear();
+        } else {
+            // 2. 检查此前按下但本次报告中不再存在的键
+            let current_keys: Vec<u16> = active.keys().copied().collect();
+            for k in current_keys {
+                if !next.contains(&k) {
+                    explicitly_released.push(k);
+                    active.remove(&k);
+                }
+            }
+            // 3. 记录新按键或刷新活跃时间戳
+            for usage in next {
+                if active.insert(usage, now).is_none() {
+                    newly_pressed.push(usage);
+                }
+            }
+        }
     }
-    let pressed: Vec<u16> = next.iter().copied().filter(|u| !prev.contains(u)).collect();
-    let released: Vec<u16> = prev.iter().copied().filter(|u| !next.contains(u)).collect();
-    *prev = next;
-    drop(prev);
+
     if in_grace() {
         return;
     }
-    for usage in pressed {
+    for usage in newly_pressed {
         emit_usage(usage, true);
     }
-    for usage in released {
+    for usage in explicitly_released {
         emit_usage(usage, false);
     }
 }

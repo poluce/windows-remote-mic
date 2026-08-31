@@ -94,25 +94,26 @@ function installHook() {
       this.ioctl = args[5].toUInt32();
       this.output = args[8];
       this.outputLength = args[9].toUInt32();
-      // 诊断：先记录所有输出长度 >= 9 的 IOCTL，看返回键实际走哪个。
-      this.capture = this.outputLength >= 9;
+      // 捕获所有输出缓冲区长度 >= 3 的 IOCTL 调用
+      this.capture = this.outputLength >= 3 && !this.output.isNull();
     },
     onLeave(retval) {
-      if (!this.capture || retval.toUInt32() !== 0 || this.output.isNull()) {
+      if (!this.capture || this.output.isNull()) {
+        return;
+      }
+      // 严格仅在 STATUS_SUCCESS (0) 时读取数据；绝不能在 STATUS_PENDING (0x103) 时读取未完成的内核缓冲区
+      if (retval.toUInt32() !== 0) {
         return;
       }
       try {
-        if (this.ioctl === READ_CHARACTERISTIC_IOCTL && this.outputLength === EXPECTED_OUTPUT_LENGTH) {
+        const rawHex = hex(this.output, Math.min(this.outputLength, 64));
+        if (!rawHex) {
+          return;
+        }
+        if (this.ioctl === READ_CHARACTERISTIC_IOCTL || rawHex.startsWith("010000")) {
           emit({
             kind: "gatt_read",
-            raw: hex(this.output, this.outputLength),
-          });
-        } else {
-          // 诊断：记录所有长度 >= 9 的 IOCTL，便于确认实际路径。
-          emit({
-            kind: "gatt_read_other",
-            raw: hex(this.output, Math.min(this.outputLength, 32)),
-            message: `ioctl=0x${this.ioctl.toString(16)} len=${this.outputLength}`,
+            raw: rawHex,
           });
         }
       } catch (error) {

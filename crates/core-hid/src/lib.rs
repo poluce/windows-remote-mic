@@ -126,25 +126,40 @@ fn push_unique(out: &mut Vec<u16>, vk: u16) {
     }
 }
 
-/// RC003 上 HidOverGatt 特征读取 IOCTL 载荷：3 字节前缀 + 6 字节 usage 数组。
+/// RC003 上 HidOverGatt 特征读取 IOCTL 载荷：
+/// 支持 3 字节前缀 [01 00 00] + usage 载荷，或直接的 usage 报告。
 pub fn hogp_ioctl_payload(data: &[u8]) -> Option<&[u8]> {
-    if data.len() == 9 && data.starts_with(&[0x01, 0x00, 0x00]) {
-        Some(&data[3..9])
+    if data.starts_with(&[0x01, 0x00, 0x00]) && data.len() >= 3 {
+        Some(&data[3..])
+    } else if !data.is_empty() {
+        Some(data)
     } else {
         None
     }
 }
 
-/// 从 6 字节 HOGP 载荷中解析小端键盘页 usage。
+/// 从 HOGP 载荷中解析小端键盘页 usage。
 pub fn hogp_payload_usages(payload: &[u8]) -> Vec<u16> {
-    if payload.len() != 6 {
+    if payload.is_empty() {
         return Vec::new();
     }
-    payload
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .filter(|u| *u != 0)
-        .collect()
+    let mut out = Vec::new();
+    // 优先尝试 2 字节小端序（例如 F1 00 -> 0x00F1）
+    for chunk in payload.chunks_exact(2) {
+        let u = u16::from_le_bytes([chunk[0], chunk[1]]);
+        if u != 0 {
+            out.push(u);
+        }
+    }
+    // 如果未能按 2 字节解析出任何有效 usage，尝试按 1 字节 usage 处理
+    if out.is_empty() {
+        for &b in payload {
+            if b != 0 {
+                out.push(u16::from(b));
+            }
+        }
+    }
+    out
 }
 
 /// 仅返回 / 音量加 / 音量减。方向键和确定键仍走 Raw Input。
