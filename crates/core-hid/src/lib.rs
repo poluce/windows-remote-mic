@@ -305,7 +305,12 @@ mod tests {
         let ok_only = [0x01, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00];
         assert!(hogp_special_usages(hogp_ioctl_payload(&ok_only).unwrap()).is_empty());
 
-        assert!(hogp_ioctl_payload(&[0x00, 0x00, 0x00]).is_none());
+        // 全 0 的直接报告（松开）应被解析为空 usage，而不是被丢弃。
+        assert_eq!(
+            hogp_ioctl_payload(&[0x00, 0x00, 0x00]),
+            Some(&[0x00, 0x00, 0x00][..])
+        );
+        assert!(hogp_payload_usages(&[0x00, 0x00, 0x00]).is_empty());
     }
 }
 

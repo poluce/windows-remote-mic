@@ -335,10 +335,16 @@ pub fn run() {
                 let dispatcher_raw = dispatcher.clone();
                 let dedup_raw = emit_dedup.clone();
                 if let Err(e) = core_hid::raw_input::start_listener(move |evt| {
+                    core_log::log_debug(&format!(
+                        "[raw_input] 回调进入: vkey={}, pressed={}",
+                        evt.vkey, evt.pressed
+                    ));
                     dispatcher_raw.on_vkey(evt.vkey, evt.pressed);
+                    core_log::log_debug("[raw_input] on_vkey 完成");
                     if !dedup_raw.take(evt.vkey as u32, evt.pressed) {
                         return;
                     }
+                    core_log::log_debug("[raw_input] 准备 emit raw-remote-key");
                     let _ = handle_raw.emit(
                         "raw-remote-key",
                         core_input::RawKeyEvent {
@@ -346,6 +352,7 @@ pub fn run() {
                             pressed: evt.pressed,
                         },
                     );
+                    core_log::log_debug("[raw_input] emit raw-remote-key 完成");
                 }) {
                     core_log::log_error(&format!("[raw_input] 启动原始输入监听失败: {e}"));
                 }

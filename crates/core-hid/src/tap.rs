@@ -20,9 +20,20 @@ const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
 /// 针对未发送显式松开报告的 HOGP 特殊键（如返回键），看门狗超时自动释放时间。
+///
+/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖，便于真机调参：
+/// 过短会把长按截断成单击，过长会把单击误判成长按。
 const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(150);
 /// 看门狗轮询检查间隔。
 const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
+
+fn auto_release_timeout() -> Duration {
+    std::env::var("REMOTE_MIC_HID_TAP_RELEASE_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(AUTO_RELEASE_TIMEOUT)
+}
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -66,6 +77,31 @@ struct HubMessage {
     raw: String,
     #[serde(default)]
     message: String,
+    #[serde(default)]
+    stats: Option<HookStats>,
+}
+
+/// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
+#[derive(Deserialize)]
+struct HookStats {
+    #[serde(default)]
+    calls: u64,
+    #[serde(default)]
+    captured: u64,
+    #[serde(default)]
+    success: u64,
+    #[serde(default)]
+    pending: u64,
+    #[serde(default)]
+    other_status: u64,
+    #[serde(default)]
+    heartbeats: u64,
+    #[serde(default)]
+    writes_queued: u64,
+    #[serde(default)]
+    writes_done: u64,
+    #[serde(default)]
+    write_fails: u64,
 }
 
 fn tap_port() -> u16 {
@@ -122,10 +158,11 @@ fn arm_grace() {
 }
 
 fn in_grace() -> bool {
-    match *GRACE_UNTIL.lock().unwrap() {
+    let mut guard = GRACE_UNTIL.lock().unwrap();
+    match *guard {
         Some(until) if Instant::now() < until => true,
         Some(_) => {
-            *GRACE_UNTIL.lock().unwrap() = None;
+            *guard = None;
             false
         }
         None => false,
@@ -396,16 +433,18 @@ fn hub_loop() {
 fn serve_client(stream: std::net::TcpStream) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    loop {
+    let exit_reason = loop {
         line.clear();
         match reader.read_line(&mut line) {
-            Ok(0) => break,
+            Ok(0) => break "对端关闭（EOF）".to_string(),
             Ok(_) => {}
-            Err(_) => break,
+            Err(e) => break format!("读取错误: {e}"),
         }
         let Ok(msg) = serde_json::from_str::<HubMessage>(line.trim()) else {
+            core_log::log_debug(&format!("[hid-tap] 收到无法解析的行: {}", line.trim()));
             continue;
         };
+        core_log::log_debug(&format!("[hid-tap] 收到消息 kind={}", msg.kind));
         match msg.kind.as_str() {
             "gatt_read" => {
                 if let Some(bytes) = decode_hex(&msg.raw) {
@@ -413,15 +452,28 @@ fn serve_client(stream: std::net::TcpStream) {
                 }
             }
             "gatt_read_other" => {
-                core_log::log_warn(&format!(
-                    "[hid-tap] 目标 IOCTL 但长度异常: length={}, raw={}",
+                core_log::log_debug(&format!(
+                    "[hid-tap] 非目标 IOCTL 数据: {}, raw={}",
                     msg.message, msg.raw
                 ));
+            }
+            "heartbeat" => {
+                if let Some(stats) = &msg.stats {
+                    core_log::log_debug(&format!(
+                        "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}, heartbeats={}, writes_queued={}, writes_done={}, write_fails={}",
+                        stats.calls, stats.captured, stats.success, stats.pending, stats.other_status,
+                        stats.heartbeats, stats.writes_queued, stats.writes_done, stats.write_fails
+                    ));
+                }
+            }
+            "ready" => {
+                core_log::log_info("[hid-tap] Frida 脚本已连接并上报 ready");
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}
         }
-    }
+    };
+    core_log::log_info(&format!("[hid-tap] 旁路连接结束: {exit_reason}"));
 }
 
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
@@ -464,7 +516,7 @@ fn ensure_watchdog() {
                 if let Ok(mut guard) = ACTIVE_USAGES.lock() {
                     if let Some(active) = guard.as_mut() {
                         active.retain(|&usage, &mut last_seen| {
-                            if now.duration_since(last_seen) > AUTO_RELEASE_TIMEOUT {
+                            if now.duration_since(last_seen) > auto_release_timeout() {
                                 expired.push(usage);
                                 false
                             } else {
