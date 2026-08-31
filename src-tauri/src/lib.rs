@@ -321,10 +321,6 @@ pub fn run() {
             let handle = app.handle().clone();
             let dedup_hook = emit_dedup.clone();
             if let Err(e) = core_input::start_key_hook(move |evt| {
-                core_log::log_debug(&format!(
-                    "[hook] 键盘事件: vkey={}, 按下={}",
-                    evt.vkey, evt.pressed
-                ));
                 if !dedup_hook.take(evt.vkey, evt.pressed) {
                     return;
                 }
@@ -339,10 +335,6 @@ pub fn run() {
                 let dispatcher_raw = dispatcher.clone();
                 let dedup_raw = emit_dedup.clone();
                 if let Err(e) = core_hid::raw_input::start_listener(move |evt| {
-                    core_log::log_info(&format!(
-                        "[raw_input] 遥控器按键事件: vkey={}, 按下={}",
-                        evt.vkey, evt.pressed
-                    ));
                     dispatcher_raw.on_vkey(evt.vkey, evt.pressed);
                     if !dedup_raw.take(evt.vkey as u32, evt.pressed) {
                         return;
@@ -364,14 +356,9 @@ pub fn run() {
                 });
             }
 
-            // 日志推送：文件写入与 UI 推送互不干扰。
-            // 1) 先发一次历史尾部（过滤高频刷屏行），前端打开页面即可显示；
-            // 2) 再持续推送新写入的日志行。
+            // 日志实时推送：文件写入与 UI 推送互不干扰，持续推送新写入的日志行。
             let log_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let history = core_log::read_log_tail(256 * 1024);
-                let _ = log_handle.emit("log-history", history);
-
                 let rx = core_log::subscribe_log_lines();
                 while let Ok(line) = rx.recv() {
                     let _ = log_handle.emit("log-line", line);

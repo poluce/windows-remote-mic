@@ -91,10 +91,6 @@ unsafe extern "system" fn low_level_keyboard_proc(
             let vk = kbd.vkCode;
             let scan = kbd.scanCode;
             let flags = kbd.flags.0;
-            crate::log_debug(&format!(
-                "[hook] 低层键盘事件: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, 按下={}",
-                vk, scan, flags, is_down
-            ));
             // 本应用或系统注入的按键（SendInput）带 LLKHF_INJECTED 标记。
             // 跳过它们，避免注入动作被钩子当作新的遥控器按键回声转发。
             if (kbd.flags & LLKHF_INJECTED).0 != 0 {
@@ -106,9 +102,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
             if !is_gap_vkey(vk) {
                 return CallNextHookEx(None, code, wparam, lparam);
             }
-            crate::log_line(&format!(
-                "[hook] 转发补充按键: vkCode={}, 按下={}",
-                vk, is_down
+            crate::log_debug(&format!(
+                "[hook] 捕获遥控器补充按键: vkCode={}, scanCode=0x{:02X}, flags=0x{:02X}, 按下={}",
+                vk, scan, flags, is_down
             ));
             let event = RawKeyEvent {
                 vkey: vk,

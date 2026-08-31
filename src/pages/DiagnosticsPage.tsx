@@ -39,21 +39,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
-// 诊断页日志过滤：屏蔽键盘/钩子高频刷屏行，保留连接、旁路、错误等关键日志。
-function isNoisyLogLine(line: string): boolean {
-  return (
-    line.includes("[raw_input] 键盘事件") ||
-    line.includes("[hook] 低层键盘事件")
-  );
-}
-
-function filterLogText(text: string): string {
-  return text
-    .split("\n")
-    .filter((line) => line.trim() !== "" && !isNoisyLogLine(line))
-    .join("\n");
-}
-
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
@@ -68,8 +53,7 @@ export function DiagnosticsPage() {
   const [logLoading, setLogLoading] = useState(false);
   const [logMsg, setLogMsg] = useState("");
   const logContentRef = useRef("");
-  const historyLoadedRef = useRef(false);
-  const pendingLinesRef = useRef<string[]>([]);
+  const logViewerRef = useRef<HTMLDivElement | null>(null);
   const [liveLogCount, setLiveLogCount] = useState(0);
 
   async function runCheck() {
@@ -160,51 +144,51 @@ export function DiagnosticsPage() {
     }
   }
 
-  // 手动刷新按钮：主动读取一次最新文件尾部（用户主动操作，非轮询）。
+  async function loadLogTail() {
+    if (!isTauri()) return;
+    try {
+      const text = await invoke<string>("read_log_tail", { maxBytes: 256 * 1024 });
+      const trimmed = text ? text.trimEnd() : "";
+      logContentRef.current = trimmed;
+      setLogContent(trimmed || "（暂无日志内容）");
+      setTimeout(() => {
+        if (logViewerRef.current) {
+          logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
+        }
+      }, 50);
+    } catch (err) {
+      setLogMsg(`读取日志失败: ${err}`);
+    }
+  }
+
+  // 手动刷新按钮：主动重新读取一次文件尾部并更新状态。
   async function refreshLogFromFile() {
     if (!isTauri()) return;
     setLogLoading(true);
     setLogMsg("");
     try {
-      const text = await invoke<string>("read_log_tail", { maxBytes: 256 * 1024 });
-      applyLogHistory(text);
+      await loadLogTail();
       await refreshLogInfo();
-    } catch (err) {
-      setLogMsg(`读取日志失败: ${err}`);
     } finally {
       setLogLoading(false);
     }
   }
 
-  // 前端不再主动读日志文件；历史由后端通过 log-history 事件推送。
-  function applyLogHistory(history: string) {
-    let initial = filterLogText(history || "");
-    // 合并历史推送前到达的实时行（事件时序竞态兜底）。
-    const pending = pendingLinesRef.current.filter((l) => !isNoisyLogLine(l));
-    pendingLinesRef.current = [];
-    if (pending.length > 0) {
-      initial += (initial ? "\n" : "") + pending.join("\n");
-    }
-    setLogContent(initial || "（日志为空）");
-    logContentRef.current = initial;
-    historyLoadedRef.current = true;
-  }
-
   function appendLogLine(line: string) {
-    if (isNoisyLogLine(line)) return;
-    if (!historyLoadedRef.current) {
-      // 历史还没到达时先缓存，等 log-history 到达后统一合并。
-      pendingLinesRef.current.push(line);
-      return;
-    }
-    logContentRef.current += line + "\n";
-    // 只保留最近约 1000 行，避免无限增长。
-    const lines = logContentRef.current.split("\n");
-    if (lines.length > 1000) {
-      logContentRef.current = lines.slice(lines.length - 1000).join("\n");
-    }
-    setLogContent(logContentRef.current);
+    const current = logContentRef.current;
+    const updated = current ? `${current}\n${line}` : line;
+    const lines = updated.split("\n");
+    // 最多保留最新 1000 行
+    const finalLines = lines.length > 1000 ? lines.slice(lines.length - 1000) : lines;
+    const nextContent = finalLines.join("\n");
+    logContentRef.current = nextContent;
+    setLogContent(nextContent);
     setLiveLogCount((c) => c + 1);
+
+    // 自动滚动到底部
+    if (logViewerRef.current) {
+      logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
+    }
   }
 
   async function clearLogFile() {
@@ -212,11 +196,8 @@ export function DiagnosticsPage() {
     setLogMsg("");
     try {
       await invoke("clear_log");
-      setLogContent("（日志已清空）");
       logContentRef.current = "";
-      // 清空后历史已经是最新（空），后续实时行应直接显示，不能缓存等待。
-      historyLoadedRef.current = true;
-      pendingLinesRef.current = [];
+      setLogContent("（日志已清空）");
       setLogMsg("日志已清空");
       await refreshLogInfo();
     } catch (err) {
@@ -244,6 +225,7 @@ export function DiagnosticsPage() {
       const result = await invoke<boolean>("set_debug_logging", { enabled });
       setLogInfo((prev) => (prev ? { ...prev, debug_enabled: result } : prev));
       setLogMsg(result ? "已开启 DEBUG 详细日志" : "已关闭 DEBUG 详细日志");
+      await refreshLogInfo();
     } catch (err) {
       setLogMsg(`切换 DEBUG 日志失败: ${err}`);
     }
@@ -252,21 +234,10 @@ export function DiagnosticsPage() {
   useEffect(() => {
     if (!isTauri()) return;
     refreshLogInfo();
+    loadLogTail();
 
-    let unlistenHistory: UnlistenFn | undefined;
     let unlistenLine: UnlistenFn | undefined;
     let cancelled = false;
-
-    listen<string>("log-history", (event) => {
-      if (cancelled) return;
-      applyLogHistory(event.payload);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlistenHistory = fn;
-      }
-    });
 
     listen<string>("log-line", (event) => {
       if (cancelled) return;
@@ -281,11 +252,8 @@ export function DiagnosticsPage() {
 
     return () => {
       cancelled = true;
-      unlistenHistory?.();
       unlistenLine?.();
     };
-    // applyLogHistory / appendLogLine 是稳定函数，无需加入依赖
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -376,7 +344,9 @@ export function DiagnosticsPage() {
           </p>
         )}
         {logMsg && <p className="hint">{logMsg}</p>}
-        <div className="log-preview">{logContent || "（暂无日志内容）"}</div>
+        <div className="log-preview" ref={logViewerRef}>
+          {logContent || "（暂无日志内容）"}
+        </div>
       </section>
 
       <RemoteKeyTester />

@@ -144,15 +144,18 @@ impl KeyDispatcher {
 
     /// 暂停/恢复调度。按键测试与校准界面应暂停，避免测试按键
     /// 触发真实动作。切换时清空所有按键的中间状态。
-    pub fn set_enabled(&self, enabled: bool) {
+    ///
+    /// 返回值指示状态是否真正发生了改变（若已处于该状态则返回 `false`）。
+    pub fn set_enabled(&self, enabled: bool) -> bool {
         let mut inner = self.inner.lock().unwrap();
         if inner.enabled == enabled {
-            return;
+            return false;
         }
         inner.enabled = enabled;
         for rt in inner.buttons.values_mut() {
             *rt = ButtonRuntime::default();
         }
+        true
     }
 
     pub fn is_enabled(&self) -> bool {

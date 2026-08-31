@@ -438,11 +438,24 @@ export function RemoteKeyTester() {
   }, [active]);
 
   // 测试 / 校准进行时暂停按键调度，避免测试按键触发真实动作。
+  // 源头去重：仅当 active 状态真正发生变化时才调用后端 IPC，避免普通挂载和重复渲染发送冗余信号。
+  const lastActiveRef = useRef<boolean | null>(null);
   useEffect(() => {
     if (!isTauri()) return;
-    invoke("set_dispatch_enabled", { enabled: !active }).catch(() => {});
+    if (lastActiveRef.current !== active) {
+      // 仅当 active 发生变化，且非初次默认 false 挂载时才调用后端
+      if (lastActiveRef.current !== null || active) {
+        invoke("set_dispatch_enabled", { enabled: !active }).catch(() => {});
+      }
+      lastActiveRef.current = active;
+    }
+
     return () => {
-      invoke("set_dispatch_enabled", { enabled: true }).catch(() => {});
+      // 仅当组件卸载时且调度器当前被暂停（active === true）时，才恢复调度器
+      if (lastActiveRef.current === true) {
+        invoke("set_dispatch_enabled", { enabled: true }).catch(() => {});
+        lastActiveRef.current = false;
+      }
     };
   }, [active]);
 

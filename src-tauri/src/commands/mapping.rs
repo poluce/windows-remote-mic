@@ -70,15 +70,16 @@ pub fn save_key_calibrations(
 /// 避免测试按键触发真实动作。
 #[tauri::command]
 pub fn set_dispatch_enabled(enabled: bool, state: State<AppState>) {
-    state.dispatcher.set_enabled(enabled);
-    core_log::log_info(&format!(
-        "[dispatch] 调度器已{}",
-        if enabled {
-            "启用"
-        } else {
-            "暂停（按键测试）"
-        }
-    ));
+    if state.dispatcher.set_enabled(enabled) {
+        core_log::log_info(&format!(
+            "[dispatch] 调度器已{}",
+            if enabled {
+                "启用"
+            } else {
+                "暂停（按键测试）"
+            }
+        ));
+    }
 }
 
 /// 从 `config.json` 读取按键校准表。

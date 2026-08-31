@@ -64,5 +64,11 @@ pub fn open_log_dir() -> Result<(), String> {
 #[tauri::command]
 pub fn set_debug_logging(enabled: bool) -> bool {
     core_log::set_debug_enabled(enabled);
-    core_log::debug_enabled()
+    let state = core_log::debug_enabled();
+    if state {
+        core_log::log_info("[core-log] 运行时已开启 DEBUG 详细日志");
+    } else {
+        core_log::log_info("[core-log] 运行时已关闭 DEBUG 详细日志");
+    }
+    state
 }
