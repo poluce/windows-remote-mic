@@ -1,10 +1,16 @@
 use serde::Serialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::Emitter;
 
 use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
 
 use crate::find_install_script;
+
+/// 已 spawn 的语音桥重连循环数（每次调用 start_voice_bridge +1，永不减）。
+static BRIDGE_LOOP_SEQ: AtomicU64 = AtomicU64::new(0);
+/// 当前仍卡在 run_bridge 内的实例数（用于发现并发双桥）。
+static BRIDGE_INFLIGHT: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
 pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
@@ -23,9 +29,16 @@ pub fn start_voice_bridge(
 ) -> String {
     #[cfg(target_os = "windows")]
     {
+        let loop_id = BRIDGE_LOOP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+        let inflight = BRIDGE_INFLIGHT.load(Ordering::SeqCst);
         core_log::log_info(&format!(
-            "[commands/audio] 收到启动语音桥请求：设备 ID='{device_id}'，输出='{output_device}'"
+            "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, inflight={inflight}, 设备 ID='{device_id}'，输出='{output_device}'"
         ));
+        if loop_id > 1 {
+            core_log::log_warn(&format!(
+                "[commands/audio] 注意：这是第 {loop_id} 条重连循环（旧循环可能仍在 sleep/run），易造成双桥争用 GATT"
+            ));
+        }
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
             let mut attempt: u64 = 0;
@@ -35,17 +48,30 @@ pub fn start_voice_bridge(
                     let _ = app_cb.emit("ble-connection-status", connected);
                 };
 
+                let inflight_now = BRIDGE_INFLIGHT.fetch_add(1, Ordering::SeqCst) + 1;
                 core_log::log_line(&format!(
-                    "[commands/audio] 语音桥第 {} 次尝试启动",
+                    "[commands/audio] 语音桥启动: loop_id={loop_id}, attempt={}, inflight={inflight_now}",
                     attempt + 1
                 ));
+                if inflight_now > 1 {
+                    core_log::log_warn(&format!(
+                        "[commands/audio] 并发桥检测: 同时有 {inflight_now} 个 run_bridge 在跑（loop_id={loop_id}）"
+                    ));
+                }
                 let result = core_voice::run_bridge(&device_id, &output_device, on_status);
+                BRIDGE_INFLIGHT.fetch_sub(1, Ordering::SeqCst);
                 match result {
                     Ok(()) => {
-                        core_log::log_line("[commands/audio] 语音桥已停止，准备重连");
+                        core_log::log_line(&format!(
+                            "[commands/audio] 语音桥已停止，准备重连: loop_id={loop_id}, attempt={}",
+                            attempt + 1
+                        ));
                     }
                     Err(e) => {
-                        core_log::log_error(&format!("[commands/audio] 语音桥错误: {e}"));
+                        core_log::log_error(&format!(
+                            "[commands/audio] 语音桥错误: loop_id={loop_id}, attempt={}, err={e}",
+                            attempt + 1
+                        ));
                     }
                 }
                 // 注意：不要在这里无条件 emit ble-connection-status=false。
@@ -54,9 +80,13 @@ pub fn start_voice_bridge(
                 attempt += 1;
                 let delay_secs = (attempt * 2).min(10);
                 core_log::log_line(&format!(
-                    "[commands/audio] 将在 {delay_secs} 秒后重连（第 {attempt} 次）"
+                    "[commands/audio] 将在 {delay_secs} 秒后重连（loop_id={loop_id}, 第 {attempt} 次）"
                 ));
                 std::thread::sleep(Duration::from_secs(delay_secs));
+                core_log::log_line(&format!(
+                    "[commands/audio] 重连等待结束，开始下一次尝试（loop_id={loop_id}, 即将 attempt={}）",
+                    attempt + 1
+                ));
             }
         });
         "语音桥已启动（断线后自动重连）".to_string()

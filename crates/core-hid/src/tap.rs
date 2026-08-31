@@ -222,20 +222,9 @@ pub fn maybe_run_injector() -> bool {
 
 /// 启动 localhost 服务，并在需要时请求提权以执行注入。
 /// 可安全地多次调用。绝不打开 HID GATT 服务。
+///
+/// 缺少 Frida Gadget 时会在后台线程自动下载（不阻塞语音桥初始化）。
 pub fn start_after_atvv() {
-    // 先准备运行时（从旧位置复制 DLL 到 ProgramData、写 config/script、设置 ACL），
-    // 再检查 Gadget 是否可用。
-    if let Err(e) = prepare_runtime() {
-        status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
-        return;
-    }
-    if !gadget_available() {
-        status(
-            TapState::Unavailable,
-            "返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1",
-        );
-        return;
-    }
     if RUNNING.swap(true, Ordering::SeqCst) {
         core_log::log_info("[hid-tap] 旁路服务已在运行");
         return;
@@ -244,24 +233,53 @@ pub fn start_after_atvv() {
     if let Some(pid) = load_injected_pid() {
         *INJECTED_PID.lock().unwrap() = Some(pid);
     }
+
+    if gadget_available() {
+        status(TapState::Pending, "正在准备返回/音量旁路…");
+    } else {
+        status(
+            TapState::Pending,
+            "正在自动下载 Frida Gadget（首次需要联网）…",
+        );
+    }
+
     std::thread::Builder::new()
         .name("rc003-hid-tap".into())
-        .spawn(hub_loop)
+        .spawn(|| {
+            if let Err(e) = prepare_runtime() {
+                status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
+                RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+            if !gadget_available() {
+                status(
+                    TapState::Unavailable,
+                    "返回/音量旁路未启用：自动安装 Frida Gadget 后仍未找到 DLL",
+                );
+                RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+            status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
+            hub_loop();
+        })
         .ok();
-    status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
 }
 
 fn prepare_runtime() -> Result<(), String> {
     let dir = gadget_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
+    // 先把目录 ACL 设好，确保普通用户可写入下载的 DLL / JS / config，
+    // SYSTEM（WUDFHost）也能加载。
+    ensure_runtime_acl(&dir)?;
+
     let mut wrote_new_file = false;
 
-    // 运行时目录固定为 ProgramData（SYSTEM 可读）。DLL 缺失时直接提示运行下载脚本，
-    // 不再从 LocalAppData 等历史位置复制兜底。
-    let dll_path = gadget_dll_path();
-    if !dll_path.is_file() {
-        return Err("frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into());
+    // DLL 缺失时自动从 GitHub 下载官方 Gadget（版本/哈希与 fetch 脚本一致）。
+    if !gadget_dll_path().is_file() {
+        crate::gadget_fetch::ensure_frida_gadget(&dir)
+            .map_err(|e| format!("自动获取 Frida Gadget 失败：{e}"))?;
+        wrote_new_file = true;
     }
 
     // 写脚本。ProgramData 已给 Users Modify 权限，正常可写；失败则说明环境异常，阻断并提示。
@@ -291,8 +309,7 @@ fn prepare_runtime() -> Result<(), String> {
         wrote_new_file = true;
     }
 
-    // 给目录添加 SYSTEM/Administrators 读权限（不改变当前用户写权限），
-    // 确保 WUDFHost（SYSTEM）能加载 DLL/脚本。只在实际写入/新建后执行。
+    // 新写入文件后再巩固一次 ACL（下载/写脚本可能改变继承）。
     if wrote_new_file {
         ensure_runtime_acl(&dir)?;
     }

@@ -323,6 +323,9 @@ mod tests {
 }
 
 #[cfg(target_os = "windows")]
+mod gadget_fetch;
+
+#[cfg(target_os = "windows")]
 pub mod raw_input;
 
 #[cfg(target_os = "windows")]
