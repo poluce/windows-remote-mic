@@ -69,6 +69,8 @@ static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 /// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
 static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
 static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+/// 上次已记录的 hook 统计，避免心跳每 5 秒重复刷屏。
+static LAST_HOOK_STATS: Mutex<Option<(u64, u64, u64, u64, u64)>> = Mutex::new(None);
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -449,10 +451,21 @@ fn serve_client(stream: std::net::TcpStream) {
             }
             "heartbeat" => {
                 if let Some(stats) = &msg.stats {
-                    core_log::log_debug(&format!(
-                        "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}",
-                        stats.calls, stats.captured, stats.success, stats.pending, stats.other_status
-                    ));
+                    let key = (
+                        stats.calls,
+                        stats.captured,
+                        stats.success,
+                        stats.pending,
+                        stats.other_status,
+                    );
+                    let mut last = LAST_HOOK_STATS.lock().unwrap();
+                    if *last != Some(key) {
+                        *last = Some(key);
+                        core_log::log_debug(&format!(
+                            "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}",
+                            stats.calls, stats.captured, stats.success, stats.pending, stats.other_status
+                        ));
+                    }
                 }
             }
             "ready" => {
@@ -549,7 +562,7 @@ fn on_ioctl_bytes(data: &[u8]) {
     // 记录所有解析出的 usage，包括未知 usage，便于校准真实信号。
     if !next.is_empty() {
         let usages: Vec<String> = next.iter().map(|u| format!("0x{u:04X}")).collect();
-        core_log::log_info(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
+        core_log::log_debug(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
     }
 
     let now = Instant::now();
@@ -600,7 +613,7 @@ fn emit_usage(usage: u16, pressed: bool) {
         ));
         return;
     };
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[hid-tap] 特殊按键 usage=0x{usage:02X} vkey={vkey} 按下={pressed}"
     ));
     raw_input::emit(raw_input::RawInputEvent {

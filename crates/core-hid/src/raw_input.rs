@@ -322,8 +322,8 @@ unsafe extern "system" fn wnd_proc(
                     }
                     if vkey != 0 && !is_pc_typing_vkey(vkey) {
                         core_log::log_debug(&format!(
-                            "[raw_input] 遥控器键盘事件: vkey={}, make_code=0x{:02X}, 按下={}, 设备={}",
-                            vkey, keyboard.MakeCode, pressed, name
+                            "[raw_input] 遥控器键盘事件: vkey={}, make_code=0x{:02X}, 按下={}",
+                            vkey, keyboard.MakeCode, pressed
                         ));
                         {
                             let mut recent = LAST_KEYBOARD_EMIT.lock().unwrap();

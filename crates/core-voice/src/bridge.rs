@@ -122,7 +122,7 @@ where
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
-            core_log::log_info(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
+            core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,
@@ -131,7 +131,7 @@ where
                 core_log::log_warn(&format!("[bridge] 无法识别的控制包: {:02X?}", bytes));
                 return;
             };
-            core_log::log_info(&format!("[bridge] 已解析控制事件: {:?}", event));
+            core_log::log_debug(&format!("[bridge] 已解析控制事件: {:?}", event));
             match event {
                 RawControlEvent::Caps(caps) => {
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
