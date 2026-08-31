@@ -1,5 +1,5 @@
-// HOGP 报告探针。默认只读；开启「吃掉」模式后，会把返回/音量键的
-// usage 从输出缓冲区里清零，让系统 HOGP 层看不到这些键，只由本应用注入。
+// HOGP 报告探针。默认只读；开启「吃掉」模式后，会把整份报告的 usage 区
+// 清零，让系统 HOGP 层看不到任何遥控器按键，只由本应用注入映射动作。
 //
 // 关键约束（与已验证可用的 remote-bridge-hub 实现一致）：
 // - 只 hook 目标 IOCTL `READ_CHARACTERISTIC_IOCTL`(0x80018483)；
@@ -13,8 +13,6 @@ const STATUS_SUCCESS = 0;
 const STATUS_PENDING = 0x103;
 const HEARTBEAT_MS = 5000;
 const RECONNECT_MS = 1000;
-// 需要吃掉的 usage：返回、音量+、音量-（钩子和 Raw Input 都看不到它们）。
-const EAT_USAGES = [0x00f1, 0x0080, 0x0081];
 
 let host = "127.0.0.1";
 let port = 17331;
@@ -53,29 +51,29 @@ function hex(pointer, length) {
   return result;
 }
 
-// 吃掉返回/音量键：把输出缓冲区里的目标 usage 清零。
+// 吃掉全部按键：把输出缓冲区里的整个 usage 区（字节 3–8）清零。
 // 报告格式：01 00 00 + 3 个 16 位小端 usage（共 9 字节）。
 // 只对确定格式动手，其它情况一律跳过，避免误伤驱动缓冲区。
+// 返回 true 表示本次确实清零了 usage（供日志记录）。
 function eatUsages(outputPtr, length) {
   if (!eatEnabled || length !== EXPECTED_OUTPUT_LENGTH) {
-    return;
+    return false;
   }
   const bytes = new Uint8Array(outputPtr.readByteArray(length));
   if (bytes[0] !== 0x01 || bytes[1] !== 0x00 || bytes[2] !== 0x00) {
-    return;
+    return false;
   }
   let changed = false;
-  for (let i = 3; i + 1 < length; i += 2) {
-    const usage = bytes[i] | (bytes[i + 1] << 8);
-    if (EAT_USAGES.indexOf(usage) !== -1) {
+  for (let i = 3; i < length; i++) {
+    if (bytes[i] !== 0) {
       bytes[i] = 0;
-      bytes[i + 1] = 0;
       changed = true;
     }
   }
   if (changed) {
     outputPtr.writeByteArray(bytes.buffer);
   }
+  return changed;
 }
 
 function scheduleReconnect() {
@@ -169,9 +167,9 @@ function installHook() {
           try {
             const rawHex = hex(this.output, this.outputLength);
             if (rawHex) {
-              emit({ kind: "gatt_read", raw: rawHex });
-              // 先上报原始报告，再把目标 usage 清零，让系统看不到这个键。
-              eatUsages(this.output, this.outputLength);
+              // 先吃掉（清零），再上报原始报告 + 吃掉标记，供日志验证。
+              const eaten = eatUsages(this.output, this.outputLength);
+              emit({ kind: "gatt_read", raw: rawHex, eaten: eaten });
             }
           } catch (error) {
             emit({ kind: "error", message: String(error) });
@@ -214,6 +212,7 @@ rpc.exports = {
 };
 
 try {
+  // 只装 hook，不在这里连接：连接由 rpc.exports.init 在读取 config 参数
+  // （host/port/eat）之后发起，避免 ready 消息带上默认的 eatEnabled=false。
   installHook();
-  connectToHub();
 } catch (_error) {}

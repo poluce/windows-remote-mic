@@ -83,6 +83,8 @@ struct HubMessage {
     stats: Option<HookStats>,
     #[serde(default)]
     eat_enabled: bool,
+    #[serde(default)]
+    eaten: bool,
 }
 
 /// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
@@ -472,6 +474,9 @@ fn serve_client(stream: std::net::TcpStream) {
         match msg.kind.as_str() {
             "gatt_read" => {
                 if let Some(bytes) = decode_hex(&msg.raw) {
+                    if msg.eaten {
+                        core_log::log_info("[hid-tap] 已吃掉按键（系统不可见）");
+                    }
                     on_ioctl_bytes(&bytes);
                 }
             }
