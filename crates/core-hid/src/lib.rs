@@ -94,7 +94,7 @@ pub fn usage_to_vkey(usage: u32) -> Option<u16> {
         0x00F1 => Some(166), // RC003 返回（厂商键盘 usage）
         0x0028 => Some(13),  // 回车
         0x0035 => Some(180), // 电视
-        0x004A => Some(172), // 主页
+        0x004A => Some(36),  // 主页（实测 Windows 映射为 VK_HOME=36，不是 VK_BROWSER_HOME=172）
         0x004F => Some(39),  // 右
         0x0050 => Some(37),  // 左
         0x0051 => Some(40),  // 下
@@ -259,9 +259,17 @@ mod tests {
         assert_eq!(vkey_to_button(174), Some(ButtonId::VolumeDown));
         assert_eq!(vkey_to_button(93), Some(ButtonId::Menu));
         assert_eq!(vkey_to_button(255), Some(ButtonId::Power));
+        // 主页：实测 Windows 把键盘页 0x4A 映射为 VK_HOME(36)，不是 VK_BROWSER_HOME(172)
+        assert_eq!(vkey_to_button(36), Some(ButtonId::Home));
+        assert_eq!(vkey_to_button(172), None);
         // 麦克风（F5）与未映射的静音键不参与反查
         assert_eq!(vkey_to_button(116), None);
         assert_eq!(vkey_to_button(173), None);
+    }
+
+    #[test]
+    fn home_usage_maps_to_vk_home() {
+        assert_eq!(usage_to_vkey(0x004A), Some(36));
     }
 
     #[test]

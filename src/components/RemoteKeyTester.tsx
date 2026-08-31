@@ -26,7 +26,7 @@ export const REMOTE_KEYS: Array<{
   { id: "right", name: "右", defaultCode: "ArrowRight", aliases: ["ArrowRight", "Right"], defaultVKey: 39 },
   { id: "ok", name: "确定", defaultCode: "Enter", aliases: ["Enter", "NumpadEnter", "Select"], defaultVKey: 13 },
   { id: "back", name: "返回", defaultCode: "BrowserBack", aliases: ["BrowserBack", "Back", "Escape", "Backspace", "GoBack"], defaultVKey: 166 },
-  { id: "home", name: "主页", defaultCode: "BrowserHome", aliases: ["BrowserHome", "Home", "LaunchApplication2", "LaunchApp2"], defaultVKey: 172 },
+  { id: "home", name: "主页", defaultCode: "Home", aliases: ["Home", "BrowserHome", "LaunchApplication2", "LaunchApp2"], defaultVKey: 36 },
   { id: "menu", name: "菜单", defaultCode: "ContextMenu", aliases: ["ContextMenu", "Apps", "Menu", "F10"], defaultVKey: 93 },
   { id: "tv", name: "TV", defaultCode: "LaunchApp1", aliases: ["LaunchApp1", "LaunchMail", "LaunchApplication1", "TV", "Guide"], defaultVKey: 180 },
   { id: "volume_up", name: "音量 +", defaultCode: "AudioVolumeUp", aliases: ["AudioVolumeUp", "VolumeUp", "VK_175", "Volume_Up", "AudioVolumeIncrement", "VolumeIncrement"], defaultVKey: 175 },
@@ -42,6 +42,7 @@ type TriggerRecord = {
 const VK_DOM: Record<number, { code: string; key: string }> = {
   13: { code: "Enter", key: "Enter" },
   27: { code: "Escape", key: "Escape" },
+  36: { code: "Home", key: "Home" },
   37: { code: "ArrowLeft", key: "ArrowLeft" },
   38: { code: "ArrowUp", key: "ArrowUp" },
   39: { code: "ArrowRight", key: "ArrowRight" },
@@ -245,6 +246,7 @@ export function RemoteKeyTester() {
         e.keyCode === 174 ||
         e.keyCode === 173 ||
         e.keyCode === 172 ||
+        e.keyCode === 36 ||
         e.keyCode === 27 ||
         e.keyCode === 8 ||
         e.keyCode === 255

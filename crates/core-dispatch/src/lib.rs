@@ -394,6 +394,9 @@ mod tests {
         assert_eq!(map.get(&166), Some(&ButtonId::Back));
         assert_eq!(map.get(&175), Some(&ButtonId::VolumeUp));
         assert_eq!(map.get(&174), Some(&ButtonId::VolumeDown));
+        // 主页：实测 Windows 映射为 VK_HOME(36)
+        assert_eq!(map.get(&36), Some(&ButtonId::Home));
+        assert!(!map.contains_key(&172), "主页不应再绑定 VK_BROWSER_HOME(172)");
         assert!(!map.contains_key(&116), "麦克风键（F5 兜底）不走调度器");
     }
 

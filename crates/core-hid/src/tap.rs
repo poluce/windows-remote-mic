@@ -81,6 +81,8 @@ struct HubMessage {
     message: String,
     #[serde(default)]
     stats: Option<HookStats>,
+    #[serde(default)]
+    eat_enabled: bool,
 }
 
 /// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
@@ -105,6 +107,15 @@ fn tap_port() -> u16 {
         .unwrap_or(TAP_PORT)
 }
 
+/// 是否开启「吃掉」模式：旁路把返回/音量键的 usage 从 HOGP 报告缓冲区里
+/// 清零，让系统不处理这些键，只由本应用注入映射动作。
+/// 通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启，默认关闭（只读探针）。
+fn eat_enabled() -> bool {
+    std::env::var("REMOTE_MIC_HID_TAP_EAT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 fn gadget_dir() -> PathBuf {
     // 运行时文件放在 ProgramData：
     // - SYSTEM（WUDFHost）一定能读取/加载 DLL；
@@ -116,6 +127,22 @@ fn gadget_dir() -> PathBuf {
 
 fn gadget_dll_path() -> PathBuf {
     gadget_dir().join("frida-gadget.dll")
+}
+
+/// 已注入的 WUDFHost PID 持久化文件。应用重启后据此跳过重复注入，
+/// 避免每次连接都弹 UAC（同一 WUDFHost 只需注入一次）。
+fn injected_pid_file() -> PathBuf {
+    gadget_dir().join("injected-pid.txt")
+}
+
+fn load_injected_pid() -> Option<u32> {
+    std::fs::read_to_string(injected_pid_file())
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+}
+
+fn save_injected_pid(pid: u32) {
+    let _ = std::fs::write(injected_pid_file(), pid.to_string());
 }
 
 pub fn gadget_available() -> bool {
@@ -211,6 +238,10 @@ pub fn start_after_atvv() {
         core_log::log_info("[hid-tap] 旁路服务已在运行");
         return;
     }
+    // 恢复上次已注入的 WUDFHost PID：若宿主进程未变，则跳过注入，不再弹 UAC。
+    if let Some(pid) = load_injected_pid() {
+        *INJECTED_PID.lock().unwrap() = Some(pid);
+    }
     std::thread::Builder::new()
         .name("rc003-hid-tap".into())
         .spawn(hub_loop)
@@ -244,7 +275,7 @@ fn prepare_runtime() -> Result<(), String> {
         "interaction": {
             "type": "script",
             "path": "rc003-hid-tap.js",
-            "parameters": { "host": "127.0.0.1", "port": tap_port() },
+            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled() },
             "on_change": "ignore"
         },
         "runtime": "qjs",
@@ -352,6 +383,7 @@ fn hub_loop() {
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
+                        save_injected_pid(pid);
                         status(
                             TapState::Pending,
                             &format!("已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"),
@@ -469,7 +501,10 @@ fn serve_client(stream: std::net::TcpStream) {
                 }
             }
             "ready" => {
-                core_log::log_info("[hid-tap] Frida 脚本已连接并上报 ready");
+                core_log::log_info(&format!(
+                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}）",
+                    if msg.eat_enabled { "开启" } else { "关闭" }
+                ));
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}
