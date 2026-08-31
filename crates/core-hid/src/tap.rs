@@ -94,14 +94,6 @@ struct HookStats {
     pending: u64,
     #[serde(default)]
     other_status: u64,
-    #[serde(default)]
-    heartbeats: u64,
-    #[serde(default)]
-    writes_queued: u64,
-    #[serde(default)]
-    writes_done: u64,
-    #[serde(default)]
-    write_fails: u64,
 }
 
 fn tap_port() -> u16 {
@@ -441,10 +433,8 @@ fn serve_client(stream: std::net::TcpStream) {
             Err(e) => break format!("读取错误: {e}"),
         }
         let Ok(msg) = serde_json::from_str::<HubMessage>(line.trim()) else {
-            core_log::log_debug(&format!("[hid-tap] 收到无法解析的行: {}", line.trim()));
             continue;
         };
-        core_log::log_debug(&format!("[hid-tap] 收到消息 kind={}", msg.kind));
         match msg.kind.as_str() {
             "gatt_read" => {
                 if let Some(bytes) = decode_hex(&msg.raw) {
@@ -460,9 +450,8 @@ fn serve_client(stream: std::net::TcpStream) {
             "heartbeat" => {
                 if let Some(stats) = &msg.stats {
                     core_log::log_debug(&format!(
-                        "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}, heartbeats={}, writes_queued={}, writes_done={}, write_fails={}",
-                        stats.calls, stats.captured, stats.success, stats.pending, stats.other_status,
-                        stats.heartbeats, stats.writes_queued, stats.writes_done, stats.write_fails
+                        "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}",
+                        stats.calls, stats.captured, stats.success, stats.pending, stats.other_status
                     ));
                 }
             }
