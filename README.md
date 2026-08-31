@@ -29,11 +29,11 @@ remote-mic/
 │   ├── core-hid/            # HID 事件捕获 / 报告解析（Raw Input）
 │   ├── core-input/          # Windows 按键注入、热键、输入钩子
 │   ├── core-mapping/        # 按键映射与触发规则
+│   ├── core-dispatch/       # 按键调度（触发 → 映射 → 执行）
 │   ├── core-config/         # 配置持久化
 │   ├── core-voice/          # 语音桥：BLE -> 解码 -> 输出
 │   ├── core-log/            # 统一文件日志
-│   ├── core-stats/          # 本机统计
-│   └── core-diagnostics/    # 诊断
+│   └── core-stats/          # 本机统计
 └── docs/                    # 规划与任务文档
 ```
 

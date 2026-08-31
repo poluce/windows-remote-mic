@@ -3,6 +3,7 @@
 //! 在 ATVV 通知就绪后启动。缺少 gadget 或用户拒绝 UAC 时，
 //! 语音和 Raw Input 按键仍可正常工作。
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -10,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{hogp_ioctl_payload, hogp_payload_usages, raw_input, usage_to_vkey};
 
@@ -18,15 +19,58 @@ const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
+/// 针对未发送显式松开报告的 HOGP 特殊键（如返回键），看门狗超时自动释放时间。
+///
+/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖，便于真机调参：
+/// 过短会把长按截断成单击，过长会把单击误判成长按。
+const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(150);
+/// 看门狗轮询检查间隔。
+const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
+
+fn auto_release_timeout() -> Duration {
+    std::env::var("REMOTE_MIC_HID_TAP_RELEASE_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(AUTO_RELEASE_TIMEOUT)
+}
+
 static RUNNING: AtomicBool = AtomicBool::new(false);
-type StatusCallback = Box<dyn Fn(String) + Send>;
+
+/// 旁路子系统的机器可读状态，与前端 `TapStatus` 一一对应。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TapState {
+    /// 未启动或尚未产生任何状态。
+    Idle,
+    /// 启动中 / 等待注入或旁路连接。
+    Pending,
+    /// 已附着 HOGP 宿主，旁路可用。
+    Attached,
+    /// 确定不可用（缺 Gadget、UAC 被拒、注入失败等）。
+    Unavailable,
+}
+
+/// 推送给前端的旁路状态事件：状态枚举 + 展示消息。
+#[derive(Debug, Clone, Serialize)]
+pub struct TapStatusEvent {
+    pub state: TapState,
+    pub message: String,
+}
+
+type StatusCallback = Box<dyn Fn(TapStatusEvent) + Send>;
 
 static STATUS_CB: Mutex<Option<StatusCallback>> = Mutex::new(None);
+static LAST_STATUS: Mutex<Option<TapStatusEvent>> = Mutex::new(None);
 static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
-static ACTIVE: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+/// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
+static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
+static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+/// 上次已记录的 hook 统计，避免心跳每 5 秒重复刷屏。
+static LAST_HOOK_STATS: Mutex<Option<(u64, u64, u64, u64, u64)>> = Mutex::new(None);
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -35,6 +79,25 @@ struct HubMessage {
     raw: String,
     #[serde(default)]
     message: String,
+    #[serde(default)]
+    stats: Option<HookStats>,
+    #[serde(default)]
+    eat_enabled: bool,
+}
+
+/// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
+#[derive(Deserialize)]
+struct HookStats {
+    #[serde(default)]
+    calls: u64,
+    #[serde(default)]
+    captured: u64,
+    #[serde(default)]
+    success: u64,
+    #[serde(default)]
+    pending: u64,
+    #[serde(default)]
+    other_status: u64,
 }
 
 fn tap_port() -> u16 {
@@ -44,31 +107,69 @@ fn tap_port() -> u16 {
         .unwrap_or(TAP_PORT)
 }
 
+/// 是否开启「吃掉」模式：旁路把返回/音量键的 usage 从 HOGP 报告缓冲区里
+/// 清零，让系统不处理这些键，只由本应用注入映射动作。
+/// 通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启，默认关闭（只读探针）。
+fn eat_enabled() -> bool {
+    std::env::var("REMOTE_MIC_HID_TAP_EAT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 fn gadget_dir() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
-    PathBuf::from(base)
-        .join("RemoteMic")
-        .join("RC003")
-        .join("hid-tap")
+    // 运行时文件放在 ProgramData：
+    // - SYSTEM（WUDFHost）一定能读取/加载 DLL；
+    // - 通过 ensure_runtime_acl 给 Users 加 Modify 权限，普通用户也能更新 JS/config；
+    // - 避免 LocalAppData 下 SYSTEM 访问不确定的问题。
+    let base = std::env::var("PROGRAMDATA").unwrap_or_else(|_| r"C:\ProgramData".into());
+    PathBuf::from(base).join("RemoteMic").join("hid-tap")
 }
 
 fn gadget_dll_path() -> PathBuf {
     gadget_dir().join("frida-gadget.dll")
 }
 
+/// 已注入的 WUDFHost PID 持久化文件。应用重启后据此跳过重复注入，
+/// 避免每次连接都弹 UAC（同一 WUDFHost 只需注入一次）。
+fn injected_pid_file() -> PathBuf {
+    gadget_dir().join("injected-pid.txt")
+}
+
+fn load_injected_pid() -> Option<u32> {
+    std::fs::read_to_string(injected_pid_file())
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+}
+
+fn save_injected_pid(pid: u32) {
+    let _ = std::fs::write(injected_pid_file(), pid.to_string());
+}
+
 pub fn gadget_available() -> bool {
     gadget_dll_path().is_file()
 }
 
-pub fn set_status_callback(cb: impl Fn(String) + Send + 'static) {
+pub fn set_status_callback(cb: impl Fn(TapStatusEvent) + Send + 'static) {
     *STATUS_CB.lock().unwrap() = Some(Box::new(cb));
 }
 
-fn status(msg: &str) {
+/// 返回最近一次旁路状态，供页面挂载时恢复显示。
+pub fn last_status() -> Option<TapStatusEvent> {
+    LAST_STATUS.lock().unwrap().clone()
+}
+
+fn status(state: TapState, msg: &str) {
     core_log::log_info(&format!("[hid-tap] {msg}"));
+    let event = TapStatusEvent {
+        state,
+        message: msg.to_string(),
+    };
+    if let Ok(mut last) = LAST_STATUS.lock() {
+        *last = Some(event.clone());
+    }
     if let Ok(cb) = STATUS_CB.lock() {
         if let Some(f) = cb.as_ref() {
-            f(msg.to_string());
+            f(event);
         }
     }
 }
@@ -78,10 +179,11 @@ fn arm_grace() {
 }
 
 fn in_grace() -> bool {
-    match *GRACE_UNTIL.lock().unwrap() {
+    let mut guard = GRACE_UNTIL.lock().unwrap();
+    match *guard {
         Some(until) if Instant::now() < until => true,
         Some(_) => {
-            *GRACE_UNTIL.lock().unwrap() = None;
+            *guard = None;
             false
         }
         None => false,
@@ -119,46 +221,121 @@ pub fn maybe_run_injector() -> bool {
 /// 启动 localhost 服务，并在需要时请求提权以执行注入。
 /// 可安全地多次调用。绝不打开 HID GATT 服务。
 pub fn start_after_atvv() {
+    // 先准备运行时（从旧位置复制 DLL 到 ProgramData、写 config/script、设置 ACL），
+    // 再检查 Gadget 是否可用。
+    if let Err(e) = prepare_runtime() {
+        status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
+        return;
+    }
     if !gadget_available() {
-        status("返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1");
+        status(
+            TapState::Unavailable,
+            "返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1",
+        );
         return;
     }
     if RUNNING.swap(true, Ordering::SeqCst) {
         core_log::log_info("[hid-tap] 旁路服务已在运行");
         return;
     }
-    if let Err(e) = prepare_runtime() {
-        RUNNING.store(false, Ordering::SeqCst);
-        status(&format!("返回/音量旁路准备失败：{e}"));
-        return;
+    // 恢复上次已注入的 WUDFHost PID：若宿主进程未变，则跳过注入，不再弹 UAC。
+    if let Some(pid) = load_injected_pid() {
+        *INJECTED_PID.lock().unwrap() = Some(pid);
     }
     std::thread::Builder::new()
         .name("rc003-hid-tap".into())
         .spawn(hub_loop)
         .ok();
-    status("返回/音量旁路已启动（首次可能弹出 UAC）");
+    status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
 }
 
 fn prepare_runtime() -> Result<(), String> {
     let dir = gadget_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let mut wrote_new_file = false;
+
+    // 运行时目录固定为 ProgramData（SYSTEM 可读）。DLL 缺失时直接提示运行下载脚本，
+    // 不再从 LocalAppData 等历史位置复制兜底。
+    let dll_path = gadget_dll_path();
+    if !dll_path.is_file() {
+        return Err("frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into());
+    }
+
+    // 写脚本。ProgramData 已给 Users Modify 权限，正常可写；失败则说明环境异常，阻断并提示。
     let script_path = dir.join("rc003-hid-tap.js");
-    std::fs::write(&script_path, GADGET_SCRIPT).map_err(|e| e.to_string())?;
+    if !file_has_content(&script_path, GADGET_SCRIPT.as_bytes()) {
+        std::fs::write(&script_path, GADGET_SCRIPT)
+            .map_err(|e| format!("写入 rc003-hid-tap.js 失败: {e}"))?;
+        wrote_new_file = true;
+    }
+
+    // 写 config（文件名必须与 DLL 名匹配：frida-gadget.config）
     let cfg = serde_json::json!({
         "interaction": {
             "type": "script",
             "path": "rc003-hid-tap.js",
-            "parameters": { "host": "127.0.0.1", "port": tap_port() },
+            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled() },
             "on_change": "ignore"
         },
         "runtime": "qjs",
         "teardown": "minimal"
     });
-    std::fs::write(
-        dir.join("frida-gadget.config"),
-        serde_json::to_vec_pretty(&cfg).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
+    let cfg_bytes = serde_json::to_vec_pretty(&cfg).unwrap();
+    let cfg_path = dir.join("frida-gadget.config");
+    if !file_has_content(&cfg_path, &cfg_bytes) {
+        std::fs::write(&cfg_path, cfg_bytes)
+            .map_err(|e| format!("写入 frida-gadget.config 失败: {e}"))?;
+        wrote_new_file = true;
+    }
+
+    // 给目录添加 SYSTEM/Administrators 读权限（不改变当前用户写权限），
+    // 确保 WUDFHost（SYSTEM）能加载 DLL/脚本。只在实际写入/新建后执行。
+    if wrote_new_file {
+        ensure_runtime_acl(&dir)?;
+    }
+
+    Ok(())
+}
+
+/// 文件存在且内容与给定字节一致时返回 true（用于跳过不必要的写入）。
+fn file_has_content(path: &std::path::Path, expected: &[u8]) -> bool {
+    match std::fs::read(path) {
+        Ok(existing) => existing == expected,
+        Err(_) => false,
+    }
+}
+
+/// 确保运行时目录权限：
+/// - SYSTEM / Administrators 完全控制（保证 WUDFHost 加载 DLL）
+/// - Users 具备 Modify（保证普通用户能更新 JS/config）
+///
+/// 使用 `/grant` 追加，不破坏已有权限。
+fn ensure_runtime_acl(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let output = std::process::Command::new("icacls.exe")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg(path)
+            .args([
+                "/grant",
+                "*S-1-5-18:(OI)(CI)F",
+                "/grant",
+                "*S-1-5-32-544:(OI)(CI)F",
+                "/grant",
+                "*S-1-5-32-545:(OI)(CI)M",
+                "/C",
+                "/Q",
+            ])
+            .output()
+            .map_err(|e| format!("icacls 启动失败: {e}"))?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!("设置 Gadget 目录 ACL 失败: {}", stdout.trim()));
+        }
+    }
     Ok(())
 }
 
@@ -171,7 +348,10 @@ fn hub_loop() {
     loop {
         let Some(pid) = find_rc003_host_pid() else {
             if last_miss.elapsed() >= Duration::from_secs(10) {
-                status("未找到 HOGP 宿主进程（HostPid），返回/音量旁路等待中");
+                status(
+                    TapState::Pending,
+                    "未找到 HOGP 宿主进程（HostPid），返回/音量旁路等待中",
+                );
                 last_miss = Instant::now();
             }
             std::thread::sleep(retry);
@@ -203,20 +383,26 @@ fn hub_loop() {
                 match request_inject(pid) {
                     Ok(true) => {
                         *injected = Some(pid);
-                        status(&format!(
-                            "已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"
-                        ));
+                        save_injected_pid(pid);
+                        status(
+                            TapState::Pending,
+                            &format!("已注入 HOGP 宿主 pid={pid}，正在等待旁路连接"),
+                        );
                     }
                     Ok(false) => {
-                        status("UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。");
+                        status(
+                            TapState::Unavailable,
+                            "UAC 被拒绝，返回/音量键仍不可用；普通键与语音不受影响。重新连接前不会再次弹窗。",
+                        );
                         drop(listener);
                         std::thread::sleep(retry);
                         continue;
                     }
                     Err(e) => {
-                        status(&format!(
-                            "注入失败：{e}。普通键与语音不受影响，本次会话不再弹 UAC。"
-                        ));
+                        status(
+                            TapState::Unavailable,
+                            &format!("注入失败：{e}。普通键与语音不受影响，本次会话不再弹 UAC。"),
+                        );
                         drop(listener);
                         std::thread::sleep(retry);
                         continue;
@@ -238,7 +424,9 @@ fn hub_loop() {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let _ = stream.set_nonblocking(false);
-                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                    // 不设置读超时：Frida 脚本每 5 秒发心跳维持连接，
+                    // 只有对端真正关闭时 read_line 才返回 Ok(0)，避免误报“关闭”。
+                    let _ = stream.set_read_timeout(None);
                     client = Some(stream);
                     break;
                 }
@@ -253,25 +441,30 @@ fn hub_loop() {
             continue;
         };
         drop(listener);
-        status(&format!(
-            "返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"
-        ));
+        status(
+            TapState::Attached,
+            &format!("返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"),
+        );
         arm_grace();
         serve_client(stream);
-        *ACTIVE.lock().unwrap() = Vec::new();
-        core_log::log_info("[hid-tap] 旁路连接已关闭，稍后重试");
+        if let Ok(mut guard) = ACTIVE_USAGES.lock() {
+            *guard = None;
+        }
+        // 连接关闭也通过 status() 通知前端，避免只有日志没有状态。
+        // 内部会重试，但对用户显示为“等待旁路重连”而不是“已关闭”。
+        status(TapState::Pending, "返回/音量旁路连接已断开，正在等待重连");
     }
 }
 
 fn serve_client(stream: std::net::TcpStream) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    loop {
+    let exit_reason = loop {
         line.clear();
         match reader.read_line(&mut line) {
-            Ok(0) => break,
+            Ok(0) => break "对端关闭（EOF）".to_string(),
             Ok(_) => {}
-            Err(_) => break,
+            Err(e) => break format!("读取错误: {e}"),
         }
         let Ok(msg) = serde_json::from_str::<HubMessage>(line.trim()) else {
             continue;
@@ -282,10 +475,42 @@ fn serve_client(stream: std::net::TcpStream) {
                     on_ioctl_bytes(&bytes);
                 }
             }
+            "gatt_read_other" => {
+                core_log::log_debug(&format!(
+                    "[hid-tap] 非目标 IOCTL 数据: {}, raw={}",
+                    msg.message, msg.raw
+                ));
+            }
+            "heartbeat" => {
+                if let Some(stats) = &msg.stats {
+                    let key = (
+                        stats.calls,
+                        stats.captured,
+                        stats.success,
+                        stats.pending,
+                        stats.other_status,
+                    );
+                    let mut last = LAST_HOOK_STATS.lock().unwrap();
+                    if *last != Some(key) {
+                        *last = Some(key);
+                        core_log::log_debug(&format!(
+                            "[hid-tap] hook 统计: calls={}, captured={}, success={}, pending={}, other_status={}",
+                            stats.calls, stats.captured, stats.success, stats.pending, stats.other_status
+                        ));
+                    }
+                }
+            }
+            "ready" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}）",
+                    if msg.eat_enabled { "开启" } else { "关闭" }
+                ));
+            }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}
         }
-    }
+    };
+    core_log::log_info(&format!("[hid-tap] 旁路连接结束: {exit_reason}"));
 }
 
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
@@ -314,7 +539,43 @@ fn from_hex(c: u8) -> Option<u8> {
     }
 }
 
+fn ensure_watchdog() {
+    if WATCHDOG_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("hogp-watchdog".into())
+        .spawn(|| loop {
+            std::thread::sleep(WATCHDOG_INTERVAL);
+            let now = Instant::now();
+            let mut expired = Vec::new();
+            {
+                if let Ok(mut guard) = ACTIVE_USAGES.lock() {
+                    if let Some(active) = guard.as_mut() {
+                        active.retain(|&usage, &mut last_seen| {
+                            if now.duration_since(last_seen) > auto_release_timeout() {
+                                expired.push(usage);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+            if in_grace() {
+                continue;
+            }
+            for usage in expired {
+                emit_usage(usage, false);
+            }
+        })
+        .ok();
+}
+
 fn on_ioctl_bytes(data: &[u8]) {
+    ensure_watchdog();
+
     core_log::log_debug(&format!(
         "[hid-tap] HOGP 原始数据: {} 字节, hex={}",
         data.len(),
@@ -336,24 +597,46 @@ fn on_ioctl_bytes(data: &[u8]) {
     // 记录所有解析出的 usage，包括未知 usage，便于校准真实信号。
     if !next.is_empty() {
         let usages: Vec<String> = next.iter().map(|u| format!("0x{u:04X}")).collect();
-        core_log::log_info(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
+        core_log::log_debug(&format!("[hid-tap] HOGP 载荷 usage: {}", usages.join(", ")));
     }
 
-    let mut prev = ACTIVE.lock().unwrap();
-    if *prev == next {
-        return;
+    let now = Instant::now();
+    let mut newly_pressed = Vec::new();
+    let mut explicitly_released = Vec::new();
+
+    {
+        let mut guard = ACTIVE_USAGES.lock().unwrap();
+        let active = guard.get_or_insert_with(HashMap::new);
+
+        // 1. 如果收到了全 0 的报告（显式松开）
+        if next.is_empty() {
+            explicitly_released.extend(active.keys().copied());
+            active.clear();
+        } else {
+            // 2. 检查此前按下但本次报告中不再存在的键
+            let current_keys: Vec<u16> = active.keys().copied().collect();
+            for k in current_keys {
+                if !next.contains(&k) {
+                    explicitly_released.push(k);
+                    active.remove(&k);
+                }
+            }
+            // 3. 记录新按键或刷新活跃时间戳
+            for usage in next {
+                if active.insert(usage, now).is_none() {
+                    newly_pressed.push(usage);
+                }
+            }
+        }
     }
-    let pressed: Vec<u16> = next.iter().copied().filter(|u| !prev.contains(u)).collect();
-    let released: Vec<u16> = prev.iter().copied().filter(|u| !next.contains(u)).collect();
-    *prev = next;
-    drop(prev);
+
     if in_grace() {
         return;
     }
-    for usage in pressed {
+    for usage in newly_pressed {
         emit_usage(usage, true);
     }
-    for usage in released {
+    for usage in explicitly_released {
         emit_usage(usage, false);
     }
 }
@@ -365,7 +648,7 @@ fn emit_usage(usage: u16, pressed: bool) {
         ));
         return;
     };
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[hid-tap] 特殊按键 usage=0x{usage:02X} vkey={vkey} 按下={pressed}"
     ));
     raw_input::emit(raw_input::RawInputEvent {
@@ -687,6 +970,8 @@ fn inject_into(pid: u32) -> Result<(), String> {
         .into_os_string()
         .into_string()
         .map_err(|_| "gadget path is not UTF-8".to_string())?;
+    // LoadLibraryW 需要 DOS 路径；去掉 \\?\ 前缀，否则远程 LoadLibraryW 可能返回 NULL。
+    let dll_os = dll_os.strip_prefix(r"\\?\").unwrap_or(&dll_os).to_string();
 
     unsafe {
         let access = PROCESS_CREATE_THREAD

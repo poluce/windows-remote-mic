@@ -602,6 +602,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-dispatch"
+version = "0.1.0"
+dependencies = [
+ "core-config",
+ "core-hid",
+ "core-input",
+ "core-log",
+ "core-mapping",
+ "core-stats",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3123,6 +3135,7 @@ dependencies = [
  "core-audio",
  "core-ble",
  "core-config",
+ "core-dispatch",
  "core-hid",
  "core-input",
  "core-log",

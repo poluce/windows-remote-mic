@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import {
+  markConnected,
+  tapStatusLabel,
+  useRuntimeStatus,
+} from "../store/runtimeStatus";
 
 type Rc003Device = {
   id: string;
@@ -17,9 +21,6 @@ type Rc003Connection = {
   device: Rc003Device;
   endpoints: AtvvEndpoints;
 };
-
-type BridgeStatus = "idle" | "running" | "failed";
-type TapStatus = "idle" | "attached" | "pending" | "unavailable";
 
 type VbCableStatus = {
   input: boolean;
@@ -42,36 +43,13 @@ const DRIVER_OPTIONS = [
   { value: "rearoute", label: "ReaRoute（预留）", disabled: true },
 ] as const;
 
-function mapTapStatus(msg: string): TapStatus {
-  if (msg.includes("已附着")) return "attached";
-  if (msg.includes("缺少") || msg.includes("拒绝") || msg.includes("失败")) return "unavailable";
-  if (msg) return "pending";
-  return "idle";
-}
-
-function tapStatusTone(status: TapStatus): string {
+function tapStatusTone(status: string): string {
   return status === "attached" ? "ok" : "warn";
 }
 
-function tapStatusLabel(status: TapStatus): string {
-  switch (status) {
-    case "attached":
-      return "返回/音量旁路已附着";
-    case "pending":
-      return "返回/音量旁路处理中";
-    case "unavailable":
-      return "返回/音量旁路未启用";
-    default:
-      return "返回/音量旁路";
-  }
-}
-
 export function ConnectionPage() {
-  const [connected, setConnected] = useState(false);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
-  const [tapStatus, setTapStatus] = useState<TapStatus>("idle");
-  const [tapMessage, setTapMessage] = useState("");
-  const [endpoints, setEndpoints] = useState<AtvvEndpoints | null>(null);
+  const runtime = useRuntimeStatus();
+  const { connected, bridgeStatus, tapStatus, tapMessage, endpointsReady } = runtime;
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -86,30 +64,6 @@ export function ConnectionPage() {
   const driverRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
   const simInputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    let unlistenTap: (() => void) | undefined;
-    let unlistenBle: (() => void) | undefined;
-    listen<string>("hid-tap-status", (event) => {
-      setTapStatus(mapTapStatus(event.payload));
-      setTapMessage(event.payload);
-    }).then((fn) => {
-      unlistenTap = fn;
-    });
-    listen<boolean>("ble-connection-status", (event) => {
-      setConnected(event.payload);
-      if (!event.payload) {
-        setBridgeStatus("idle");
-      }
-    }).then((fn) => {
-      unlistenBle = fn;
-    });
-    return () => {
-      unlistenTap?.();
-      unlistenBle?.();
-    };
-  }, []);
 
   useEffect(() => {
     if (voiceTarget !== "windows_voice") {
@@ -175,8 +129,8 @@ export function ConnectionPage() {
     setFeedback("正在连接并枚举 GATT 特征…");
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
-      setConnected(true);
-      setEndpoints(result.endpoints);
+      const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
+      markConnected(endpointsReady);
       setFeedback("连接成功");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
@@ -190,15 +144,11 @@ export function ConnectionPage() {
           deviceId: result.device.id,
           outputDevice: "CABLE Input",
         });
-        setBridgeStatus("running");
         setFeedback(bridgeRes);
       } catch (bridgeErr) {
-        setBridgeStatus("failed");
         setFeedback(`连接成功，但语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
-      setConnected(false);
-      setBridgeStatus("idle");
       setFeedback(`连接失败：${err}`);
     } finally {
       setConnecting(false);
@@ -273,7 +223,7 @@ export function ConnectionPage() {
     {
       key: "endpoints",
       label: "ATVV 端点",
-      tone: endpoints?.audio && endpoints.control ? "ok" : "warn",
+      tone: endpointsReady ? "ok" : "warn",
     },
   ];
 

@@ -59,6 +59,24 @@ pub fn button_to_usage(button: ButtonId) -> Option<u32> {
     })
 }
 
+/// 将 Windows 虚拟键反向解析为物理按键（usage 表的逆映射）。
+///
+/// 供按键调度器把 Raw Input 事件还原为物理按键；校准表可在此基础上
+/// 覆盖。麦克风键（F5 兜底 116）刻意不在结果中：麦克风由 ATVV 控制
+/// 流处理，避免 F5 等同虚拟键误触发语音。
+pub fn vkey_to_button(vkey: u16) -> Option<ButtonId> {
+    BUTTON_USAGE_MAP.iter().find_map(|&(usage, button)| {
+        if button == ButtonId::Mic {
+            return None;
+        }
+        if usage_to_vkey(usage) == Some(vkey) && usage_to_button(usage) == Some(button) {
+            Some(button)
+        } else {
+            None
+        }
+    })
+}
+
 /// 解析单个 Raw Input 键盘报告，得到按下的按键列表。
 ///
 /// 每个非零字节都是一个键盘 usage；未知 usage 会被忽略。
@@ -76,7 +94,7 @@ pub fn usage_to_vkey(usage: u32) -> Option<u16> {
         0x00F1 => Some(166), // RC003 返回（厂商键盘 usage）
         0x0028 => Some(13),  // 回车
         0x0035 => Some(180), // 电视
-        0x004A => Some(172), // 主页
+        0x004A => Some(36),  // 主页（实测 Windows 映射为 VK_HOME=36，不是 VK_BROWSER_HOME=172）
         0x004F => Some(39),  // 右
         0x0050 => Some(37),  // 左
         0x0051 => Some(40),  // 下
@@ -108,25 +126,40 @@ fn push_unique(out: &mut Vec<u16>, vk: u16) {
     }
 }
 
-/// RC003 上 HidOverGatt 特征读取 IOCTL 载荷：3 字节前缀 + 6 字节 usage 数组。
+/// RC003 上 HidOverGatt 特征读取 IOCTL 载荷：
+/// 支持 3 字节前缀 [01 00 00] + usage 载荷，或直接的 usage 报告。
 pub fn hogp_ioctl_payload(data: &[u8]) -> Option<&[u8]> {
-    if data.len() == 9 && data.starts_with(&[0x01, 0x00, 0x00]) {
-        Some(&data[3..9])
+    if data.starts_with(&[0x01, 0x00, 0x00]) && data.len() >= 3 {
+        Some(&data[3..])
+    } else if !data.is_empty() {
+        Some(data)
     } else {
         None
     }
 }
 
-/// 从 6 字节 HOGP 载荷中解析小端键盘页 usage。
+/// 从 HOGP 载荷中解析小端键盘页 usage。
 pub fn hogp_payload_usages(payload: &[u8]) -> Vec<u16> {
-    if payload.len() != 6 {
+    if payload.is_empty() {
         return Vec::new();
     }
-    payload
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .filter(|u| *u != 0)
-        .collect()
+    let mut out = Vec::new();
+    // 优先尝试 2 字节小端序（例如 F1 00 -> 0x00F1）
+    for chunk in payload.chunks_exact(2) {
+        let u = u16::from_le_bytes([chunk[0], chunk[1]]);
+        if u != 0 {
+            out.push(u);
+        }
+    }
+    // 如果未能按 2 字节解析出任何有效 usage，尝试按 1 字节 usage 处理
+    if out.is_empty() {
+        for &b in payload {
+            if b != 0 {
+                out.push(u16::from(b));
+            }
+        }
+    }
+    out
 }
 
 /// 仅返回 / 音量加 / 音量减。方向键和确定键仍走 Raw Input。
@@ -217,6 +250,29 @@ mod tests {
     }
 
     #[test]
+    fn vkey_reverse_map_resolves_buttons() {
+        assert_eq!(vkey_to_button(38), Some(ButtonId::Up));
+        assert_eq!(vkey_to_button(37), Some(ButtonId::Left));
+        assert_eq!(vkey_to_button(13), Some(ButtonId::Ok));
+        assert_eq!(vkey_to_button(166), Some(ButtonId::Back));
+        assert_eq!(vkey_to_button(175), Some(ButtonId::VolumeUp));
+        assert_eq!(vkey_to_button(174), Some(ButtonId::VolumeDown));
+        assert_eq!(vkey_to_button(93), Some(ButtonId::Menu));
+        assert_eq!(vkey_to_button(255), Some(ButtonId::Power));
+        // 主页：实测 Windows 把键盘页 0x4A 映射为 VK_HOME(36)，不是 VK_BROWSER_HOME(172)
+        assert_eq!(vkey_to_button(36), Some(ButtonId::Home));
+        assert_eq!(vkey_to_button(172), None);
+        // 麦克风（F5）与未映射的静音键不参与反查
+        assert_eq!(vkey_to_button(116), None);
+        assert_eq!(vkey_to_button(173), None);
+    }
+
+    #[test]
+    fn home_usage_maps_to_vk_home() {
+        assert_eq!(usage_to_vkey(0x004A), Some(36));
+    }
+
+    #[test]
     fn back_usage_maps_to_browser_back_vkey() {
         assert_eq!(usage_to_vkey(0x00F1), Some(166));
         assert_eq!(consumer_usage_to_vkey(0x0224), Some(166));
@@ -257,7 +313,12 @@ mod tests {
         let ok_only = [0x01, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00];
         assert!(hogp_special_usages(hogp_ioctl_payload(&ok_only).unwrap()).is_empty());
 
-        assert!(hogp_ioctl_payload(&[0x00, 0x00, 0x00]).is_none());
+        // 全 0 的直接报告（松开）应被解析为空 usage，而不是被丢弃。
+        assert_eq!(
+            hogp_ioctl_payload(&[0x00, 0x00, 0x00]),
+            Some(&[0x00, 0x00, 0x00][..])
+        );
+        assert!(hogp_payload_usages(&[0x00, 0x00, 0x00]).is_empty());
     }
 }
 

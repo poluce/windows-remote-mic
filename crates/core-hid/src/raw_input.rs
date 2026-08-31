@@ -4,6 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, WPARAM};
@@ -26,6 +27,11 @@ type RawInputCallback = Box<dyn Fn(RawInputEvent) + Send>;
 static CALLBACK: Mutex<Option<RawInputCallback>> = Mutex::new(None);
 static HID_DOWN: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 static LOGGED_SIZE_FAIL: AtomicBool = AtomicBool::new(false);
+/// 键盘路径最近一次上报某虚拟键的时刻，用于识别 WM_APPCOMMAND 回声。
+static LAST_KEYBOARD_EMIT: Mutex<Vec<(u16, Instant)>> = Mutex::new(Vec::new());
+/// 超过该间隔仍未从键盘路径见过同一虚拟键时，WM_APPCOMMAND 视为
+/// 独立来源（仅发应用命令的设备）予以放行。
+const APPCOMMAND_ECHO_WINDOW: Duration = Duration::from_millis(500);
 
 /// 来自遥控器的一个原始键盘事件。
 #[derive(Debug, Clone, Copy)]
@@ -151,6 +157,20 @@ fn emit_appcommand(cmd: u32) -> bool {
         _ => None,
     };
     if let Some(vkey) = vk {
+        // 键盘 Raw Input 路径通常已经上报过同一物理按键；WM_APPCOMMAND
+        // 附带的合成"按下+松开"会把按住时长截断为 0，破坏长按/按住
+        // 重复检测，因此近期上报过时直接吞掉。
+        let recent = LAST_KEYBOARD_EMIT
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(vk, t)| *vk == vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW);
+        if recent {
+            core_log::log_debug(&format!(
+                "[raw_input] 抑制 WM_APPCOMMAND 回声: vkey={vkey}（键盘路径已上报）"
+            ));
+            return true;
+        }
         emit(RawInputEvent {
             vkey,
             make_code: 0,
@@ -283,11 +303,8 @@ unsafe extern "system" fn wnd_proc(
                 let input = &*(buf.as_ptr() as *const RAWINPUT);
                 let keyboard: RAWKEYBOARD = input.data.keyboard;
                 let pressed = keyboard.Flags & 0x01 == 0;
-                core_log::log_info(&format!(
-                    "[raw_input] 键盘事件: vkey={}, make_code=0x{:02X}, 按下={}, 设备={}",
-                    keyboard.VKey, keyboard.MakeCode, pressed, name
-                ));
 
+                // 1. 普通 PC 打字键直接过滤，不记录日志也不转发
                 if is_pc_typing_vkey(keyboard.VKey) {
                     return LRESULT(0);
                 }
@@ -304,6 +321,17 @@ unsafe extern "system" fn wnd_proc(
                         }
                     }
                     if vkey != 0 && !is_pc_typing_vkey(vkey) {
+                        core_log::log_debug(&format!(
+                            "[raw_input] 遥控器键盘事件: vkey={}, make_code=0x{:02X}, 按下={}",
+                            vkey, keyboard.MakeCode, pressed
+                        ));
+                        {
+                            let mut recent = LAST_KEYBOARD_EMIT.lock().unwrap();
+                            recent.retain(|(vk, t)| {
+                                vk != &vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW
+                            });
+                            recent.push((vkey, Instant::now()));
+                        }
                         emit(RawInputEvent {
                             vkey,
                             make_code: keyboard.MakeCode,
@@ -312,32 +340,35 @@ unsafe extern "system" fn wnd_proc(
                     }
                 }
             } else if header.dwType == RIM_TYPEHID.0 {
-                let raw_slice = hid_payload(&buf);
-                core_log::log_info(&format!(
-                    "[raw_input] HID 数据包: {:02X?} 设备={}",
-                    raw_slice, name
-                ));
-                let now = parse_hid_report_vkeys(raw_slice);
-                let mut prev = HID_DOWN.lock().unwrap();
-                for vk in &now {
-                    if !prev.contains(vk) {
-                        emit(RawInputEvent {
-                            vkey: *vk,
-                            make_code: 0,
-                            pressed: true,
-                        });
+                let from_remote = is_bluetooth_device(&name);
+                if from_remote {
+                    let raw_slice = hid_payload(&buf);
+                    core_log::log_debug(&format!(
+                        "[raw_input] 遥控器 HID 数据包: {:02X?} 设备={}",
+                        raw_slice, name
+                    ));
+                    let now = parse_hid_report_vkeys(raw_slice);
+                    let mut prev = HID_DOWN.lock().unwrap();
+                    for vk in &now {
+                        if !prev.contains(vk) {
+                            emit(RawInputEvent {
+                                vkey: *vk,
+                                make_code: 0,
+                                pressed: true,
+                            });
+                        }
                     }
-                }
-                for vk in prev.iter() {
-                    if !now.contains(vk) {
-                        emit(RawInputEvent {
-                            vkey: *vk,
-                            make_code: 0,
-                            pressed: false,
-                        });
+                    for vk in prev.iter() {
+                        if !now.contains(vk) {
+                            emit(RawInputEvent {
+                                vkey: *vk,
+                                make_code: 0,
+                                pressed: false,
+                            });
+                        }
                     }
+                    *prev = now;
                 }
-                *prev = now;
             }
 
             return LRESULT(0);

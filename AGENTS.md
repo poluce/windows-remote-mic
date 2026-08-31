@@ -25,8 +25,9 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 .
 ├── src/                  # React 前端
 │   ├── App.tsx           # 主布局（无顶栏，左侧导航 + 内容区）
-│   ├── pages/            # 连接 / 按键映射 / 语音 / 诊断 / 引导
-│   └── components/       # Sidebar、Xiaomi2ProRemote 等
+│   ├── pages/            # 连接 / 按键映射 / 诊断 / 引导
+│   ├── store/            # 运行时状态（连接 / 语音桥 / 旁路）
+│   └── components/       # Sidebar、Xiaomi2ProRemote、RemoteKeyTester
 ├── src-tauri/            # Tauri 壳
 │   ├── tauri.conf.json   # 窗口、打包配置
 │   └── src/
@@ -43,13 +44,13 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-atvv         # ATVV 协议 + ADPCM 解码
 │   ├── core-audio        # WASAPI 端点、DSP、播放、VB-CABLE 诊断
 │   ├── core-mapping      # 按键映射、触发条件识别
+│   ├── core-dispatch     # 按键调度：触发检测 → 映射 → 动作执行
 │   ├── core-config       # 配置持久化（JSON，原子写入）
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
 │   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input）
-│   ├── core-input        # Windows 按键注入、热键、输入钩子
-│   └── core-diagnostics  # 自检 / 解码预览
+│   └── core-input        # Windows 按键注入、热键、输入钩子
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
 ├── scripts/              # Windows PowerShell 辅助脚本
@@ -118,13 +119,48 @@ cargo check -p remote-mic
 
 ### 3.5 按键来源分类（三类流）
 - 当前物理按键来源分三类：
-  | 类别 | 链路 | 按键 |
+  | 类别 | 链路 | 按键（usage） |
   | --- | --- | --- |
-  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风键（主路径） |
-  | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 方向、OK、Home、Menu、Power、TV；麦克风键 F5 兜底 |
-  | HID 非标准 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回、音量+、音量- |
-- 三类流最终汇聚到 `core-mapping` 统一做按键映射。
-- 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook 线程。
+  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风（主路径；HID 兜底 `0x3E`） |
+  | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 上 `0x52`、下 `0x51`、左 `0x50`、右 `0x4F`、OK `0x28`、主页 `0x4A`、菜单 `0x65`、电源 `0x66` |
+  | HID 应用命令类 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回 `0xF1`、音量+ `0x80`、音量− `0x81`、TV `0x35` |
+- 全部 13 键 usage 表（HID 键盘页 `0x07`）：
+  | 物理按键 | usage | 标准性 | Windows vkey |
+  | --- | --- | --- | --- |
+  | 麦克风（F5 兜底） | `0x3E` | 标准 | 116 |
+  | 返回 | `0xF1` | 厂商自定义（0xE8–0xFF 保留区） | 166 |
+  | 确定 | `0x28` | 标准 | 13 |
+  | TV | `0x35` | 标准（Launch Media Select） | 180 |
+  | 主页 | `0x4A` | 标准 | 36（实测，不是 172） |
+  | 右 | `0x4F` | 标准 | 39 |
+  | 左 | `0x50` | 标准 | 37 |
+  | 下 | `0x51` | 标准 | 40 |
+  | 上 | `0x52` | 标准 | 38 |
+  | 菜单 | `0x65` | 标准 | 93 |
+  | 电源 | `0x66` | 标准 | 255 |
+  | 音量+ | `0x80` | 标准（Keyboard Volume Up） | 175 |
+  | 音量− | `0x81` | 标准（Keyboard Volume Down） | 174 |
+  - 注：静音 usage `0x7F` 是标准键盘页 usage，但**遥控器无实体静音键**，项目映射表（`usage_to_vkey`）刻意不包含它，不参与任何按键流。
+- 三类流最终汇聚方式：
+  - 麦克风键仍由 `core-voice` 桥内硬编码处理（语音会话 toggle：Win+H / Escape），不走映射表。
+  - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
+  - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
+- 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。
+
+#### 3.5.1 返回 / 音量 / TV 键的信号通道（重要实测结论）
+- **usage 标准性**：
+  - 音量+ `0x80`、音量− `0x81` 是 **HID 键盘页标准 usage**（Keyboard Volume Up/Down）。
+  - TV `0x35` 是 **HID 键盘页标准 usage**（Keyboard Launch Media Select）。
+  - 返回 `0xF1` 是**厂商自定义 usage**（HID 键盘页 0xE8–0xFF 为保留区，小米自行使用）。
+- **四个键在 Windows 里的命运完全相同**（都属于「应用命令类按键」）：
+  - 系统**认识并原生处理**它们：返回 → `VK_BROWSER_BACK`（浏览器后退）、音量 → `VK_VOLUME_UP/DOWN`（系统音量变化）、TV → `VK_LAUNCH_MEDIA_SELECT`，走 WM_APPCOMMAND 应用命令通道（推断，待真机验证）。
+  - 它们被 HOGP 层从「键盘输入通道」分流，所以 **Raw Input 和 WH_KEYBOARD_LL 钩子都看不到**（实测）。
+  - 但 **Frida 旁路（HOGP 驱动层）四个键都能捕获到**（实测，日志可见 `0x00F1` / `0x0080` / `0x0081` / `0x0035`）。
+  - 返回键**没有被系统丢弃**——它和音量/TV 键完全同类，只是 usage 编号是厂商自定义的。
+- **主页键 vkey 映射（已修复）**：键盘页 `0x4A` 实测 Windows 映射为 `VK_HOME(36)`，不是 `VK_BROWSER_HOME(172)`。`usage_to_vkey(0x4A)` 已改为 36；消费类页 `0x0223` 仍映射 172（不同通道）。
+- **双重处理问题**：系统原生执行（音量+1 / 浏览器后退）+ 旁路注入映射动作 = 一个信号做两件事。普通键（方向/OK/菜单等）同样存在此问题（系统原生 + Raw Input 注入）。
+- **「吃掉」模式（已实现，默认关闭）**：Frida 脚本在 `onLeave` 里先上报原始报告，再把返回/音量键的 usage 从输出缓冲区清零，让系统 HOGP 层看不到这些键，只由本应用注入。通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启（写入 `frida-gadget.config` 的 `parameters.eat`）。真机验证通过后再改默认值。
+- **规划中的拦截层**：普通键（钩子能看到）计划在 WH_KEYBOARD_LL 钩子里拦截（return 1），实现「单一持有者」——系统不处理，只由调度器注入。难点是钩子层面区分遥控器与 PC 键盘（vkey+scan code 相同，需 `dwExtraInfo` 或 Raw Input 设备识别配合；实测钩子会把 PC 键盘的静音键 173 也当遥控器键转发）。
 
 ### 4. ATVV / 音频要点
 - GATT 服务：`AB5E0001-...`
@@ -178,8 +214,10 @@ cargo check -p remote-mic
 
 - **UI 全部使用简体中文。**
 - **crate 边界**：
-  - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告）。
+  - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
+  - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
+  - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
   - 日志统一以 `core-log` 为唯一出口；`core-input` 现有的 `log_*` 薄封装仅为兼容旧调用，新代码不要再增加这类包装。
 - `scripts/*.ps1` 保持纯 ASCII，避免 PowerShell 编码问题。
 - Windows PowerShell 5.1 没有 `Join-String`，需要用 `-join`。

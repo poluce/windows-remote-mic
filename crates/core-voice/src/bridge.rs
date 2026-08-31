@@ -29,6 +29,10 @@ where
         e.to_string()
     })?;
     core_log::log_info("[bridge] ATVV 链路已连接");
+    crate::set_connection_active(true);
+    crate::set_bridge_running(true);
+    // ATVV 端点已由 connect_rc003 发现并传入，这里标记为就绪。
+    crate::set_atvv_endpoints_ready(true);
 
     let disconnected = Arc::new(AtomicBool::new(false));
     let disconnected_cb = disconnected.clone();
@@ -39,6 +43,7 @@ where
             "disconnected"
         };
         core_log::log_line(&format!("[bridge] BLE 连接状态变化: {msg}"));
+        crate::set_connection_active(connected);
         if !connected {
             disconnected_cb.store(true, Ordering::SeqCst);
         }
@@ -117,7 +122,7 @@ where
     let _control_cookie = link
         .register_control_handler(move |bytes| {
             capture_ctrl.record("control", &bytes);
-            core_log::log_info(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
+            core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
             let mut eng = match engine_ctrl.lock() {
                 Ok(g) => g,
                 Err(_) => return,
@@ -126,7 +131,7 @@ where
                 core_log::log_warn(&format!("[bridge] 无法识别的控制包: {:02X?}", bytes));
                 return;
             };
-            core_log::log_info(&format!("[bridge] 已解析控制事件: {:?}", event));
+            core_log::log_debug(&format!("[bridge] 已解析控制事件: {:?}", event));
             match event {
                 RawControlEvent::Caps(caps) => {
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
@@ -200,6 +205,10 @@ where
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+
+    // 语音桥会话结束，标记链路不再活动（由外层自动重连再次置 true）。
+    crate::set_connection_active(false);
+    crate::set_bridge_running(false);
 
     Ok(())
 }

@@ -40,6 +40,25 @@ impl ButtonId {
         ButtonId::Mic,
     ];
 
+    /// 前端与统计使用的稳定小写按键标识。
+    pub fn key(self) -> &'static str {
+        match self {
+            ButtonId::Power => "power",
+            ButtonId::Up => "up",
+            ButtonId::Down => "down",
+            ButtonId::Left => "left",
+            ButtonId::Right => "right",
+            ButtonId::Ok => "ok",
+            ButtonId::Back => "back",
+            ButtonId::Home => "home",
+            ButtonId::Menu => "menu",
+            ButtonId::Tv => "tv",
+            ButtonId::VolumeUp => "volume_up",
+            ButtonId::VolumeDown => "volume_down",
+            ButtonId::Mic => "mic",
+        }
+    }
+
     pub fn display_name(self) -> &'static str {
         match self {
             ButtonId::Power => "电源",

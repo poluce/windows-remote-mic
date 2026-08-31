@@ -20,6 +20,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI8, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, RwLock};
 
 /// `remote-mic.log` 轮转前的默认最大大小。
@@ -40,6 +41,10 @@ static DEBUG_OVERRIDE: AtomicI8 = AtomicI8::new(-1);
 /// 供测试/嵌入场景使用的日志目录覆盖。设置后优先于
 /// `%LOCALAPPDATA%\RemoteMic\RC003`。
 static LOG_DIR_OVERRIDE: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// 日志行实时订阅者（前端 UI 等）。文件照常写入，同时广播给订阅者，
+/// 两边互不干扰。
+static LOG_SUBSCRIBERS: Mutex<Vec<Sender<String>>> = Mutex::new(Vec::new());
 
 /// 追加一条 DEBUG 级别日志。仅在临时调试日志开启时写入。
 pub fn log_debug(line: &str) {
@@ -206,6 +211,22 @@ pub fn clear_log() -> std::io::Result<()> {
     Ok(())
 }
 
+/// 订阅实时日志行。
+///
+/// 返回一个接收端，每次 [`log_line`] / [`log_info`] / [`log_warn`] /
+/// [`log_error`] / [`log_debug`] 写入文件后，都会把完整格式化行
+/// （含时间戳和级别）发送到该 channel。
+///
+/// 订阅者无需担心文件轮转；这里只负责把“新写入的行”推送给调用方。
+pub fn subscribe_log_lines() -> Receiver<String> {
+    let (tx, rx) = mpsc::channel::<String>();
+    if let Ok(mut subs) = LOG_SUBSCRIBERS.lock() {
+        subs.push(tx);
+    }
+    rx
+}
+
+/// 把一行日志同时写入文件并广播给实时订阅者。
 fn write_log(level: &str, line: &str) {
     let _guard = LOG_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let now = chrono::Local::now()
@@ -219,6 +240,11 @@ fn write_log(level: &str, line: &str) {
     rotate_if_needed(&path);
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
         let _ = writeln!(file, "{full}");
+    }
+
+    // 广播给实时订阅者；发送失败（接收端已释放）就移除该订阅者。
+    if let Ok(mut subs) = LOG_SUBSCRIBERS.lock() {
+        subs.retain(|tx| tx.send(full.clone()).is_ok());
     }
 }
 

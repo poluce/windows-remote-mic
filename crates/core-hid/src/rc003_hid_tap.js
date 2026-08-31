@@ -1,15 +1,37 @@
-// 只读的 HOGP 报告探针。不修改缓冲区，因此键盘 Raw Input 保持完整。
+// HOGP 报告探针。默认只读；开启「吃掉」模式后，会把返回/音量键的
+// usage 从输出缓冲区里清零，让系统 HOGP 层看不到这些键，只由本应用注入。
+//
+// 关键约束（与已验证可用的 remote-bridge-hub 实现一致）：
+// - 只 hook 目标 IOCTL `READ_CHARACTERISTIC_IOCTL`(0x80018483)；
+// - 只在返回 STATUS_SUCCESS 且输出长度恰为 9 字节时读取输出缓冲区。
+// 不读取其它 IOCTL 的 args[8]：那可能是 MDL / 内核指针 / 已释放缓冲，
+// 读它既无意义又有风险。
+
 const READ_CHARACTERISTIC_IOCTL = 0x80018483;
 const EXPECTED_OUTPUT_LENGTH = 9;
+const STATUS_SUCCESS = 0;
+const STATUS_PENDING = 0x103;
 const HEARTBEAT_MS = 5000;
 const RECONNECT_MS = 1000;
+// 需要吃掉的 usage：返回、音量+、音量-（钩子和 Raw Input 都看不到它们）。
+const EAT_USAGES = [0x00f1, 0x0080, 0x0081];
 
 let host = "127.0.0.1";
 let port = 17331;
+// 是否开启「吃掉」模式：由 Gadget config 的 parameters.eat 传入。
+let eatEnabled = false;
+// 保持 SocketConnection 引用，防止 QuickJS GC 提前关闭 socket。
+let connection = null;
 let output = null;
-let writeChain = Promise.resolve();
+let connecting = false;
 let reconnectTimer = null;
 let hookInstalled = false;
+
+// 串行写链：每次 writeAll 都排在上一次之后，避免并发写把 socket 写坏。
+let writeChain = Promise.resolve();
+
+// hook 统计，随心跳上报，用于确认 hook 是否持续被调用。
+let stats = { calls: 0, captured: 0, success: 0, pending: 0, other_status: 0 };
 
 function asciiBytes(text) {
   const out = [];
@@ -31,6 +53,31 @@ function hex(pointer, length) {
   return result;
 }
 
+// 吃掉返回/音量键：把输出缓冲区里的目标 usage 清零。
+// 报告格式：01 00 00 + 3 个 16 位小端 usage（共 9 字节）。
+// 只对确定格式动手，其它情况一律跳过，避免误伤驱动缓冲区。
+function eatUsages(outputPtr, length) {
+  if (!eatEnabled || length !== EXPECTED_OUTPUT_LENGTH) {
+    return;
+  }
+  const bytes = new Uint8Array(outputPtr.readByteArray(length));
+  if (bytes[0] !== 0x01 || bytes[1] !== 0x00 || bytes[2] !== 0x00) {
+    return;
+  }
+  let changed = false;
+  for (let i = 3; i + 1 < length; i += 2) {
+    const usage = bytes[i] | (bytes[i + 1] << 8);
+    if (EAT_USAGES.indexOf(usage) !== -1) {
+      bytes[i] = 0;
+      bytes[i + 1] = 0;
+      changed = true;
+    }
+  }
+  if (changed) {
+    outputPtr.writeByteArray(bytes.buffer);
+  }
+}
+
 function scheduleReconnect() {
   if (reconnectTimer !== null) {
     return;
@@ -46,6 +93,7 @@ function markDisconnected(current) {
     return;
   }
   output = null;
+  connection = null;
   scheduleReconnect();
 }
 
@@ -62,20 +110,30 @@ function emit(payload) {
 }
 
 async function connectToHub() {
-  if (output !== null) {
+  if (output !== null || connecting) {
     return;
   }
+  connecting = true;
   try {
-    const connection = await Socket.connect({
+    const conn = await Socket.connect({
       family: "ipv4",
       host: host,
       port: port,
     });
-    output = connection.output;
-    emit({ kind: "ready", pid: Process.id, hook_installed: hookInstalled });
+    connection = conn;
+    output = conn.output;
+    emit({
+      kind: "ready",
+      pid: Process.id,
+      hook_installed: hookInstalled,
+      eat_enabled: eatEnabled,
+    });
   } catch (_error) {
     output = null;
+    connection = null;
     scheduleReconnect();
+  } finally {
+    connecting = false;
   }
 }
 
@@ -91,6 +149,8 @@ function installHook() {
   }
   Interceptor.attach(target, {
     onEnter(args) {
+      stats.calls++;
+      // 只对目标 IOCTL 记录输出缓冲区，避免触碰其它 IOCTL 的 args[8]。
       this.capture = args[5].toUInt32() === READ_CHARACTERISTIC_IOCTL;
       if (this.capture) {
         this.output = args[8];
@@ -98,18 +158,31 @@ function installHook() {
       }
     },
     onLeave(retval) {
-      if (!this.capture || retval.toUInt32() !== 0 || this.output.isNull()) {
+      if (!this.capture) {
         return;
       }
-      try {
-        if (this.outputLength === EXPECTED_OUTPUT_LENGTH) {
-          emit({
-            kind: "gatt_read",
-            raw: hex(this.output, this.outputLength),
-          });
+      stats.captured++;
+      const status = retval.toUInt32();
+      if (status === STATUS_SUCCESS) {
+        stats.success++;
+        if (this.outputLength === EXPECTED_OUTPUT_LENGTH && !this.output.isNull()) {
+          try {
+            const rawHex = hex(this.output, this.outputLength);
+            if (rawHex) {
+              emit({ kind: "gatt_read", raw: rawHex });
+              // 先上报原始报告，再把目标 usage 清零，让系统看不到这个键。
+              eatUsages(this.output, this.outputLength);
+            }
+          } catch (error) {
+            emit({ kind: "error", message: String(error) });
+          }
         }
-      } catch (error) {
-        emit({ kind: "error", message: String(error) });
+      } else if (status === STATUS_PENDING) {
+        // 只计数不读取：异步完成的缓冲区在 onLeave 时尚未填充，
+        // 延迟读取可能读到已释放/复用的内存，反而更危险。
+        stats.pending++;
+      } else {
+        stats.other_status++;
       }
     },
   });
@@ -120,7 +193,7 @@ setInterval(() => {
   if (output === null) {
     scheduleReconnect();
   } else {
-    emit({ kind: "heartbeat", pid: Process.id });
+    emit({ kind: "heartbeat", pid: Process.id, stats: stats });
   }
 }, HEARTBEAT_MS);
 
@@ -131,6 +204,9 @@ rpc.exports = {
     }
     if (parameters && parameters.port) {
       port = parameters.port;
+    }
+    if (parameters && parameters.eat !== undefined) {
+      eatEnabled = parameters.eat === true || parameters.eat === "true";
     }
     installHook();
     await connectToHub();
