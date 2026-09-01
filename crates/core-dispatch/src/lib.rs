@@ -3,7 +3,7 @@
 //! 这是把「按键映射」从纯配置变成运行时闭环的核心一环：
 //! Raw Input 标准流与 HOGP 旁路在 src-tauri 汇聚后调用
 //! [`KeyDispatcher::on_vkey`]；调度器为每个按键维护一个
-//! `TriggerDetector`（单击/双击/长按/按住重复），确认触发后查
+//! `TriggerDetector`（单击/双击/长按/按下/松开），确认触发后查
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
@@ -33,19 +33,10 @@ use std::time::{Duration, Instant};
 
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
-use core_mapping::{action_allows_repeat, ActionKind, ButtonId, MappingConfig, Trigger};
+use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
 
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
-
-/// 触发来源：`release`（松开确认）、`tick`（按住重复节拍）、
-/// `edge`（按下/松开边沿触发）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LongSource {
-    Release,
-    Tick,
-    Edge,
-}
 
 /// 单个按键的运行时状态。
 #[derive(Default)]
@@ -194,7 +185,7 @@ impl KeyDispatcher {
             rt.long_executed = false;
             rt.detector.press(now);
             // 按下边沿触发（麦克风 PTT 等）。
-            if let Some(job) = build_job(mapping, button, Trigger::Press, LongSource::Edge, rt) {
+            if let Some(job) = build_job(mapping, button, Trigger::Press, rt) {
                 jobs.push(job);
             }
         } else {
@@ -204,12 +195,12 @@ impl KeyDispatcher {
             }
             rt.down = false;
             // 松开边沿触发。
-            if let Some(job) = build_job(mapping, button, Trigger::Release, LongSource::Edge, rt) {
+            if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
                 jobs.push(job);
             }
             // 单击/双击/长按等手势确认。
             if let FeedOutcome::Fire(ev) = rt.detector.release(now) {
-                if let Some(job) = build_job(mapping, button, ev.trigger, LongSource::Release, rt) {
+                if let Some(job) = build_job(mapping, button, ev.trigger, rt) {
                     jobs.push(job);
                 }
             }
@@ -217,7 +208,7 @@ impl KeyDispatcher {
         jobs
     }
 
-    /// 驱动一次触发检测（确认延迟的单击、按住重复）。
+    /// 驱动一次触发检测（确认延迟的单击与长按）。
     fn tick_once(&self, now: u64) -> Vec<ActionJob> {
         let mut jobs = Vec::new();
         let mut inner = self.inner.lock().unwrap();
@@ -229,7 +220,7 @@ impl KeyDispatcher {
         } = &mut *inner;
         for (button, rt) in buttons.iter_mut() {
             if let FeedOutcome::Fire(ev) = rt.detector.tick(now) {
-                if let Some(job) = build_job(mapping, *button, ev.trigger, LongSource::Tick, rt) {
+                if let Some(job) = build_job(mapping, *button, ev.trigger, rt) {
                     jobs.push(job);
                 }
             }
@@ -240,14 +231,11 @@ impl KeyDispatcher {
 
 /// 由触发事件构建动作任务；无绑定或禁用的按键返回 `None`。
 ///
-/// 长按规则：本次按住的第一次长按触发总是执行（无论动作是否可重复）；
-/// 之后的按住重复节拍只有可重复动作才继续执行；松开时的长按确认在
-/// tick 已经触发过的情况下跳过，避免多执行一次。
+/// 长按只执行一次：tick 已触发过则松开时的兜底确认直接跳过。
 fn build_job(
     mapping: &MappingConfig,
     button: ButtonId,
     trigger: Trigger,
-    source: LongSource,
     rt: &mut ButtonRuntime,
 ) -> Option<ActionJob> {
     let action = mapping.resolve(button, trigger)?.clone();
@@ -256,14 +244,9 @@ fn build_job(
     }
     if trigger == Trigger::LongPress {
         if rt.long_executed {
-            match source {
-                LongSource::Release => return None,
-                LongSource::Tick if !action_allows_repeat(&action) => return None,
-                LongSource::Tick | LongSource::Edge => {}
-            }
-        } else {
-            rt.long_executed = true;
+            return None;
         }
+        rt.long_executed = true;
     }
     Some(ActionJob {
         button,
@@ -495,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn hold_repeat_only_for_repeatable_actions() {
+    fn long_press_fires_only_once() {
         let d = dispatcher();
         d.update_mapping(MappingConfig {
             bindings: vec![core_mapping::KeyBinding {
@@ -505,27 +488,9 @@ mod tests {
             }],
         });
         jobs_of(&d, 175, true, 0);
-        let first = d.tick_once(600);
-        assert_eq!(first.len(), 1, "第一次长按节拍应触发");
-        let second = d.tick_once(750);
-        assert_eq!(second.len(), 1, "可重复动作按住期间持续触发");
+        assert_eq!(d.tick_once(600).len(), 1, "按住超过阈值触发一次");
+        assert!(d.tick_once(750).is_empty(), "继续按住不再重复");
         assert!(jobs_of(&d, 175, false, 800).is_empty(), "松开确认不重复");
-    }
-
-    #[test]
-    fn long_press_non_repeatable_fires_only_once() {
-        let d = dispatcher();
-        d.update_mapping(MappingConfig {
-            bindings: vec![core_mapping::KeyBinding {
-                button: ButtonId::Tv,
-                trigger: Trigger::LongPress,
-                action: ActionKind::AppSwitcher,
-            }],
-        });
-        jobs_of(&d, 180, true, 0);
-        assert_eq!(d.tick_once(600).len(), 1);
-        assert!(d.tick_once(750).is_empty(), "不可重复动作不应重复");
-        assert!(jobs_of(&d, 180, false, 800).is_empty());
     }
 
     #[test]

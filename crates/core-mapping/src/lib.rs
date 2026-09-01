@@ -181,14 +181,6 @@ impl MappingConfig {
     }
 }
 
-/// 判断一个动作在物理按键按住期间是否保持可重复触发。
-pub fn action_allows_repeat(action: &ActionKind) -> bool {
-    !matches!(
-        action,
-        ActionKind::OpenApp(_) | ActionKind::AppSwitcher | ActionKind::Voice
-    )
-}
-
 /// 构建默认映射：12 键单击 + 麦克风按下/松开（PTT，Voice 动作）。
 pub fn default_mapping() -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
@@ -284,13 +276,6 @@ mod tests {
         );
         assert_eq!(cfg.resolve(ButtonId::Mic, Trigger::SingleClick), None);
         assert!(!cfg.migrate_mic_ptt(), "已迁移后不应重复迁移");
-    }
-
-    #[test]
-    fn arrows_repeat_but_open_app_does_not() {
-        assert!(action_allows_repeat(&ActionKind::ArrowUp));
-        assert!(!action_allows_repeat(&ActionKind::OpenApp("codex".into())));
-        assert!(!action_allows_repeat(&ActionKind::AppSwitcher));
     }
 
     #[test]
