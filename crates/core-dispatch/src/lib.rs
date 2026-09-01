@@ -135,6 +135,15 @@ impl KeyDispatcher {
         self.inner.lock().unwrap().vkey_map = build_vkey_map(calibrations);
     }
 
+    /// 热更新触发判定时间：长按阈值与双击窗口（毫秒）。
+    pub fn set_trigger_timing(&self, long_press_ms: u64, double_click_ms: u64) {
+        let mut inner = self.inner.lock().unwrap();
+        for rt in inner.buttons.values_mut() {
+            rt.detector.set_long_press_ms(long_press_ms);
+            rt.detector.set_double_click_window_ms(double_click_ms);
+        }
+    }
+
     /// 暂停/恢复调度。按键测试与校准界面应暂停，避免测试按键
     /// 触发真实动作。切换时清空所有按键的中间状态。
     ///

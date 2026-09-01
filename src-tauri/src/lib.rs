@@ -317,6 +317,7 @@ pub fn run() {
                 // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
+                dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
                 let stats_dir = std::env::var("LOCALAPPDATA")
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -402,6 +403,8 @@ pub fn run() {
             commands::mapping::save_key_calibrations,
             commands::mapping::get_key_calibrations,
             commands::mapping::set_dispatch_enabled,
+            commands::mapping::get_trigger_timing,
+            commands::mapping::set_trigger_timing,
             commands::audio::start_voice_bridge,
             commands::audio::simulate_voice_chain,
             commands::audio::vb_cable_status,

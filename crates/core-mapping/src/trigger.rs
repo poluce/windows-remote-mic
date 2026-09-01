@@ -133,6 +133,16 @@ impl TriggerDetector {
     pub fn reset(&mut self) {
         *self = Self::default();
     }
+
+    /// 设置长按判定阈值（毫秒）。
+    pub fn set_long_press_ms(&mut self, ms: u64) {
+        self.long_press_ms = ms;
+    }
+
+    /// 设置双击判定窗口（毫秒）。
+    pub fn set_double_click_window_ms(&mut self, ms: u64) {
+        self.double_click_window_ms = ms;
+    }
 }
 
 #[cfg(test)]

@@ -1,9 +1,55 @@
+use serde::Serialize;
 use tauri::State;
 
 use crate::{
     action_key, action_label, button_key, config_store, parse_action, parse_button, parse_trigger,
     trigger_key, AppState, MappingEdit, MappingEntry,
 };
+
+/// 触发判定时间设置。
+#[derive(Serialize)]
+pub struct TriggerTiming {
+    pub long_press_ms: u64,
+    pub double_click_ms: u64,
+}
+
+/// 读取长按阈值与双击窗口（毫秒）。
+#[tauri::command]
+pub fn get_trigger_timing() -> TriggerTiming {
+    let cfg = config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default();
+    TriggerTiming {
+        long_press_ms: cfg.long_press_ms,
+        double_click_ms: cfg.double_click_ms,
+    }
+}
+
+/// 保存长按阈值与双击窗口，并热更新调度器。
+#[tauri::command]
+pub fn set_trigger_timing(
+    long_press_ms: u64,
+    double_click_ms: u64,
+    state: State<AppState>,
+) -> Result<TriggerTiming, String> {
+    let long_press_ms = long_press_ms.clamp(200, 2000);
+    let double_click_ms = double_click_ms.clamp(150, 1000);
+    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
+    let mut cfg = store.load().unwrap_or_default();
+    cfg.long_press_ms = long_press_ms;
+    cfg.double_click_ms = double_click_ms;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    state
+        .dispatcher
+        .set_trigger_timing(long_press_ms, double_click_ms);
+    core_log::log_info(&format!(
+        "[commands/mapping] 触发时间已更新：长按={long_press_ms}ms，双击窗口={double_click_ms}ms"
+    ));
+    Ok(TriggerTiming {
+        long_press_ms,
+        double_click_ms,
+    })
+}
 
 /// 将一条按键映射保存到 `config.json`，并热更新运行时调度器。
 #[tauri::command]

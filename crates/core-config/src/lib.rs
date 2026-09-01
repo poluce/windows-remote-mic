@@ -33,10 +33,24 @@ pub struct Config {
     /// 只由本应用注入映射动作。默认开启。
     #[serde(default = "default_hid_tap_eat")]
     pub hid_tap_eat: bool,
+    /// 长按判定阈值（毫秒）。
+    #[serde(default = "default_long_press_ms")]
+    pub long_press_ms: u64,
+    /// 双击判定窗口（毫秒）。
+    #[serde(default = "default_double_click_ms")]
+    pub double_click_ms: u64,
 }
 
 fn default_hid_tap_eat() -> bool {
     true
+}
+
+fn default_long_press_ms() -> u64 {
+    550
+}
+
+fn default_double_click_ms() -> u64 {
+    300
 }
 
 impl Default for Config {
@@ -46,6 +60,8 @@ impl Default for Config {
             mapping: MappingConfig::default(),
             key_calibrations: std::collections::HashMap::new(),
             hid_tap_eat: true,
+            long_press_ms: 550,
+            double_click_ms: 300,
         }
     }
 }

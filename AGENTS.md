@@ -110,6 +110,7 @@ cargo check -p remote-mic
 ### 3. 按键映射持久化
 - 后端 `save_mapping` 保存到 `%LOCALAPPDATA%\RemoteMic\RC003\config.json`。
 - `get_mappings` 返回完整映射（含 trigger）。
+- 触发判定时间可设置：**长按阈值**（默认 550ms）与**双击窗口**（默认 300ms）存于 `config.json` 的 `long_press_ms` / `double_click_ms`，映射页可调，保存后热更新调度器（`set_trigger_timing`）。
 - 前端映射页：
   - 点遥控器图形选按键
   - 选触发方式（单击/双击/长按）
