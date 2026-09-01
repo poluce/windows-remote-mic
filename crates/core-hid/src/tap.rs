@@ -85,6 +85,94 @@ struct HubMessage {
     eat_enabled: bool,
     #[serde(default)]
     eaten: bool,
+    #[serde(default)]
+    trace_enabled: bool,
+    #[serde(default)]
+    modules: Vec<ModuleInfo>,
+    #[serde(default)]
+    imports: Vec<ImportInfo>,
+    #[serde(default)]
+    ioctl: u32,
+    #[serde(default)]
+    status: u32,
+    #[serde(default)]
+    input_len: u32,
+    #[serde(default)]
+    output_len: u32,
+    #[serde(default)]
+    input_hex: String,
+    #[serde(default)]
+    output_hex: String,
+    #[serde(default)]
+    func: String,
+    #[serde(default)]
+    dst: String,
+    #[serde(default)]
+    src: String,
+    #[serde(default)]
+    len: u32,
+    #[serde(default)]
+    hex: String,
+    #[serde(default)]
+    handle: String,
+    #[serde(default)]
+    addresses: Vec<String>,
+    #[serde(default)]
+    address: String,
+    #[serde(default)]
+    lines: Vec<String>,
+    #[serde(default)]
+    a: String,
+    #[serde(default)]
+    b: String,
+    #[serde(default)]
+    a_resolved: String,
+    #[serde(default)]
+    b_resolved: String,
+    #[serde(default)]
+    b_vtable: String,
+    #[serde(default)]
+    b_vtable_resolved: String,
+    #[serde(default)]
+    table: Vec<String>,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    target_resolved: String,
+    #[serde(default)]
+    ret: String,
+    #[serde(default)]
+    args: Vec<String>,
+    #[serde(default)]
+    out1: String,
+    #[serde(default)]
+    out2: String,
+    #[serde(default)]
+    frames: Vec<String>,
+    #[serde(default)]
+    dst_range: String,
+}
+
+/// 追踪模式上报的模块信息。
+#[derive(Deserialize)]
+struct ModuleInfo {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    base: String,
+    #[serde(default)]
+    size: u64,
+    #[serde(default)]
+    exports: Vec<String>,
+}
+
+/// 追踪模式上报的导入模块信息。
+#[derive(Deserialize)]
+struct ImportInfo {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    imports: Vec<String>,
 }
 
 /// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
@@ -114,6 +202,15 @@ fn tap_port() -> u16 {
 /// 通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启，默认关闭（只读探针）。
 fn eat_enabled() -> bool {
     std::env::var("REMOTE_MIC_HID_TAP_EAT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// 是否开启 IOCTL/模块追踪：枚举 WUDFHost 的 HID/BTH 模块导出并记录所有
+/// IOCTL 码与缓冲区，用于定位报告转发点。
+/// 通过环境变量 `REMOTE_MIC_HID_TAP_TRACE=1` 开启，默认关闭。
+fn trace_enabled() -> bool {
+    std::env::var("REMOTE_MIC_HID_TAP_TRACE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -295,7 +392,7 @@ fn prepare_runtime() -> Result<(), String> {
         "interaction": {
             "type": "script",
             "path": "rc003-hid-tap.js",
-            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled() },
+            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled(), "trace": trace_enabled() },
             "on_change": "ignore"
         },
         "runtime": "qjs",
@@ -491,7 +588,10 @@ fn serve_client(stream: std::net::TcpStream) {
         match msg.kind.as_str() {
             "gatt_read" => {
                 if let Some(bytes) = decode_hex(&msg.raw) {
-                    if msg.eaten {
+                    let has_usage = hogp_ioctl_payload(&bytes)
+                        .map(|p| !hogp_payload_usages(p).is_empty())
+                        .unwrap_or(false);
+                    if msg.eaten && has_usage {
                         core_log::log_info("[hid-tap] 已吃掉按键（系统不可见）");
                     }
                     on_ioctl_bytes(&bytes);
@@ -524,9 +624,101 @@ fn serve_client(stream: std::net::TcpStream) {
             }
             "ready" => {
                 core_log::log_info(&format!(
-                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}）",
-                    if msg.eat_enabled { "开启" } else { "关闭" }
+                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}，追踪模式={}）",
+                    if msg.eat_enabled { "开启" } else { "关闭" },
+                    if msg.trace_enabled { "开启" } else { "关闭" }
                 ));
+            }
+            "module_list" => {
+                for m in &msg.modules {
+                    core_log::log_info(&format!(
+                        "[hid-tap] 模块: {} base={} size={}",
+                        m.name, m.base, m.size
+                    ));
+                    for e in &m.exports {
+                        core_log::log_info(&format!("[hid-tap]   导出: {e}"));
+                    }
+                }
+            }
+            "import_list" => {
+                for m in &msg.imports {
+                    core_log::log_info(&format!(
+                        "[hid-tap] 导入模块: {} -> {}",
+                        m.name,
+                        m.imports.join(", ")
+                    ));
+                }
+            }
+            "ioctl_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] IOCTL 追踪: ioctl=0x{:08X} status=0x{:X} in={} out={} in_hex={} out_hex={}",
+                    msg.ioctl, msg.status, msg.input_len, msg.output_len, msg.input_hex, msg.output_hex
+                ));
+            }
+            "memcpy_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] memcpy 追踪: func={} dst={} src={} len={} hex={} dst_range={}",
+                    msg.func, msg.dst, msg.src, msg.len, msg.hex, msg.dst_range
+                ));
+            }
+            "report_path" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 报告处理: func={} src={} len={} hex={}",
+                    msg.func, msg.src, msg.len, msg.hex
+                ));
+            }
+            "eaten_report" => {
+                core_log::log_info(&format!("[hid-tap] 吃掉报告: {}", msg.message));
+            }
+            "writefile_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] NtWriteFile 追踪: handle={} len={} hex={}",
+                    msg.handle, msg.len, msg.hex
+                ));
+            }
+            "scan_result" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] IOCTL 常量扫描: {}",
+                    msg.addresses.join(", ")
+                ));
+            }
+            "disasm" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 反汇编 @ {}:",
+                    msg.address
+                ));
+                for line in &msg.lines {
+                    core_log::log_info(&format!("[hid-tap]   {line}"));
+                }
+            }
+            "global_info" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 全局对象: A={} ({}) B={} ({}) B_vtable={} ({})",
+                    msg.a, msg.a_resolved, msg.b, msg.b_resolved, msg.b_vtable, msg.b_vtable_resolved
+                ));
+                for line in &msg.table {
+                    core_log::log_info(&format!("[hid-tap]   函数表 {line}"));
+                }
+            }
+            "vcall_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 间接调用: target={} ({}) ret={} args=[{}] out1={} out2={}",
+                    msg.target,
+                    msg.target_resolved,
+                    msg.ret,
+                    msg.args.join(", "),
+                    msg.out1,
+                    msg.out2
+                ));
+            }
+            "backtrace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 调用栈 @ {}:",
+                    msg.address
+                ));
+                for frame in &msg.frames {
+                    core_log::log_info(&format!("[hid-tap]   {frame}"));
+                }
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}

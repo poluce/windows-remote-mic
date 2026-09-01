@@ -158,9 +158,11 @@ cargo check -p remote-mic
   - 但 **Frida 旁路（HOGP 驱动层）四个键都能捕获到**（实测，日志可见 `0x00F1` / `0x0080` / `0x0081` / `0x0035`）。
   - 返回键**没有被系统丢弃**——它和音量/TV 键完全同类，只是 usage 编号是厂商自定义的。
 - **主页键 vkey 映射（已修复）**：键盘页 `0x4A` 实测 Windows 映射为 `VK_HOME(36)`，不是 `VK_BROWSER_HOME(172)`。`usage_to_vkey(0x4A)` 已改为 36；消费类页 `0x0223` 仍映射 172（不同通道）。
-- **双重处理问题**：系统原生执行（音量+1 / 浏览器后退）+ 旁路注入映射动作 = 一个信号做两件事。普通键（方向/OK/菜单等）同样存在此问题（系统原生 + Raw Input 注入）。
-- **「吃掉」模式（已实现，默认关闭）**：Frida 脚本在 `onLeave` 里先上报原始报告，再把返回/音量键的 usage 从输出缓冲区清零，让系统 HOGP 层看不到这些键，只由本应用注入。通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启（写入 `frida-gadget.config` 的 `parameters.eat`）。真机验证通过后再改默认值。
-- **规划中的拦截层**：普通键（钩子能看到）计划在 WH_KEYBOARD_LL 钩子里拦截（return 1），实现「单一持有者」——系统不处理，只由调度器注入。难点是钩子层面区分遥控器与 PC 键盘（vkey+scan code 相同，需 `dwExtraInfo` 或 Raw Input 设备识别配合；实测钩子会把 PC 键盘的静音键 173 也当遥控器键转发）。
+- **双重处理问题**：系统原生执行（音量+1 / 浏览器后退）+ 旁路注入映射动作 = 一个信号做两件事。普通键（方向/OK/菜单等）同样存在此问题（系统原生 + Raw Input 注入）。现已由驱动层「吃掉」模式解决（见下）。
+- **「吃掉」模式（已实现并真机验证，默认关闭）**：真实报告路径是 **GATT 通知 → 8 字节队列项 → `0x1febc` 分配 WDF 请求缓冲区 → `0x20080` 的 memcpy 拷入 → 完成请求 → 内核 HID 驱动**。Frida 脚本钩住 `0x20080` 这个 memcpy 调用点：先把清零前的队列项原始报告转成 9 字节 IOCTL 格式（`01 00 00` + 3 个 usage）以 `gatt_read` 上报应用调度器，再把源缓冲区清零——系统 HOGP 层看不到任何遥控器按键，只由本应用注入映射动作。通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启（写入 `frida-gadget.config` 的 `parameters.eat`）。
+  - **旧方案（清 READ_CHARACTERISTIC_IOCTL 输出缓冲）已证明无效**：该 IOCTL 是报告处理完后的「补读」，输出缓冲区实测返回全零，不是系统消费的数据。
+  - 驱动更新导致偏移失效时，按 skill `hogp-report-path-re` 重新定位（见 `.agent/skills/hogp-report-path-re/SKILL.md`）。
+- **已废弃的规划**：曾计划在 WH_KEYBOARD_LL 钩子里拦截普通键（return 1）实现「单一持有者」。驱动层 eat 生效后不再需要；且钩子层面无法区分遥控器与 PC 键盘（vkey+scan code 相同，实测会把 PC 键盘的静音键 173 也当遥控器键转发）。
 
 ### 4. ATVV / 音频要点
 - GATT 服务：`AB5E0001-...`
@@ -256,3 +258,4 @@ cargo check -p remote-mic
   ```
 - 提交前检查 `git status`，避免把临时文件或平台相关 node_modules 提交进去。
 - 需要重启 Tauri dev 时，先结束旧 `remote-mic.exe` / 占用 `1420` 的进程，再重新启动。
+- **HOGP 旁路 / 吃掉模式失效时**：先调用 skill `hogp-report-path-re`（`.agent/skills/hogp-report-path-re/SKILL.md`），按其中的方法论与 Playbook 重新定位驱动报告写入点；不要凭旧偏移盲改。
