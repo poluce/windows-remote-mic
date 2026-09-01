@@ -84,6 +84,10 @@ pub enum Trigger {
     SingleClick,
     DoubleClick,
     LongPress,
+    /// 物理按下瞬间触发（麦克风 PTT 等场景）。
+    Press,
+    /// 物理松开瞬间触发。
+    Release,
 }
 
 /// 一个动作在 Windows 上可以执行的操作。
@@ -132,12 +136,48 @@ impl Default for MappingConfig {
 }
 
 impl MappingConfig {
-    /// 解析某个按钮对应的单击/双击/长按动作。
+    /// 解析某个按钮对应的触发动作（单击/双击/长按/按下/松开）。
     pub fn resolve(&self, button: ButtonId, trigger: Trigger) -> Option<&ActionKind> {
         self.bindings
             .iter()
             .find(|b| b.button == button && b.trigger == trigger)
             .map(|b| &b.action)
+    }
+
+    /// 旧版本把麦克风映射为 SingleClick；迁移为按下/松开 PTT 默认。
+    /// 返回是否发生了迁移。
+    pub fn migrate_mic_ptt(&mut self) -> bool {
+        let has_press = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::Press);
+        let has_release = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::Release);
+        if has_press || has_release {
+            return false;
+        }
+        let had_single = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::SingleClick);
+        if !had_single {
+            return false;
+        }
+        self.bindings
+            .retain(|b| !(b.button == ButtonId::Mic && b.trigger == Trigger::SingleClick));
+        self.bindings.push(KeyBinding {
+            button: ButtonId::Mic,
+            trigger: Trigger::Press,
+            action: ActionKind::Voice,
+        });
+        self.bindings.push(KeyBinding {
+            button: ButtonId::Mic,
+            trigger: Trigger::Release,
+            action: ActionKind::Voice,
+        });
+        true
     }
 }
 
@@ -149,7 +189,7 @@ pub fn action_allows_repeat(action: &ActionKind) -> bool {
     )
 }
 
-/// 构建默认的 13 键单击映射。
+/// 构建默认映射：12 键单击 + 麦克风按下/松开（PTT，Voice 动作）。
 pub fn default_mapping() -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
     use ActionKind as A;
@@ -169,7 +209,6 @@ pub fn default_mapping() -> Vec<KeyBinding> {
         (B::Tv, A::AppSwitcher),
         (B::VolumeUp, A::SystemVolumeUp),
         (B::VolumeDown, A::SystemVolumeDown),
-        (B::Mic, A::Voice),
     ];
 
     for (button, action) in singles {
@@ -179,6 +218,18 @@ pub fn default_mapping() -> Vec<KeyBinding> {
             action,
         });
     }
+
+    // 麦克风是 PTT：按下和松手各触发一次 Voice（Win+H）。
+    bindings.push(KeyBinding {
+        button: B::Mic,
+        trigger: T::Press,
+        action: A::Voice,
+    });
+    bindings.push(KeyBinding {
+        button: B::Mic,
+        trigger: T::Release,
+        action: A::Voice,
+    });
     bindings
 }
 
@@ -187,24 +238,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_has_13_single_click_bindings() {
+    fn default_has_12_single_click_and_mic_ptt() {
         let cfg = MappingConfig::default();
         assert_eq!(
             cfg.bindings
                 .iter()
                 .filter(|b| b.trigger == Trigger::SingleClick)
                 .count(),
-            13
+            12
         );
+        assert_eq!(cfg.bindings.len(), 14);
     }
 
     #[test]
-    fn mic_is_voice() {
+    fn mic_is_voice_on_press_and_release() {
         let cfg = MappingConfig::default();
         assert_eq!(
-            cfg.resolve(ButtonId::Mic, Trigger::SingleClick),
+            cfg.resolve(ButtonId::Mic, Trigger::Press),
             Some(&ActionKind::Voice)
         );
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Release),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(cfg.resolve(ButtonId::Mic, Trigger::SingleClick), None);
+    }
+
+    #[test]
+    fn migrate_mic_ptt_replaces_legacy_single_click() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Mic,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::Voice,
+            }],
+        };
+        assert!(cfg.migrate_mic_ptt());
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Press),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Release),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(cfg.resolve(ButtonId::Mic, Trigger::SingleClick), None);
+        assert!(!cfg.migrate_mic_ptt(), "已迁移后不应重复迁移");
     }
 
     #[test]

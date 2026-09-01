@@ -6,7 +6,7 @@ import {
   FALLBACK_MAPPING,
   REMOTE_BUTTONS,
   TRIGGER_LABEL,
-  TRIGGERS,
+  triggersFor,
 } from "./mapping/constants";
 import type { MappingEntry } from "./mapping/types";
 
@@ -40,6 +40,16 @@ export function MappingPage() {
     setCategory(cat?.key || "other");
     setAction(actionKey);
   }, [mapping, selected, trigger]);
+
+  // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
+  useEffect(() => {
+    const available = triggersFor(selected);
+    if (!available.some((t) => t.key === trigger)) {
+      setTrigger(available[0]?.key || "single_click");
+    }
+  }, [selected, trigger]);
+
+  const availableTriggers = triggersFor(selected);
 
   const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
   const actionLabel =
@@ -89,7 +99,7 @@ export function MappingPage() {
           <div className="wizard-group">
             <div className="wizard-label">② 触发方式</div>
             <div className="trigger-options">
-              {TRIGGERS.map((t) => (
+              {availableTriggers.map((t) => (
                 <button
                   key={t.key}
                   className={`trigger-btn ${trigger === t.key ? "active" : ""}`}

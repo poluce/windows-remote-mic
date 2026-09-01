@@ -155,7 +155,7 @@ mod tests {
         let loaded = store.load().unwrap();
         assert!(!loaded.hid_tap_eat);
         assert_eq!(loaded.selected_device_id.as_deref(), Some("device-1"));
-        assert_eq!(loaded.mapping.bindings.len(), 13);
+        assert_eq!(loaded.mapping.bindings.len(), 14);
     }
 
     #[test]

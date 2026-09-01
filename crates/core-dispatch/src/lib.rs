@@ -7,9 +7,9 @@
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
-//! 麦克风键单一信号源：HID 兜底 usage 0x3E -> vkey 116 进 `vkey_map`，
-//! 由调度器执行默认的 Mic -> Voice 映射（`core_input::toggle_voice_typing`）。
-//! ATVV Control 的 MicButtonPressed 只计数不切换，避免双源 toggle。
+//! 麦克风键也走调度器：默认映射为 Press→Voice、Release→Voice
+//! （`core_input::open_voice_typing`，Win+H）。用户可在映射页把麦克风
+//! 的按下/松开改成任意动作（如第三方语音助手），映射表不是摆设。
 //!
 //! 重复投递防护分工：
 //! - WM_APPCOMMAND 的合成按下/松开在 core-hid 源头抑制（键盘路径
@@ -38,11 +38,13 @@ use core_mapping::{action_allows_repeat, ActionKind, ButtonId, MappingConfig, Tr
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
 
-/// 长按触发来源：`release`（松开确认）或 `tick`（按住重复节拍）。
+/// 触发来源：`release`（松开确认）、`tick`（按住重复节拍）、
+/// `edge`（按下/松开边沿触发）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LongSource {
     Release,
     Tick,
+    Edge,
 }
 
 /// 单个按键的运行时状态。
@@ -183,7 +185,7 @@ impl KeyDispatcher {
             return jobs;
         };
         let rt = buttons.entry(button).or_default();
-        let fired = if pressed {
+        if pressed {
             if rt.down {
                 // 系统按住重复：只算一次物理按下
                 return jobs;
@@ -191,21 +193,25 @@ impl KeyDispatcher {
             rt.down = true;
             rt.long_executed = false;
             rt.detector.press(now);
-            None
+            // 按下边沿触发（麦克风 PTT 等）。
+            if let Some(job) = build_job(mapping, button, Trigger::Press, LongSource::Edge, rt) {
+                jobs.push(job);
+            }
         } else {
             if !rt.down {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
                 return jobs;
             }
             rt.down = false;
-            match rt.detector.release(now) {
-                FeedOutcome::Fire(ev) => Some((ev.trigger, LongSource::Release)),
-                FeedOutcome::Pending => None,
-            }
-        };
-        if let Some((trigger, source)) = fired {
-            if let Some(job) = build_job(mapping, button, trigger, source, rt) {
+            // 松开边沿触发。
+            if let Some(job) = build_job(mapping, button, Trigger::Release, LongSource::Edge, rt) {
                 jobs.push(job);
+            }
+            // 单击/双击/长按等手势确认。
+            if let FeedOutcome::Fire(ev) = rt.detector.release(now) {
+                if let Some(job) = build_job(mapping, button, ev.trigger, LongSource::Release, rt) {
+                    jobs.push(job);
+                }
             }
         }
         jobs
@@ -253,7 +259,7 @@ fn build_job(
             match source {
                 LongSource::Release => return None,
                 LongSource::Tick if !action_allows_repeat(&action) => return None,
-                LongSource::Tick => {}
+                LongSource::Tick | LongSource::Edge => {}
             }
         } else {
             rt.long_executed = true;
@@ -358,7 +364,7 @@ fn execute_action(action: &ActionKind) -> Result<(), String> {
         A::SystemVolumeDown => send_combo(&["volume_down"]),
         A::SystemVolumeMute => send_combo(&["volume_mute"]),
         A::PlayPause => send_combo(&["play_pause"]),
-        A::Voice => core_input::toggle_voice_typing()
+        A::Voice => core_input::open_voice_typing()
             .map(|_| ())
             .map_err(|e| e.to_string()),
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
@@ -391,8 +397,7 @@ mod tests {
             !map.contains_key(&172),
             "主页不应再绑定 VK_BROWSER_HOME(172)"
         );
-        // 麦克风 HID 兜底 F5 必须进调度器：ATVV Control 通道在
-        // 真机上收不到 MicButtonPressed，麦克风键实际走 usage 0x3E。
+        // 麦克风 F5 兜底 116 进调度器，走 Press/Release 映射
         assert_eq!(map.get(&116), Some(&ButtonId::Mic));
     }
 
@@ -574,11 +579,25 @@ mod tests {
         assert_eq!(map.len(), 13);
         for (vk, button) in map {
             assert!(
-                cfg.resolve(button, Trigger::SingleClick).is_some(),
+                cfg.bindings.iter().any(|b| b.button == button),
                 "vkey {vk} ({button:?}) 缺少默认映射"
             );
         }
-        assert_eq!(default_mapping().len(), 13);
+        assert_eq!(default_mapping().len(), 14);
+    }
+
+    #[test]
+    fn mic_press_and_release_fire_voice() {
+        let d = dispatcher();
+        let press_jobs = jobs_of(&d, 116, true, 0);
+        assert_eq!(press_jobs.len(), 1);
+        assert_eq!(press_jobs[0].trigger, Trigger::Press);
+        assert_eq!(press_jobs[0].action, ActionKind::Voice);
+
+        let release_jobs = jobs_of(&d, 116, false, 50);
+        assert_eq!(release_jobs.len(), 1);
+        assert_eq!(release_jobs[0].trigger, Trigger::Release);
+        assert_eq!(release_jobs[0].action, ActionKind::Voice);
     }
 
     #[test]

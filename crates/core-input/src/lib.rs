@@ -42,63 +42,18 @@ pub fn press_win_h() -> Result<()> {
     ))
 }
 
-/// 语音输入会话状态。麦克风键只有 HID 兜底这一条信号源，由调度器的
-/// Voice 动作调用 `toggle_voice_typing` 维护；`close_voice_typing` 供
-/// AudioStopped 等外部事件直接关闭并同步该状态。
-static VOICE_TYPING_ACTIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// 切换 Windows 语音输入：关闭状态 -> Escape 清理 + Win+H 开启；
-/// 开启状态 -> Escape 关闭。返回切换后的状态（true=已开启）。
+/// 打开 Windows 语音输入（Win+H）。每次都直接按 Win+H：
+/// 弹窗关闭时打开；弹窗已打开时只会重置当前输入会话（实测不会关闭弹窗），
+/// 可接受。关闭弹窗用 Esc / ✕。
 #[cfg(target_os = "windows")]
-pub fn toggle_voice_typing() -> Result<bool> {
-    use std::sync::atomic::Ordering;
-    if VOICE_TYPING_ACTIVE
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
-        crate::log_line("[input] 语音输入 -> 开启 (Win+H)");
-        // 与 bridge 旧路径一致：先清理可能残留的语音条再唤出。
-        let _ = crate::hotkey::press_escape();
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        if let Err(e) = crate::hotkey::press_win_h() {
-            VOICE_TYPING_ACTIVE.store(false, Ordering::SeqCst);
-            crate::log_error(&format!("[input] Win+H 开启失败: {e}"));
-            return Err(e);
-        }
-        Ok(true)
-    } else {
-        VOICE_TYPING_ACTIVE.store(false, Ordering::SeqCst);
-        crate::log_line("[input] 语音输入 -> 关闭 (Escape)");
-        crate::hotkey::press_escape()?;
-        Ok(false)
-    }
+pub fn open_voice_typing() -> Result<()> {
+    crate::log_line("[input] 语音输入 -> 开启 (Win+H)");
+    crate::hotkey::press_win_h()
 }
 
 /// 非 Windows 平台桩实现。
 #[cfg(not(target_os = "windows"))]
-pub fn toggle_voice_typing() -> Result<bool> {
-    Err(InputError::Windows(
-        "input injection is only implemented on Windows".to_string(),
-    ))
-}
-
-/// 由外部事件（如遥控器 AudioStopped）直接关闭语音输入：
-/// 同步共享状态并发送 Escape。
-#[cfg(target_os = "windows")]
-pub fn close_voice_typing() -> Result<()> {
-    use std::sync::atomic::Ordering;
-    if VOICE_TYPING_ACTIVE.swap(false, Ordering::SeqCst) {
-        crate::log_line("[input] 语音输入 -> 关闭 (Escape)");
-        crate::hotkey::press_escape()
-    } else {
-        Ok(())
-    }
-}
-
-/// 非 Windows 平台桩实现。
-#[cfg(not(target_os = "windows"))]
-pub fn close_voice_typing() -> Result<()> {
+pub fn open_voice_typing() -> Result<()> {
     Err(InputError::Windows(
         "input injection is only implemented on Windows".to_string(),
     ))

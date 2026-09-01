@@ -34,14 +34,25 @@ export const FALLBACK_MAPPING: MappingEntry[] = [
   { button: "tv", name: "TV", trigger: "single_click", action: "切换应用（Alt+Tab）", action_key: "app_switcher" },
   { button: "volume_up", name: "音量 +", trigger: "single_click", action: "音量 +", action_key: "system_volume_up" },
   { button: "volume_down", name: "音量 −", trigger: "single_click", action: "音量 −", action_key: "system_volume_down" },
-  { button: "mic", name: "麦克风", trigger: "single_click", action: "语音输入（Win+H）", action_key: "voice" },
+  { button: "mic", name: "麦克风", trigger: "press", action: "语音输入（Win+H）", action_key: "voice" },
+  { button: "mic", name: "麦克风", trigger: "release", action: "语音输入（Win+H）", action_key: "voice" },
 ];
 
 export const TRIGGERS: TriggerOption[] = [
   { key: "single_click", label: "单击", desc: "按一下立即执行" },
   { key: "double_click", label: "双击", desc: "0.3 秒内按两次" },
   { key: "long_press", label: "长按", desc: "按住约 0.55 秒" },
+  { key: "press", label: "按下", desc: "按下瞬间执行（PTT）" },
+  { key: "release", label: "松开", desc: "松开瞬间执行（PTT）" },
 ];
+
+/// 麦克风是 PTT 键，只有按下/松开；其它按键只有单击/双击/长按。
+export function triggersFor(button: string): TriggerOption[] {
+  if (button === "mic") {
+    return TRIGGERS.filter((t) => t.key === "press" || t.key === "release");
+  }
+  return TRIGGERS.filter((t) => t.key !== "press" && t.key !== "release");
+}
 
 export const ACTION_CATEGORIES: ActionCategory[] = [
   {

@@ -236,20 +236,23 @@ where
                 }
                 RawControlEvent::AudioStarted { .. } => {
                     let _ = eng.on_control(ControlEvent::StreamStart);
+                    // 遥控器开始推音频：同步诊断状态（心跳里的「语音输入中」）。
+                    if let Ok(mut active) = is_active_ctrl.lock() {
+                        *active = true;
+                    }
+                    diag_ctrl.set_voice_active(true);
                 }
                 RawControlEvent::AudioStopped => {
-                    // 遥控器硬件停止通知
+                    // 遥控器硬件停止通知：只停解码状态，不关语音条。
+                    // 松手后识别需要时间收尾上屏，关闭动作留给用户手动。
                     if let Ok(mut active) = is_active_ctrl.lock() {
                         if *active {
                             *active = false;
                             diag_ctrl.set_voice_active(false);
                             core_input::log_line(
-                                "[bridge] 遥控器 AudioStopped -> 关闭语音输入 (Escape)",
+                                "[bridge] 遥控器 AudioStopped -> 停止解码（语音条保持打开）",
                             );
                             let _ = eng.on_control(ControlEvent::StreamStop);
-                            if let Err(e) = core_input::close_voice_typing() {
-                                core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
-                            }
                         }
                     }
                 }

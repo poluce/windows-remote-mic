@@ -134,6 +134,8 @@ fn parse_trigger(s: &str) -> Option<Trigger> {
         "single_click" => Some(Trigger::SingleClick),
         "double_click" => Some(Trigger::DoubleClick),
         "long_press" => Some(Trigger::LongPress),
+        "press" => Some(Trigger::Press),
+        "release" => Some(Trigger::Release),
         _ => None,
     }
 }
@@ -172,6 +174,8 @@ fn trigger_key(trigger: &Trigger) -> String {
         Trigger::SingleClick => "single_click",
         Trigger::DoubleClick => "double_click",
         Trigger::LongPress => "long_press",
+        Trigger::Press => "press",
+        Trigger::Release => "release",
     }
     .to_string()
 }
@@ -299,9 +303,16 @@ pub fn run() {
 
             #[cfg(target_os = "windows")]
             let dispatcher = {
-                let cfg = config_store()
+                let mut cfg = config_store()
                     .map(|s| s.load_or_default())
                     .unwrap_or_default();
+                // 旧版本把麦克风映射为 SingleClick；迁移为按下/松开 PTT。
+                if cfg.mapping.migrate_mic_ptt() {
+                    if let Some(store) = config_store() {
+                        let _ = store.save(&cfg);
+                    }
+                    core_log::log_info("[app] 麦克风映射已迁移为按下/松开（PTT）");
+                }
                 // 把「吃掉」模式写入热更新文件：注入时据此生成 config，
                 // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);

@@ -142,7 +142,7 @@ cargo check -p remote-mic
   | 音量− | `0x81` | 标准（Keyboard Volume Down） | 174 |
   - 注：静音 usage `0x7F` 是标准键盘页 usage，但**遥控器无实体静音键**，项目映射表（`usage_to_vkey`）刻意不包含它，不参与任何按键流。
 - 三类流最终汇聚方式：
-  - 麦克风键**单一信号源**：HID 兜底 `0x3E` → vkey 116 进调度器，执行默认映射 Mic → Voice（`core_input::toggle_voice_typing`，开 Win+H / 关 Escape）。真机实测 ATVV Control 通道收不到控制包；即使收到 `MicButtonPressed`，bridge 也只计数不切换，避免双源 toggle。
+  - 麦克风键**走调度器映射表**（不是硬编码）：HID 兜底 `0x3E` → vkey 116 进 `vkey_map`，默认映射为 **Press→Voice、Release→Voice**（各发一次 Win+H：按下打开/重置会话，松手停止当前会话，弹窗保持打开让识别收尾）。用户可在映射页把麦克风的「按下/松开」改成任意动作（如第三方语音助手），映射表不是摆设。旧配置里的 Mic SingleClick 会在启动时自动迁移为 Press/Release。ATVV Control 的 `MicButtonPressed` 只计数不切换；`AudioStopped` 只停解码不关语音条。
   - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
   - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
 - 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。
@@ -181,6 +181,7 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
+- **Win+H 按键语义（实测）**：首次按 Win+H 打开语音条；弹窗已打开时再次按 Win+H **不会关闭弹窗**，只会停止/重置当前输入会话；关闭弹窗用 Esc 或点 ✕。因此麦克风键按下时**总是直接按 Win+H**（已开时只是重置会话，可接受）；关闭只靠 Esc / ✕ 或把某键映射为 Voice 动作走 toggle。
 - **Win+H 麦克风绑定机制（重要实测结论）**：
   - Windows 11 语音输入（`TextInputHost.exe`）维护专属的持久化音频偏好，**完全无视系统全局默认麦克风的切换**（无论是通过 `IPolicyConfig` 动态改全局默认，还是杀进程冷启动 `TextInputHost.exe` 均无效）。
   - **正确架构与产品规范**：
