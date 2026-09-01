@@ -40,6 +40,14 @@ pub struct Config {
     pub mapping: MappingConfig,
     #[serde(default)]
     pub key_calibrations: std::collections::HashMap<String, KeyCalibration>,
+    /// 吃掉模式：驱动层清零 HOGP 报告，系统不响应遥控器按键，
+    /// 只由本应用注入映射动作。默认开启。
+    #[serde(default = "default_hid_tap_eat")]
+    pub hid_tap_eat: bool,
+}
+
+fn default_hid_tap_eat() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -52,6 +60,7 @@ impl Default for Config {
             auto_reconnect: true,
             mapping: MappingConfig::default(),
             key_calibrations: std::collections::HashMap::new(),
+            hid_tap_eat: true,
         }
     }
 }
@@ -146,6 +155,7 @@ mod tests {
         let cfg = store.load().unwrap();
         assert_eq!(cfg.voice_mode, VoiceMode::WindowsVoiceTyping);
         assert_eq!(cfg.gain_db, 10.0);
+        assert!(cfg.hid_tap_eat, "吃掉模式默认开启");
     }
 
     #[test]

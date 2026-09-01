@@ -302,6 +302,9 @@ pub fn run() {
                 let cfg = config_store()
                     .map(|s| s.load_or_default())
                     .unwrap_or_default();
+                // 把「吃掉」模式写入热更新文件：注入时据此生成 config，
+                // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
+                core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
                 let stats_dir = std::env::var("LOCALAPPDATA")
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
@@ -377,6 +380,8 @@ pub fn run() {
             commands::connection::get_runtime_status,
             commands::connection::save_selected_device,
             commands::connection::save_output_endpoint,
+            commands::connection::get_hid_tap_eat,
+            commands::connection::set_hid_tap_eat,
             commands::connection::open_system_settings,
             commands::log::log_message,
             commands::log::get_log_info,

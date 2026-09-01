@@ -84,6 +84,30 @@ pub fn get_connection_status() -> bool {
 }
 
 #[tauri::command]
+pub fn get_hid_tap_eat() -> bool {
+    config_store()
+        .map(|s| s.load_or_default().hid_tap_eat)
+        .unwrap_or(true)
+}
+
+/// 切换「吃掉」模式：持久化到配置并写入热更新文件，Frida 脚本
+/// 秒级轮询生效，无需重新注入 WUDFHost / 重新连接。
+#[tauri::command]
+pub fn set_hid_tap_eat(enabled: bool) -> Result<bool, String> {
+    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
+    let mut cfg = store.load().unwrap_or_default();
+    cfg.hid_tap_eat = enabled;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    core_hid::tap::write_eat_mode_file(enabled);
+    core_log::log_info(&format!(
+        "[commands/connection] 吃掉模式已{}（系统{}响应遥控器按键）",
+        if enabled { "开启" } else { "关闭" },
+        if enabled { "不" } else { "会" }
+    ));
+    Ok(enabled)
+}
+
+#[tauri::command]
 pub fn get_persisted_settings() -> PersistedSettings {
     let cfg = config_store()
         .and_then(|s| s.load().ok())

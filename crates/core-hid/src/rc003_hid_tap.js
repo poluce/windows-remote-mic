@@ -17,11 +17,14 @@ const STATUS_SUCCESS = 0;
 const STATUS_PENDING = 0x103;
 const HEARTBEAT_MS = 5000;
 const RECONNECT_MS = 1000;
+const EAT_POLL_MS = 1000;
 
 let host = "127.0.0.1";
 let port = 17331;
-// 是否开启「吃掉」模式：由 Gadget config 的 parameters.eat 传入。
+// 是否开启「吃掉」模式：初始值由 Gadget config 的 parameters.eat 传入，
+// 运行中每秒轮询 eat-mode.txt 热更新（设置页切换无需重新注入）。
 let eatEnabled = false;
+let eatModePath = "C:\\ProgramData\\RemoteMic\\hid-tap\\eat-mode.txt";
 // 是否开启 IOCTL/模块追踪：由 Gadget config 的 parameters.trace 传入。
 let traceEnabled = false;
 // 保持 SocketConnection 引用，防止 QuickJS GC 提前关闭 socket。
@@ -466,6 +469,27 @@ function queueToIoctlHex(src, len) {
   }
 }
 
+// 轮询设置页写入的 eat-mode.txt（内容为 "1"/"0"），运行中热切换吃掉模式。
+function pollEatModeFile() {
+  try {
+    if (typeof File === "undefined") {
+      return;
+    }
+    const file = new File(eatModePath, "r");
+    const text = file.readText();
+    file.close();
+    const trimmed = text.trim();
+    if (trimmed !== "1" && trimmed !== "0") {
+      return;
+    }
+    const enabled = trimmed === "1";
+    if (enabled !== eatEnabled) {
+      eatEnabled = enabled;
+      emit({ kind: "eat_mode_changed", eat_enabled: enabled });
+    }
+  } catch (_e) {}
+}
+
 function scheduleReconnect() {
   if (reconnectTimer !== null) {
     return;
@@ -634,6 +658,10 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS);
 
+setInterval(() => {
+  pollEatModeFile();
+}, EAT_POLL_MS);
+
 rpc.exports = {
   async init(_stage, parameters) {
     if (parameters && parameters.host) {
@@ -642,15 +670,18 @@ rpc.exports = {
     if (parameters && parameters.port) {
       port = parameters.port;
     }
+    if (parameters && parameters.eat_file) {
+      eatModePath = parameters.eat_file;
+    }
     if (parameters && parameters.eat !== undefined) {
       eatEnabled = parameters.eat === true || parameters.eat === "true";
     }
     if (parameters && parameters.trace !== undefined) {
       traceEnabled = parameters.trace === true || parameters.trace === "true";
     }
-    if (traceEnabled || eatEnabled) {
-      installReportPathHooks();
-    }
+    // 0x20080 转发点钩子必须始终安装：eat 可运行时热切换，
+    // 不能在初始化时因 eat=false 而漏装。
+    installReportPathHooks();
     if (traceEnabled) {
       installWriteFileTrace();
     }

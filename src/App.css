@@ -223,6 +223,35 @@ button {
   margin-top: 4px;
 }
 
+/* 吃掉系统按键开关行 */
+.device-eat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.device-eat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-eat-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.device-eat-row .hint {
+  margin: 0;
+}
+
 .device-status-pill {
   font-size: 12px;
   padding: 4px 14px;

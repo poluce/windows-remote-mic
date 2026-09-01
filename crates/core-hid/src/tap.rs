@@ -197,13 +197,42 @@ fn tap_port() -> u16 {
         .unwrap_or(TAP_PORT)
 }
 
-/// 是否开启「吃掉」模式：旁路把返回/音量键的 usage 从 HOGP 报告缓冲区里
-/// 清零，让系统不处理这些键，只由本应用注入映射动作。
-/// 通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启，默认关闭（只读探针）。
+/// 是否开启「吃掉」模式：驱动层把 HOGP 报告清零，系统不响应遥控器按键，
+/// 只由本应用注入映射动作。
+///
+/// 优先级：`eat-mode.txt`（设置页写入，Frida 脚本热更新）>
+/// 环境变量 `REMOTE_MIC_HID_TAP_EAT`（开发覆盖）> 默认开启。
 fn eat_enabled() -> bool {
+    if let Some(v) = read_eat_mode_file() {
+        return v;
+    }
     std::env::var("REMOTE_MIC_HID_TAP_EAT")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+        .unwrap_or(true)
+}
+
+/// 吃掉模式热更新文件：设置页/启动时写入，Frida 脚本每秒轮询，
+/// 无需重新注入 WUDFHost 即可生效。
+fn eat_mode_file() -> PathBuf {
+    gadget_dir().join("eat-mode.txt")
+}
+
+fn read_eat_mode_file() -> Option<bool> {
+    let text = std::fs::read_to_string(eat_mode_file()).ok()?;
+    let text = text.trim();
+    if text == "1" || text.eq_ignore_ascii_case("true") {
+        Some(true)
+    } else if text == "0" || text.eq_ignore_ascii_case("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// 写入吃掉模式热更新文件（设置页切换与启动时调用）。
+pub fn write_eat_mode_file(enabled: bool) {
+    let _ = std::fs::create_dir_all(gadget_dir());
+    let _ = std::fs::write(eat_mode_file(), if enabled { "1" } else { "0" });
 }
 
 /// 是否开启 IOCTL/模块追踪：枚举 WUDFHost 的 HID/BTH 模块导出并记录所有
@@ -388,11 +417,21 @@ fn prepare_runtime() -> Result<(), String> {
     }
 
     // 写 config（文件名必须与 DLL 名匹配：frida-gadget.config）
+    // 吃掉模式热更新文件也一并就位（设置页可随时覆盖）。
+    if !eat_mode_file().is_file() {
+        write_eat_mode_file(eat_enabled());
+    }
     let cfg = serde_json::json!({
         "interaction": {
             "type": "script",
             "path": "rc003-hid-tap.js",
-            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled(), "trace": trace_enabled() },
+            "parameters": {
+                "host": "127.0.0.1",
+                "port": tap_port(),
+                "eat": eat_enabled(),
+                "trace": trace_enabled(),
+                "eat_file": eat_mode_file().to_string_lossy()
+            },
             "on_change": "ignore"
         },
         "runtime": "qjs",
@@ -669,6 +708,12 @@ fn serve_client(stream: std::net::TcpStream) {
             }
             "eaten_report" => {
                 core_log::log_info(&format!("[hid-tap] 吃掉报告: {}", msg.message));
+            }
+            "eat_mode_changed" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 吃掉模式热更新为：{}",
+                    if msg.eat_enabled { "开启" } else { "关闭" }
+                ));
             }
             "writefile_trace" => {
                 core_log::log_info(&format!(
