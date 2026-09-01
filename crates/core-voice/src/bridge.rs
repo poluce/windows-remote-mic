@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use core_atvv::protocol::{parse_control, ControlEvent, RawControlEvent, GET_CAPABILITIES_V10};
 use core_ble::capture::CaptureRecorder;
 use core_ble::gatt::AtvvLink;
-use core_input::{press_escape, press_win_h};
 
 use crate::VoiceEngine;
 
@@ -229,30 +228,34 @@ where
                 }
                 RawControlEvent::MicButtonPressed => {
                     diag_ctrl.touch_mic();
-                    // Toggle 模式：按一下开启语音输入，再次点击关闭语音输入
-                    let mut active = match is_active_ctrl.lock() {
-                        Ok(g) => g,
-                        Err(_) => return,
-                    };
-                    if !*active {
-                        *active = true;
-                        diag_ctrl.set_voice_active(true);
-                        core_input::log_line("[bridge] 麦克风按键 -> 开启语音输入 (Win+H)");
-                        let _ = press_escape();
-                        std::thread::sleep(Duration::from_millis(100));
-                        if let Err(e) = press_win_h() {
-                            core_input::log_error(&format!("[bridge] Win+H 开启失败: {e}"));
+                    // Toggle 模式：按一下开启语音输入，再次点击关闭语音输入。
+                    // 状态与 HID 兜底键（调度器 Voice 动作）共用
+                    // core_input::toggle_voice_typing，避免两条路径各记各的。
+                    match core_input::toggle_voice_typing() {
+                        Ok(true) => {
+                            let mut active = match is_active_ctrl.lock() {
+                                Ok(g) => g,
+                                Err(_) => return,
+                            };
+                            *active = true;
+                            diag_ctrl.set_voice_active(true);
+                            core_input::log_line("[bridge] 麦克风按键 -> 开启语音输入 (Win+H)");
+                            let _ = eng.on_control(ControlEvent::StreamStart);
                         }
-                        let _ = eng.on_control(ControlEvent::StreamStart);
-                    } else {
-                        *active = false;
-                        diag_ctrl.set_voice_active(false);
-                        core_input::log_line(
-                            "[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)",
-                        );
-                        let _ = eng.on_control(ControlEvent::StreamStop);
-                        if let Err(e) = press_escape() {
-                            core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
+                        Ok(false) => {
+                            let mut active = match is_active_ctrl.lock() {
+                                Ok(g) => g,
+                                Err(_) => return,
+                            };
+                            *active = false;
+                            diag_ctrl.set_voice_active(false);
+                            core_input::log_line(
+                                "[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)",
+                            );
+                            let _ = eng.on_control(ControlEvent::StreamStop);
+                        }
+                        Err(e) => {
+                            core_input::log_error(&format!("[bridge] 语音输入切换失败: {e}"));
                         }
                     }
                 }
@@ -269,7 +272,7 @@ where
                                 "[bridge] 遥控器 AudioStopped -> 关闭语音输入 (Escape)",
                             );
                             let _ = eng.on_control(ControlEvent::StreamStop);
-                            if let Err(e) = press_escape() {
+                            if let Err(e) = core_input::close_voice_typing() {
                                 core_input::log_error(&format!("[bridge] 关闭语音输入失败: {e}"));
                             }
                         }

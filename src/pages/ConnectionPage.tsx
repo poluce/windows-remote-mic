@@ -294,7 +294,7 @@ export function ConnectionPage() {
         {tapMessage && <p className="hint device-feedback">{tapMessage}</p>}
         <div className="device-eat-row">
           <div className="device-eat-info">
-            <div className="device-eat-title">吃掉系统按键</div>
+            <div className="device-eat-title">拦截 HID 按键信号</div>
             <p className="hint">
               {eatEnabled === null
                 ? "读取中…"

@@ -223,7 +223,7 @@ button {
   margin-top: 4px;
 }
 
-/* 吃掉系统按键开关行 */
+/* 拦截 HID 按键信号开关行 */
 .device-eat-row {
   display: flex;
   align-items: center;

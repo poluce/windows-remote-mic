@@ -122,8 +122,4 @@ export function markConnected(endpointsReady: boolean) {
   });
 }
 
-export function markBridgeStopped() {
-  setState({ bridgeStatus: "idle" });
-}
-
 export { tapStatusLabel };

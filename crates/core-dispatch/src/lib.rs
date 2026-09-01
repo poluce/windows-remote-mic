@@ -7,9 +7,12 @@
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
-//! 麦克风键刻意不走调度器：它是语音会话的 toggle（开/关 Win+H 语音
-//! 输入），状态与 ATVV 控制流绑定，留在 core-voice 的 bridge 内处理。
-//! 因此 `vkey_map` 中不含麦克风键（含 F5 兜底 116）。
+//! 麦克风键有两条路径，状态在 `core-input` 统一：
+//! - ATVV Control 的 MicButtonPressed 由 core-voice bridge 调
+//!   `core_input::toggle_voice_typing`；
+//! - HID 兜底 usage 0x3E -> vkey 116 正常进 `vkey_map`，由调度器执行
+//!   默认的 Mic -> Voice 映射（同样走 `toggle_voice_typing`）。
+//!   两条路径共享 `VOICE_TYPING_ACTIVE`，不会各自为政。
 //!
 //! 重复投递防护分工：
 //! - WM_APPCOMMAND 的合成按下/松开在 core-hid 源头抑制（键盘路径
@@ -268,14 +271,11 @@ fn build_job(
 
 /// 构建虚拟键 -> 物理按键反查表。
 ///
-/// 默认项来自 core-hid 的 usage 表（麦克风键除外），随后应用校准表
-/// 覆盖（校准表里 `vkey` 非空的条目优先）。
+/// 默认项来自 core-hid 的 usage 表（含麦克风 F5 兜底 116），随后应用
+/// 校准表覆盖（校准表里 `vkey` 非空的条目优先）。
 fn build_vkey_map(calibrations: &HashMap<String, KeyCalibration>) -> HashMap<u16, ButtonId> {
     let mut map = HashMap::new();
     for button in ButtonId::ALL {
-        if button == ButtonId::Mic {
-            continue;
-        }
         if let Some(usage) = core_hid::button_to_usage(button) {
             if let Some(vk) = core_hid::usage_to_vkey(usage) {
                 map.insert(vk, button);
@@ -292,9 +292,6 @@ fn build_vkey_map(calibrations: &HashMap<String, KeyCalibration>) -> HashMap<u16
         else {
             continue;
         };
-        if button == ButtonId::Mic {
-            continue;
-        }
         // 移除该按钮的默认虚拟键绑定，避免同一按钮由两个键触发；
         // 校准值之间冲突时后写的优先。
         map.retain(|_, b| *b != button);
@@ -364,12 +361,9 @@ fn execute_action(action: &ActionKind) -> Result<(), String> {
         A::SystemVolumeDown => send_combo(&["volume_down"]),
         A::SystemVolumeMute => send_combo(&["volume_mute"]),
         A::PlayPause => send_combo(&["play_pause"]),
-        A::Voice => {
-            // 与 bridge 的开启路径一致：先关闭已有的语音条再唤出
-            core_input::press_escape().map_err(|e| e.to_string())?;
-            std::thread::sleep(Duration::from_millis(100));
-            core_input::press_win_h().map_err(|e| e.to_string())
-        }
+        A::Voice => core_input::toggle_voice_typing()
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
     }
 }
@@ -388,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn vkey_map_defaults_and_mic_excluded() {
+    fn vkey_map_defaults_including_mic() {
         let map = build_vkey_map(&HashMap::new());
         assert_eq!(map.get(&38), Some(&ButtonId::Up));
         assert_eq!(map.get(&166), Some(&ButtonId::Back));
@@ -400,7 +394,9 @@ mod tests {
             !map.contains_key(&172),
             "主页不应再绑定 VK_BROWSER_HOME(172)"
         );
-        assert!(!map.contains_key(&116), "麦克风键（F5 兜底）不走调度器");
+        // 麦克风 HID 兜底 F5 必须进调度器：ATVV Control 通道在
+        // 真机上收不到 MicButtonPressed，麦克风键实际走 usage 0x3E。
+        assert_eq!(map.get(&116), Some(&ButtonId::Mic));
     }
 
     #[test]
@@ -578,7 +574,7 @@ mod tests {
     fn all_default_buttons_have_binding() {
         let map = build_vkey_map(&HashMap::new());
         let cfg = MappingConfig::default();
-        assert_eq!(map.len(), 12);
+        assert_eq!(map.len(), 13);
         for (vk, button) in map {
             assert!(
                 cfg.resolve(button, Trigger::SingleClick).is_some(),

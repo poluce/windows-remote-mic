@@ -12,14 +12,6 @@ use thiserror::Error;
 
 use core_mapping::MappingConfig;
 
-/// 语音输入目标。目前从 Windows 内置语音输入（Win+H）开始。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceMode {
-    WindowsVoiceTyping,
-    // ImeDoubao、ImeWeChat —— 预留待后续使用。
-}
-
 /// 用户校准后的物理按键特征。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyCalibration {
@@ -32,15 +24,12 @@ pub struct KeyCalibration {
 /// 顶层应用配置。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
+    /// 上次连接的设备 ID（预留：暂无自动重连读取路径）。
     pub selected_device_id: Option<String>,
-    pub output_endpoint_id: Option<String>,
-    pub voice_mode: VoiceMode,
-    pub gain_db: f32,
-    pub auto_reconnect: bool,
     pub mapping: MappingConfig,
     #[serde(default)]
     pub key_calibrations: std::collections::HashMap<String, KeyCalibration>,
-    /// 吃掉模式：驱动层清零 HOGP 报告，系统不响应遥控器按键，
+    /// 拦截 HID 按键信号：驱动层清零 HOGP 报告，系统不响应遥控器按键，
     /// 只由本应用注入映射动作。默认开启。
     #[serde(default = "default_hid_tap_eat")]
     pub hid_tap_eat: bool,
@@ -54,10 +43,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             selected_device_id: None,
-            output_endpoint_id: None,
-            voice_mode: VoiceMode::WindowsVoiceTyping,
-            gain_db: 10.0,
-            auto_reconnect: true,
             mapping: MappingConfig::default(),
             key_calibrations: std::collections::HashMap::new(),
             hid_tap_eat: true,
@@ -153,25 +138,22 @@ mod tests {
     fn missing_file_returns_defaults() {
         let (_dir, store) = temp_store();
         let cfg = store.load().unwrap();
-        assert_eq!(cfg.voice_mode, VoiceMode::WindowsVoiceTyping);
-        assert_eq!(cfg.gain_db, 10.0);
-        assert!(cfg.hid_tap_eat, "吃掉模式默认开启");
+        assert!(cfg.selected_device_id.is_none());
+        assert!(cfg.hid_tap_eat, "拦截 HID 按键信号默认开启");
     }
 
     #[test]
     fn save_then_load_roundtrip() {
         let (_dir, store) = temp_store();
         let cfg = Config {
-            output_endpoint_id: Some("cable-input".into()),
-            gain_db: 12.0,
+            hid_tap_eat: false,
             selected_device_id: Some("device-1".into()),
             ..Config::default()
         };
         store.save(&cfg).unwrap();
 
         let loaded = store.load().unwrap();
-        assert_eq!(loaded.output_endpoint_id.as_deref(), Some("cable-input"));
-        assert_eq!(loaded.gain_db, 12.0);
+        assert!(!loaded.hid_tap_eat);
         assert_eq!(loaded.selected_device_id.as_deref(), Some("device-1"));
         assert_eq!(loaded.mapping.bindings.len(), 13);
     }
@@ -181,7 +163,7 @@ mod tests {
         let (_dir, store) = temp_store();
         fs::write(store.config_path(), "{not valid json").unwrap();
         let cfg = store.load_or_default();
-        assert_eq!(cfg.voice_mode, VoiceMode::WindowsVoiceTyping);
+        assert!(cfg.hid_tap_eat);
     }
 
     #[test]

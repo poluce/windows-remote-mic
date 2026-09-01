@@ -66,6 +66,9 @@ static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
+/// 麦克风键的 HID 兜底 usage（F5）。拦截开启时由旁路投递；
+/// 拦截关闭时让 Raw Input 投递，避免 Voice toggle 被双路翻转。
+const MIC_FALLBACK_USAGE: u16 = 0x3E;
 /// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
 static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
 static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
@@ -569,7 +572,7 @@ fn serve_client(stream: std::net::TcpStream) {
                     if msg.eaten && has_usage {
                         core_log::log_info("[hid-tap] 已吃掉按键（系统不可见）");
                     }
-                    on_ioctl_bytes(&bytes);
+                    on_ioctl_bytes(&bytes, msg.eaten);
                 }
             }
             "heartbeat" => {
@@ -699,7 +702,7 @@ fn ensure_watchdog() {
         .ok();
 }
 
-fn on_ioctl_bytes(data: &[u8]) {
+fn on_ioctl_bytes(data: &[u8], eaten: bool) {
     ensure_watchdog();
 
     core_log::log_debug(&format!(
@@ -716,9 +719,16 @@ fn on_ioctl_bytes(data: &[u8]) {
         return;
     };
 
-    let mut next = hogp_payload_usages(payload);
+    let raw = hogp_payload_usages(payload);
+    let mut next = raw.clone();
     next.sort_unstable();
     next.dedup();
+    // 拦截关闭时，麦克风 HID 兜底键（0x3E/F5）由 Raw Input 路径投递；
+    // 旁路再投一次会让 Voice toggle 一秒内开又关。只在拦截开启
+    // （Raw Input 看不到该键）时由旁路投递 0x3E。
+    if !eaten {
+        next.retain(|&u| u != MIC_FALLBACK_USAGE);
+    }
 
     // 记录所有解析出的 usage，包括未知 usage，便于校准真实信号。
     if !next.is_empty() {
@@ -735,7 +745,7 @@ fn on_ioctl_bytes(data: &[u8]) {
         let active = guard.get_or_insert_with(HashMap::new);
 
         // 1. 如果收到了全 0 的报告（显式松开）
-        if next.is_empty() {
+        if raw.is_empty() {
             explicitly_released.extend(active.keys().copied());
             active.clear();
         } else {

@@ -3,22 +3,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::Emitter;
 
-use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
-
 use crate::find_install_script;
 
 /// 已 spawn 的语音桥重连循环数（每次调用 start_voice_bridge +1，永不减）。
 static BRIDGE_LOOP_SEQ: AtomicU64 = AtomicU64::new(0);
 /// 当前仍卡在 run_bridge 内的实例数（用于发现并发双桥）。
 static BRIDGE_INFLIGHT: AtomicU64 = AtomicU64::new(0);
-
-#[tauri::command]
-pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
-    match list_output_endpoints() {
-        Ok(list) if !list.is_empty() => list,
-        _ => vec![placeholder_output()],
-    }
-}
 
 /// 启动真实设备的语音桥（仅 Windows）。在工作线程中运行。
 #[tauri::command]
@@ -200,23 +190,6 @@ pub fn play_test_tone_loop(device_name: Option<String>, repetitions: Option<u32>
         let _ = device_name;
         let _ = reps;
         "测试音循环仅在 Windows 可用".to_string()
-    }
-}
-
-/// 向所选输出端点播放 1 秒测试音（模糊名称匹配）。
-#[tauri::command]
-pub fn play_test_tone(device_name: Option<String>) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        match core_audio::playback::play_test_tone(device_name.as_deref()) {
-            Ok(()) => "测试音已播放".to_string(),
-            Err(e) => format!("测试音播放失败: {e}"),
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = device_name;
-        "测试音播放仅在 Windows 可用".to_string()
     }
 }
 

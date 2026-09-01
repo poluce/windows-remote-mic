@@ -142,7 +142,7 @@ cargo check -p remote-mic
   | 音量− | `0x81` | 标准（Keyboard Volume Down） | 174 |
   - 注：静音 usage `0x7F` 是标准键盘页 usage，但**遥控器无实体静音键**，项目映射表（`usage_to_vkey`）刻意不包含它，不参与任何按键流。
 - 三类流最终汇聚方式：
-  - 麦克风键仍由 `core-voice` 桥内硬编码处理（语音会话 toggle：Win+H / Escape），不走映射表。
+  - 麦克风键双路径，状态在 `core-input` 统一：ATVV Control 的 `MicButtonPressed` 由 `core-voice` bridge 调 `core_input::toggle_voice_typing`；HID 兜底 `0x3E` → vkey 116 进调度器，执行默认映射 Mic → Voice（同样调 `toggle_voice_typing`）。真机实测 ATVV Control 通道收不到控制包，麦克风键实际走 HID 兜底。
   - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
   - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
 - 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。

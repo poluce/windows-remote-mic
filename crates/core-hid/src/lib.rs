@@ -59,24 +59,6 @@ pub fn button_to_usage(button: ButtonId) -> Option<u32> {
     })
 }
 
-/// 将 Windows 虚拟键反向解析为物理按键（usage 表的逆映射）。
-///
-/// 供按键调度器把 Raw Input 事件还原为物理按键；校准表可在此基础上
-/// 覆盖。麦克风键（F5 兜底 116）刻意不在结果中：麦克风由 ATVV 控制
-/// 流处理，避免 F5 等同虚拟键误触发语音。
-pub fn vkey_to_button(vkey: u16) -> Option<ButtonId> {
-    BUTTON_USAGE_MAP.iter().find_map(|&(usage, button)| {
-        if button == ButtonId::Mic {
-            return None;
-        }
-        if usage_to_vkey(usage) == Some(vkey) && usage_to_button(usage) == Some(button) {
-            Some(button)
-        } else {
-            None
-        }
-    })
-}
-
 /// 解析单个 Raw Input 键盘报告，得到按下的按键列表。
 ///
 /// 每个非零字节都是一个键盘 usage；未知 usage 会被忽略。
@@ -247,24 +229,6 @@ mod tests {
     #[test]
     fn unknown_usages_are_ignored() {
         assert_eq!(parse_keyboard_report(&[0x01, 0xFF, 0x00]), Vec::new());
-    }
-
-    #[test]
-    fn vkey_reverse_map_resolves_buttons() {
-        assert_eq!(vkey_to_button(38), Some(ButtonId::Up));
-        assert_eq!(vkey_to_button(37), Some(ButtonId::Left));
-        assert_eq!(vkey_to_button(13), Some(ButtonId::Ok));
-        assert_eq!(vkey_to_button(166), Some(ButtonId::Back));
-        assert_eq!(vkey_to_button(175), Some(ButtonId::VolumeUp));
-        assert_eq!(vkey_to_button(174), Some(ButtonId::VolumeDown));
-        assert_eq!(vkey_to_button(93), Some(ButtonId::Menu));
-        assert_eq!(vkey_to_button(255), Some(ButtonId::Power));
-        // 主页：实测 Windows 把键盘页 0x4A 映射为 VK_HOME(36)，不是 VK_BROWSER_HOME(172)
-        assert_eq!(vkey_to_button(36), Some(ButtonId::Home));
-        assert_eq!(vkey_to_button(172), None);
-        // 麦克风（F5）与未映射的静音键不参与反查
-        assert_eq!(vkey_to_button(116), None);
-        assert_eq!(vkey_to_button(173), None);
     }
 
     #[test]
