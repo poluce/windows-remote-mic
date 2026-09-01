@@ -42,8 +42,9 @@ pub fn press_win_h() -> Result<()> {
     ))
 }
 
-/// 语音输入会话状态。bridge 的 ATVV 控制键与调度器的 HID 兜底键
-/// 共用这一份状态，保证两次按键之间的 toggle 语义一致。
+/// 语音输入会话状态。麦克风键只有 HID 兜底这一条信号源，由调度器的
+/// Voice 动作调用 `toggle_voice_typing` 维护；`close_voice_typing` 供
+/// AudioStopped 等外部事件直接关闭并同步该状态。
 static VOICE_TYPING_ACTIVE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 

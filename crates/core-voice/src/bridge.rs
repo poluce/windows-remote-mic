@@ -227,37 +227,12 @@ where
                     }
                 }
                 RawControlEvent::MicButtonPressed => {
+                    // 语音 toggle 已由 HID 兜底键（usage 0x3E -> 调度器 Voice 动作）
+                    // 单一持有；控制通道事件仅计数，不再切换语音输入，避免双源。
                     diag_ctrl.touch_mic();
-                    // Toggle 模式：按一下开启语音输入，再次点击关闭语音输入。
-                    // 状态与 HID 兜底键（调度器 Voice 动作）共用
-                    // core_input::toggle_voice_typing，避免两条路径各记各的。
-                    match core_input::toggle_voice_typing() {
-                        Ok(true) => {
-                            let mut active = match is_active_ctrl.lock() {
-                                Ok(g) => g,
-                                Err(_) => return,
-                            };
-                            *active = true;
-                            diag_ctrl.set_voice_active(true);
-                            core_input::log_line("[bridge] 麦克风按键 -> 开启语音输入 (Win+H)");
-                            let _ = eng.on_control(ControlEvent::StreamStart);
-                        }
-                        Ok(false) => {
-                            let mut active = match is_active_ctrl.lock() {
-                                Ok(g) => g,
-                                Err(_) => return,
-                            };
-                            *active = false;
-                            diag_ctrl.set_voice_active(false);
-                            core_input::log_line(
-                                "[bridge] 麦克风按键再次点击 -> 关闭语音输入 (Escape)",
-                            );
-                            let _ = eng.on_control(ControlEvent::StreamStop);
-                        }
-                        Err(e) => {
-                            core_input::log_error(&format!("[bridge] 语音输入切换失败: {e}"));
-                        }
-                    }
+                    core_log::log_debug(
+                        "[bridge] 控制通道麦克风事件（语音 toggle 由 HID 兜底处理，忽略）",
+                    );
                 }
                 RawControlEvent::AudioStarted { .. } => {
                     let _ = eng.on_control(ControlEvent::StreamStart);

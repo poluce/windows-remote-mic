@@ -7,12 +7,9 @@
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
-//! 麦克风键有两条路径，状态在 `core-input` 统一：
-//! - ATVV Control 的 MicButtonPressed 由 core-voice bridge 调
-//!   `core_input::toggle_voice_typing`；
-//! - HID 兜底 usage 0x3E -> vkey 116 正常进 `vkey_map`，由调度器执行
-//!   默认的 Mic -> Voice 映射（同样走 `toggle_voice_typing`）。
-//!   两条路径共享 `VOICE_TYPING_ACTIVE`，不会各自为政。
+//! 麦克风键单一信号源：HID 兜底 usage 0x3E -> vkey 116 进 `vkey_map`，
+//! 由调度器执行默认的 Mic -> Voice 映射（`core_input::toggle_voice_typing`）。
+//! ATVV Control 的 MicButtonPressed 只计数不切换，避免双源 toggle。
 //!
 //! 重复投递防护分工：
 //! - WM_APPCOMMAND 的合成按下/松开在 core-hid 源头抑制（键盘路径
