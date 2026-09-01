@@ -19,11 +19,12 @@ const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
-/// 针对未发送显式松开报告的 HOGP 特殊键（如返回键），看门狗超时自动释放时间。
+/// 看门狗自动释放超时：仅作为「松开报告丢失」的兜底。
 ///
-/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖，便于真机调参：
-/// 过短会把长按截断成单击，过长会把单击误判成长按。
-const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(150);
+/// 实测 RC003 所有按键都会发送显式松开报告；按住期间遥控器不重复发报告，
+/// 因此该值必须大于长按阈值（550ms），否则长按会被看门狗截断成单击。
+/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖调参。
+const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(2000);
 /// 看门狗轮询检查间隔。
 const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
 
@@ -696,6 +697,9 @@ fn ensure_watchdog() {
                 continue;
             }
             for usage in expired {
+                core_log::log_debug(&format!(
+                    "[hid-tap] 看门狗自动释放 usage=0x{usage:04X}（松开报告丢失兜底）"
+                ));
                 emit_usage(usage, false);
             }
         })
