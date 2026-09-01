@@ -1,5 +1,5 @@
 //! Remote Mic Tauri 应用外壳。
-//! 菜单键 → 快捷菜单：调度器经 app_action 回调调用 toggle_quick_menu。
+//! 菜单键 → 快捷菜单：调度器经统一应用事件出口（quick_menu::handle_app_event）处理。
 
 mod commands;
 
@@ -10,7 +10,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use core_atvv::ImaAdpcmDecoder;
-use core_dispatch::KeyDispatcher;
+use core_dispatch::{AppEvent, KeyDispatcher};
 use core_mapping::{ActionKind, ButtonId, Trigger};
 
 #[cfg(target_os = "windows")]
@@ -329,16 +329,11 @@ pub fn run() {
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
-                // 应用动作回调：菜单键等映射到 ToggleQuickMenu 时由 Tauri 层开关快捷菜单。
-                let app_for_menu = app.handle().clone();
-                dispatcher.set_app_action_handler(Some(Arc::new(move |action| {
-                    if let ActionKind::ToggleQuickMenu = action {
-                        if let Err(e) =
-                            commands::quick_menu::toggle_quick_menu(app_for_menu.clone())
-                        {
-                            core_log::log_warn(&format!("[dispatch] 快捷菜单切换失败: {e}"));
-                        }
-                    }
+                // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
+                // 统一交给 commands::quick_menu::handle_app_event 处理。
+                let app_for_events = app.handle().clone();
+                dispatcher.set_app_event_handler(Some(Arc::new(move |event: AppEvent| {
+                    commands::quick_menu::handle_app_event(app_for_events.clone(), event);
                 })));
                 let stats_dir = std::env::var("LOCALAPPDATA")
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))

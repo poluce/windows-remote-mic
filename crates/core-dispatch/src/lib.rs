@@ -53,6 +53,26 @@ struct Inner {
     vkey_map: HashMap<u16, ButtonId>,
     buttons: HashMap<ButtonId, ButtonRuntime>,
     enabled: bool,
+    /// 输入路由模式：普通映射 / 快捷菜单独占（按键直转菜单回调）。
+    mode: InputMode,
+}
+
+/// 输入路由模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    /// 普通模式：按键走触发检测与映射。
+    Normal,
+    /// 快捷菜单独占模式：所有按键事件直接转发给应用事件回调。
+    QuickMenu,
+}
+
+/// 需要 Tauri 层执行的应用事件（调度器 → 应用壳的唯一出口）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppEvent {
+    /// 映射动作：打开/关闭快捷菜单（由 `ToggleQuickMenu` 动作触发）。
+    ToggleQuickMenu,
+    /// 菜单独占模式下遥控器按键直转（参数 = 物理按键, 是否按下边沿）。
+    MenuKey(ButtonId, bool),
 }
 
 /// 一条待执行的动作任务。
@@ -71,9 +91,10 @@ pub struct KeyDispatcher {
     inner: Mutex<Inner>,
     jobs_tx: mpsc::Sender<ActionJob>,
     jobs_rx: Mutex<Option<mpsc::Receiver<ActionJob>>>,
-    /// 需要 Tauri 层执行的应用动作回调（如打开/关闭快捷菜单）。
-    /// 在 `spawn_runtime` 之前设置；执行线程遇到此类动作时调用。
-    app_action: Mutex<Option<Arc<dyn Fn(ActionKind) + Send + Sync>>>,
+    /// 应用事件出口：需要 Tauri 层执行的动作（开关快捷菜单、
+    /// 菜单独占模式的按键直转）统一经此回调解出。须在 `spawn_runtime`
+    /// 之前设置。
+    app_event: Mutex<Option<Arc<dyn Fn(AppEvent) + Send + Sync>>>,
 }
 
 impl KeyDispatcher {
@@ -90,29 +111,44 @@ impl KeyDispatcher {
                 buttons: default_button_runtimes(),
                 mapping,
                 enabled: true,
+                mode: InputMode::Normal,
             }),
             jobs_tx: tx,
             jobs_rx: Mutex::new(Some(rx)),
-            app_action: Mutex::new(None),
+            app_event: Mutex::new(None),
         })
     }
 
-    /// 设置应用动作回调（如打开/关闭快捷菜单）。须在 `spawn_runtime`
-    /// 之前调用；执行线程遇到 `ActionKind::ToggleQuickMenu` 等应用动作时
-    /// 会调用该回调，而不是做输入注入。
-    pub fn set_app_action_handler(&self, handler: Option<Arc<dyn Fn(ActionKind) + Send + Sync>>) {
-        *self.app_action.lock().unwrap() = handler;
+    /// 设置应用事件出口（开关快捷菜单、菜单独占按键直转等）。
+    /// 须在 `spawn_runtime` 之前调用。
+    pub fn set_app_event_handler(&self, handler: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>) {
+        *self.app_event.lock().unwrap() = handler;
+    }
+
+    /// 切换输入路由模式：快捷菜单独占模式下所有按键绕过触发检测与映射，
+    /// 直接以 `AppEvent::MenuKey` 转发给应用事件出口；切回普通模式恢复
+    /// 常规调度。切换时清空按键中间状态。
+    pub fn set_input_mode(&self, mode: InputMode) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.mode == mode {
+            return;
+        }
+        inner.mode = mode;
+        for rt in inner.buttons.values_mut() {
+            *rt = ButtonRuntime::default();
+        }
+        core_log::log_line(&format!("[dispatch] 输入模式已切换: {mode:?}"));
     }
 
     /// 启动动作执行线程与 tick 线程。
     ///
     /// `stats_dir` 为按键统计存储目录（`core-stats`）。
     pub fn spawn_runtime(self: &Arc<Self>, stats_dir: PathBuf) {
-        let app_action = self.app_action.lock().unwrap().clone();
+        let app_event = self.app_event.lock().unwrap().clone();
         if let Some(rx) = self.jobs_rx.lock().unwrap().take() {
             std::thread::Builder::new()
                 .name("rc003-dispatch-exec".into())
-                .spawn(move || execute_loop(rx, stats_dir, app_action))
+                .spawn(move || execute_loop(rx, stats_dir, app_event))
                 .ok();
         }
         let weak = Arc::downgrade(self);
@@ -131,7 +167,22 @@ impl KeyDispatcher {
     }
 
     /// 事件入口：一个虚拟键的按下/松开。
+    ///
+    /// 快捷菜单独占模式下不经过触发检测与映射，直接以
+    /// `AppEvent::MenuKey` 转发给应用事件出口。
     pub fn on_vkey(&self, vkey: u16, pressed: bool) {
+        let (mode, button) = {
+            let inner = self.inner.lock().unwrap();
+            (inner.mode, inner.vkey_map.get(&vkey).copied())
+        };
+        if mode == InputMode::QuickMenu {
+            if let Some(cb) = self.app_event.lock().unwrap().as_ref() {
+                if let Some(button) = button {
+                    cb(AppEvent::MenuKey(button, pressed));
+                }
+            }
+            return;
+        }
         for job in self.feed(vkey, pressed, self.now_ms()) {
             let _ = self.jobs_tx.send(job);
         }
@@ -329,11 +380,11 @@ fn default_button_runtimes() -> HashMap<ButtonId, ButtonRuntime> {
 fn execute_loop(
     rx: mpsc::Receiver<ActionJob>,
     stats_dir: PathBuf,
-    app_action: Option<Arc<dyn Fn(ActionKind) + Send + Sync>>,
+    app_event: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>,
 ) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
-        let outcome = execute_action(&job.action, app_action.as_ref());
+        let outcome = execute_action(&job.action, app_event.as_ref());
         match &outcome {
             Ok(()) => core_log::log_info(&format!(
                 "[dispatch] 已执行: {} {:?} -> {:?}",
@@ -362,7 +413,7 @@ fn send_combo(tokens: &[&str]) -> Result<(), String> {
 
 fn execute_action(
     action: &ActionKind,
-    app_action: Option<&Arc<dyn Fn(ActionKind) + Send + Sync>>,
+    app_event: Option<&Arc<dyn Fn(AppEvent) + Send + Sync>>,
 ) -> Result<(), String> {
     use ActionKind as A;
     match action {
@@ -389,12 +440,12 @@ fn execute_action(
             .map(|_| ())
             .map_err(|e| e.to_string()),
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
-        A::ToggleQuickMenu => match app_action {
+        A::ToggleQuickMenu => match app_event {
             Some(handler) => {
-                handler(A::ToggleQuickMenu);
+                handler(AppEvent::ToggleQuickMenu);
                 Ok(())
             }
-            None => Err("快捷菜单动作未接线（缺少应用回调）".to_string()),
+            None => Err("快捷菜单动作未接线（缺少应用事件出口）".to_string()),
         },
     }
 }
@@ -638,16 +689,49 @@ mod tests {
     }
 
     #[test]
-    fn toggle_quick_menu_calls_app_handler() {
+    fn toggle_quick_menu_calls_app_event_handler() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
-        let handler: Arc<dyn Fn(ActionKind) + Send + Sync> = Arc::new({
+        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
             let calls = calls.clone();
-            move |_| {
+            move |event| {
+                assert_eq!(event, AppEvent::ToggleQuickMenu);
                 calls.fetch_add(1, Ordering::SeqCst);
             }
         });
         execute_action(&ActionKind::ToggleQuickMenu, Some(&handler)).unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn quick_menu_mode_routes_keys_to_handler_and_skips_mapping() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let d = dispatcher();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
+            let calls = calls.clone();
+            move |event| match event {
+                AppEvent::MenuKey(ButtonId::Up, true) => {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+        });
+        d.set_app_event_handler(Some(handler));
+        d.set_input_mode(InputMode::QuickMenu);
+        d.on_vkey(38, true);
+        d.on_vkey(38, false);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "按下边沿应转发一次");
+        assert!(
+            d.tick_once(400).is_empty(),
+            "菜单独占模式下不应产生普通映射任务"
+        );
+        // 切回普通模式后恢复普通单击。
+        d.set_input_mode(InputMode::Normal);
+        d.on_vkey(38, true);
+        d.on_vkey(38, false);
+        let jobs = d.tick_once(400);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].action, ActionKind::ArrowUp);
     }
 }
