@@ -42,6 +42,7 @@
 ### 变更
 - 长按触发简化为只触发一次，移除「按住连发」逻辑；长按阈值与双击窗口改为可配置。
 - HOGP 旁路看门狗超时 150ms → 2000ms，修复长按被提前截断为单击的问题。
+- HOGP 看门狗对麦克风键（`0x3E`）禁用自动释放：长按麦克风期间遥控器不重复发 HID 报告（只推 ATVV 音频），此前 2s 超时会把 Release 提前触发，导致长按中第二次 Win+H 取消语音输入；现在由真实 HID 松开报告或 ATVV AudioStopped 结束长按。
 - `AGENTS.md` 移除 clean-room / 外部仓库引用限制。
 - HOGP 探针诊断代码收敛：删除模块/导入枚举、函数表 dump、IOCTL 全量追踪、反汇编/调用栈上报等噪音，轻量追踪仅在 `REMOTE_MIC_HID_TAP_TRACE=1` 时输出。
 - 清理死代码：移除旧的 `READ_CHARACTERISTIC_IOCTL` 清缓冲方案（已证无效）、语音切换状态机、未使用的音频端点/诊断命令、`VoiceMode`、`action_allows_repeat` 等。

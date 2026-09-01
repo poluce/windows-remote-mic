@@ -683,6 +683,14 @@ fn ensure_watchdog() {
                 if let Ok(mut guard) = ACTIVE_USAGES.lock() {
                     if let Some(active) = guard.as_mut() {
                         active.retain(|&usage, &mut last_seen| {
+                            // 麦克风键是 PTT：长按期间遥控器不重复发 HID 报告，
+                            // 只持续推 ATVV 音频；真正结束由 HID 松开报告或
+                            // ATVV AudioStopped 负责。若按通用超时自动释放，
+                            // 会在长按中把 Release 提前触发（Win+H 被二次按下
+                            // 导致语音输入被取消）。因此对 0x3E 禁用看门狗兜底。
+                            if usage == MIC_FALLBACK_USAGE {
+                                return true;
+                            }
                             if now.duration_since(last_seen) > auto_release_timeout() {
                                 expired.push(usage);
                                 false
