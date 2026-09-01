@@ -30,7 +30,7 @@ export const FALLBACK_MAPPING: MappingEntry[] = [
   { button: "ok", name: "确定", trigger: "single_click", action: "回车（Enter）", action_key: "return" },
   { button: "back", name: "返回", trigger: "single_click", action: "删除（退格）", action_key: "delete_backward" },
   { button: "home", name: "主页", trigger: "single_click", action: "显示桌面（Win+D）", action_key: "show_desktop" },
-  { button: "menu", name: "菜单", trigger: "single_click", action: "右键菜单（上下文菜单）", action_key: "context_menu" },
+  { button: "menu", name: "菜单", trigger: "single_click", action: "快捷菜单（开/关）", action_key: "toggle_quick_menu" },
   { button: "tv", name: "TV", trigger: "single_click", action: "切换应用（Alt+Tab）", action_key: "app_switcher" },
   { button: "volume_up", name: "音量 +", trigger: "single_click", action: "音量 +", action_key: "system_volume_up" },
   { button: "volume_down", name: "音量 −", trigger: "single_click", action: "音量 −", action_key: "system_volume_down" },
@@ -75,6 +75,7 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "show_desktop", label: "显示桌面" },
       { key: "context_menu", label: "右键菜单" },
       { key: "app_switcher", label: "切换应用" },
+      { key: "toggle_quick_menu", label: "快捷菜单（开/关）" },
     ],
   },
   {

@@ -1,4 +1,5 @@
 //! Remote Mic Tauri 应用外壳。
+//! 菜单键 → 快捷菜单：调度器经 app_action 回调调用 toggle_quick_menu。
 
 mod commands;
 
@@ -159,6 +160,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
         "system_volume_mute" => A::SystemVolumeMute,
         "play_pause" => A::PlayPause,
         "voice" => A::Voice,
+        "toggle_quick_menu" => A::ToggleQuickMenu,
         _ => return None,
     })
 }
@@ -201,6 +203,7 @@ fn action_key(action: &ActionKind) -> String {
         ActionKind::PlayPause => "play_pause",
         ActionKind::Voice => "voice",
         ActionKind::OpenApp(_) => "open_app",
+        ActionKind::ToggleQuickMenu => "toggle_quick_menu",
     }
     .to_string()
 }
@@ -225,6 +228,7 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::PlayPause => "播放/暂停".into(),
         ActionKind::Voice => "语音输入（Win+H）".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
+        ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }
 }
 
@@ -313,11 +317,29 @@ pub fn run() {
                     }
                     core_log::log_info("[app] 麦克风映射已迁移为按下/松开（PTT）");
                 }
+                // 旧版本把菜单键映射为右键菜单；迁移为打开/关闭快捷菜单。
+                if cfg.mapping.migrate_menu_quickmenu() {
+                    if let Some(store) = config_store() {
+                        let _ = store.save(&cfg);
+                    }
+                    core_log::log_info("[app] 菜单键映射已迁移为快捷菜单（开/关）");
+                }
                 // 把「吃掉」模式写入热更新文件：注入时据此生成 config，
                 // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
+                // 应用动作回调：菜单键等映射到 ToggleQuickMenu 时由 Tauri 层开关快捷菜单。
+                let app_for_menu = app.handle().clone();
+                dispatcher.set_app_action_handler(Some(Arc::new(move |action| {
+                    if let ActionKind::ToggleQuickMenu = action {
+                        if let Err(e) =
+                            commands::quick_menu::toggle_quick_menu(app_for_menu.clone())
+                        {
+                            core_log::log_warn(&format!("[dispatch] 快捷菜单切换失败: {e}"));
+                        }
+                    }
+                })));
                 let stats_dir = std::env::var("LOCALAPPDATA")
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -406,6 +428,7 @@ pub fn run() {
             commands::mapping::get_trigger_timing,
             commands::mapping::set_trigger_timing,
             commands::audio::start_voice_bridge,
+            commands::audio::stop_voice_bridge,
             commands::audio::simulate_voice_chain,
             commands::audio::vb_cable_status,
             commands::audio::install_vb_cable,

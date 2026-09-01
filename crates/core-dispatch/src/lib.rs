@@ -71,6 +71,9 @@ pub struct KeyDispatcher {
     inner: Mutex<Inner>,
     jobs_tx: mpsc::Sender<ActionJob>,
     jobs_rx: Mutex<Option<mpsc::Receiver<ActionJob>>>,
+    /// 需要 Tauri 层执行的应用动作回调（如打开/关闭快捷菜单）。
+    /// 在 `spawn_runtime` 之前设置；执行线程遇到此类动作时调用。
+    app_action: Mutex<Option<Arc<dyn Fn(ActionKind) + Send + Sync>>>,
 }
 
 impl KeyDispatcher {
@@ -90,17 +93,26 @@ impl KeyDispatcher {
             }),
             jobs_tx: tx,
             jobs_rx: Mutex::new(Some(rx)),
+            app_action: Mutex::new(None),
         })
+    }
+
+    /// 设置应用动作回调（如打开/关闭快捷菜单）。须在 `spawn_runtime`
+    /// 之前调用；执行线程遇到 `ActionKind::ToggleQuickMenu` 等应用动作时
+    /// 会调用该回调，而不是做输入注入。
+    pub fn set_app_action_handler(&self, handler: Option<Arc<dyn Fn(ActionKind) + Send + Sync>>) {
+        *self.app_action.lock().unwrap() = handler;
     }
 
     /// 启动动作执行线程与 tick 线程。
     ///
     /// `stats_dir` 为按键统计存储目录（`core-stats`）。
     pub fn spawn_runtime(self: &Arc<Self>, stats_dir: PathBuf) {
+        let app_action = self.app_action.lock().unwrap().clone();
         if let Some(rx) = self.jobs_rx.lock().unwrap().take() {
             std::thread::Builder::new()
                 .name("rc003-dispatch-exec".into())
-                .spawn(move || execute_loop(rx, stats_dir))
+                .spawn(move || execute_loop(rx, stats_dir, app_action))
                 .ok();
         }
         let weak = Arc::downgrade(self);
@@ -314,10 +326,14 @@ fn default_button_runtimes() -> HashMap<ButtonId, ButtonRuntime> {
 }
 
 /// 执行线程主体：执行动作并记录按键统计。
-fn execute_loop(rx: mpsc::Receiver<ActionJob>, stats_dir: PathBuf) {
+fn execute_loop(
+    rx: mpsc::Receiver<ActionJob>,
+    stats_dir: PathBuf,
+    app_action: Option<Arc<dyn Fn(ActionKind) + Send + Sync>>,
+) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
-        let outcome = execute_action(&job.action);
+        let outcome = execute_action(&job.action, app_action.as_ref());
         match &outcome {
             Ok(()) => core_log::log_info(&format!(
                 "[dispatch] 已执行: {} {:?} -> {:?}",
@@ -344,7 +360,10 @@ fn send_combo(tokens: &[&str]) -> Result<(), String> {
     core_input::send_key_combo(tokens).map_err(|e| e.to_string())
 }
 
-fn execute_action(action: &ActionKind) -> Result<(), String> {
+fn execute_action(
+    action: &ActionKind,
+    app_action: Option<&Arc<dyn Fn(ActionKind) + Send + Sync>>,
+) -> Result<(), String> {
     use ActionKind as A;
     match action {
         A::Disabled => Ok(()),
@@ -370,6 +389,13 @@ fn execute_action(action: &ActionKind) -> Result<(), String> {
             .map(|_| ())
             .map_err(|e| e.to_string()),
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
+        A::ToggleQuickMenu => match app_action {
+            Some(handler) => {
+                handler(A::ToggleQuickMenu);
+                Ok(())
+            }
+            None => Err("快捷菜单动作未接线（缺少应用回调）".to_string()),
+        },
     }
 }
 
@@ -603,5 +629,25 @@ mod tests {
         for vk in map.keys() {
             assert!(seen.insert(*vk), "虚拟键 {vk} 被映射到多个按键");
         }
+    }
+
+    #[test]
+    fn toggle_quick_menu_without_handler_errors() {
+        let err = execute_action(&ActionKind::ToggleQuickMenu, None).unwrap_err();
+        assert!(err.contains("未接线"), "缺少回调时应报错：{err}");
+    }
+
+    #[test]
+    fn toggle_quick_menu_calls_app_handler() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler: Arc<dyn Fn(ActionKind) + Send + Sync> = Arc::new({
+            let calls = calls.clone();
+            move |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        execute_action(&ActionKind::ToggleQuickMenu, Some(&handler)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

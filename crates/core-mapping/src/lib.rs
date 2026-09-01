@@ -111,6 +111,8 @@ pub enum ActionKind {
     PlayPause,
     Voice,
     OpenApp(String),
+    /// 打开/关闭应用自带的右下角快捷菜单（由 Tauri 层执行）。
+    ToggleQuickMenu,
 }
 
 /// 一个 (button, gesture) -> action 绑定。
@@ -179,6 +181,22 @@ impl MappingConfig {
         });
         true
     }
+
+    /// 旧版本把菜单键映射为右键菜单（ContextMenu）；迁移为打开/关闭
+    /// 应用自带的快捷菜单。返回是否发生了迁移。
+    pub fn migrate_menu_quickmenu(&mut self) -> bool {
+        let mut changed = false;
+        for b in self.bindings.iter_mut() {
+            if b.button == ButtonId::Menu
+                && b.trigger == Trigger::SingleClick
+                && b.action == ActionKind::ContextMenu
+            {
+                b.action = ActionKind::ToggleQuickMenu;
+                changed = true;
+            }
+        }
+        changed
+    }
 }
 
 /// 构建默认映射：12 键单击 + 麦克风按下/松开（PTT，Voice 动作）。
@@ -197,7 +215,7 @@ pub fn default_mapping() -> Vec<KeyBinding> {
         (B::Ok, A::Return),
         (B::Back, A::DeleteBackward),
         (B::Home, A::ShowDesktop),
-        (B::Menu, A::ContextMenu),
+        (B::Menu, A::ToggleQuickMenu),
         (B::Tv, A::AppSwitcher),
         (B::VolumeUp, A::SystemVolumeUp),
         (B::VolumeDown, A::SystemVolumeDown),
@@ -282,5 +300,47 @@ mod tests {
     fn resolve_missing_trigger_returns_none() {
         let cfg = MappingConfig::default();
         assert_eq!(cfg.resolve(ButtonId::Ok, Trigger::LongPress), None);
+    }
+
+    #[test]
+    fn menu_defaults_to_toggle_quick_menu() {
+        let cfg = MappingConfig::default();
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::ToggleQuickMenu)
+        );
+    }
+
+    #[test]
+    fn migrate_menu_quickmenu_replaces_legacy_context_menu() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Menu,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::ContextMenu,
+            }],
+        };
+        assert!(cfg.migrate_menu_quickmenu());
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::ToggleQuickMenu)
+        );
+        assert!(!cfg.migrate_menu_quickmenu(), "已迁移后不应重复迁移");
+    }
+
+    #[test]
+    fn migrate_menu_quickmenu_keeps_custom_menu_binding() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Menu,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::OpenApp("notepad".into()),
+            }],
+        };
+        assert!(!cfg.migrate_menu_quickmenu(), "自定义映射不应被迁移覆盖");
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::OpenApp("notepad".into()))
+        );
     }
 }
