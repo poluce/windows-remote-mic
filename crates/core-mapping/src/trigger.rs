@@ -143,6 +143,11 @@ impl TriggerDetector {
     pub fn set_double_click_window_ms(&mut self, ms: u64) {
         self.double_click_window_ms = ms;
     }
+
+    /// 本次按住是否已被识别为长按（用于门控 Press/Release 边沿触发）。
+    pub fn is_long_held(&self) -> bool {
+        self.long_fired
+    }
 }
 
 #[cfg(test)]

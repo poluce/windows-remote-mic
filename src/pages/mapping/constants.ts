@@ -42,8 +42,8 @@ export const TRIGGERS: TriggerOption[] = [
   { key: "single_click", label: "单击", desc: "按一下立即执行" },
   { key: "double_click", label: "双击", desc: "0.3 秒内按两次" },
   { key: "long_press", label: "长按", desc: "按住约 0.55 秒" },
-  { key: "press", label: "按下", desc: "按下瞬间执行（PTT）" },
-  { key: "release", label: "松开", desc: "松开瞬间执行（PTT）" },
+  { key: "press", label: "按下", desc: "识别为长按后触发（PTT）" },
+  { key: "release", label: "松开", desc: "长按结束后触发（PTT）" },
 ];
 
 /// 麦克风是 PTT 键，只有按下/松开；其它按键只有单击/双击/长按。

@@ -143,7 +143,7 @@ cargo check -p remote-mic
   | 音量− | `0x81` | 标准（Keyboard Volume Down） | 174 |
   - 注：静音 usage `0x7F` 是标准键盘页 usage，但**遥控器无实体静音键**，项目映射表（`usage_to_vkey`）刻意不包含它，不参与任何按键流。
 - 三类流最终汇聚方式：
-  - 麦克风键**走调度器映射表**（不是硬编码）：HID 兜底 `0x3E` → vkey 116 进 `vkey_map`，默认映射为 **Press→Voice、Release→Voice**（各发一次 Win+H：按下打开/重置会话，松手停止当前会话，弹窗保持打开让识别收尾）。用户可在映射页把麦克风的「按下/松开」改成任意动作（如第三方语音助手），映射表不是摆设。旧配置里的 Mic SingleClick 会在启动时自动迁移为 Press/Release。ATVV Control 的 `MicButtonPressed` 只计数不切换；`AudioStopped` 只停解码不关语音条。
+  - 麦克风键**走调度器映射表**（不是硬编码）：HID 兜底 `0x3E` → vkey 116 进 `vkey_map`，默认映射为 **Press→Voice、Release→Voice**。Press/Release 是**长按门控**：按住达到长按阈值（默认 550ms）才发 Press（Win+H 打开/重置会话），长按结束（松开）才发 Release（Win+H 停止当前会话）；快速点按（单击/双击）不产生 Press/Release。用户可在映射页把麦克风的「按下/松开」改成任意动作（如第三方语音助手）。旧配置里的 Mic SingleClick 会在启动时自动迁移为 Press/Release。ATVV Control 的 `MicButtonPressed` 只计数不切换；`AudioStopped` 只停解码不关语音条。
   - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
   - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
 - 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。

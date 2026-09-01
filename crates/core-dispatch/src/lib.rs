@@ -193,22 +193,24 @@ impl KeyDispatcher {
             rt.down = true;
             rt.long_executed = false;
             rt.detector.press(now);
-            // 按下边沿触发（麦克风 PTT 等）。
-            if let Some(job) = build_job(mapping, button, Trigger::Press, rt) {
-                jobs.push(job);
-            }
+            // Press 边沿触发不在这里发：等 tick 识别为长按后才发，
+            // 快速点按（单击/双击）不产生 Press/Release。
         } else {
             if !rt.down {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
                 return jobs;
             }
             rt.down = false;
-            // 松开边沿触发。
-            if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
-                jobs.push(job);
+            // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
+            let outcome = rt.detector.release(now);
+            // Release 边沿触发：只有长按结束才发。
+            if rt.detector.is_long_held() {
+                if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
+                    jobs.push(job);
+                }
             }
             // 单击/双击/长按等手势确认。
-            if let FeedOutcome::Fire(ev) = rt.detector.release(now) {
+            if let FeedOutcome::Fire(ev) = outcome {
                 if let Some(job) = build_job(mapping, button, ev.trigger, rt) {
                     jobs.push(job);
                 }
@@ -228,7 +230,15 @@ impl KeyDispatcher {
             mapping, buttons, ..
         } = &mut *inner;
         for (button, rt) in buttons.iter_mut() {
-            if let FeedOutcome::Fire(ev) = rt.detector.tick(now) {
+            let was_long = rt.detector.is_long_held();
+            let outcome = rt.detector.tick(now);
+            // 长按刚被识别：发 Press 边沿触发（麦克风 PTT 的「按下」）。
+            if !was_long && rt.detector.is_long_held() {
+                if let Some(job) = build_job(mapping, *button, Trigger::Press, rt) {
+                    jobs.push(job);
+                }
+            }
+            if let FeedOutcome::Fire(ev) = outcome {
                 if let Some(job) = build_job(mapping, *button, ev.trigger, rt) {
                     jobs.push(job);
                 }
@@ -561,17 +571,29 @@ mod tests {
     }
 
     #[test]
-    fn mic_press_and_release_fire_voice() {
+    fn mic_ptt_fires_after_long_press() {
         let d = dispatcher();
-        let press_jobs = jobs_of(&d, 116, true, 0);
+        assert!(jobs_of(&d, 116, true, 0).is_empty(), "按下瞬间不发 Press");
+        let press_jobs = d.tick_once(600);
         assert_eq!(press_jobs.len(), 1);
         assert_eq!(press_jobs[0].trigger, Trigger::Press);
         assert_eq!(press_jobs[0].action, ActionKind::Voice);
 
-        let release_jobs = jobs_of(&d, 116, false, 50);
+        let release_jobs = jobs_of(&d, 116, false, 800);
         assert_eq!(release_jobs.len(), 1);
         assert_eq!(release_jobs[0].trigger, Trigger::Release);
         assert_eq!(release_jobs[0].action, ActionKind::Voice);
+    }
+
+    #[test]
+    fn mic_quick_tap_fires_nothing() {
+        let d = dispatcher();
+        assert!(jobs_of(&d, 116, true, 0).is_empty());
+        assert!(
+            jobs_of(&d, 116, false, 100).is_empty(),
+            "快速点按不产生 Press/Release"
+        );
+        assert!(d.tick_once(400).is_empty());
     }
 
     #[test]
