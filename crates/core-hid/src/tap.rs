@@ -69,8 +69,10 @@ static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 /// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
 static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
 static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+/// hook 统计去重键：(calls, captured, success, pending, other_status)。
+type HookStatsKey = (u64, u64, u64, u64, u64);
 /// 上次已记录的 hook 统计，避免心跳每 5 秒重复刷屏。
-static LAST_HOOK_STATS: Mutex<Option<(u64, u64, u64, u64, u64)>> = Mutex::new(None);
+static LAST_HOOK_STATS: Mutex<Option<HookStatsKey>> = Mutex::new(None);
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -88,22 +90,6 @@ struct HubMessage {
     #[serde(default)]
     trace_enabled: bool,
     #[serde(default)]
-    modules: Vec<ModuleInfo>,
-    #[serde(default)]
-    imports: Vec<ImportInfo>,
-    #[serde(default)]
-    ioctl: u32,
-    #[serde(default)]
-    status: u32,
-    #[serde(default)]
-    input_len: u32,
-    #[serde(default)]
-    output_len: u32,
-    #[serde(default)]
-    input_hex: String,
-    #[serde(default)]
-    output_hex: String,
-    #[serde(default)]
     func: String,
     #[serde(default)]
     dst: String,
@@ -114,28 +100,6 @@ struct HubMessage {
     #[serde(default)]
     hex: String,
     #[serde(default)]
-    handle: String,
-    #[serde(default)]
-    addresses: Vec<String>,
-    #[serde(default)]
-    address: String,
-    #[serde(default)]
-    lines: Vec<String>,
-    #[serde(default)]
-    a: String,
-    #[serde(default)]
-    b: String,
-    #[serde(default)]
-    a_resolved: String,
-    #[serde(default)]
-    b_resolved: String,
-    #[serde(default)]
-    b_vtable: String,
-    #[serde(default)]
-    b_vtable_resolved: String,
-    #[serde(default)]
-    table: Vec<String>,
-    #[serde(default)]
     target: String,
     #[serde(default)]
     target_resolved: String,
@@ -144,35 +108,7 @@ struct HubMessage {
     #[serde(default)]
     args: Vec<String>,
     #[serde(default)]
-    out1: String,
-    #[serde(default)]
-    out2: String,
-    #[serde(default)]
-    frames: Vec<String>,
-    #[serde(default)]
     dst_range: String,
-}
-
-/// 追踪模式上报的模块信息。
-#[derive(Deserialize)]
-struct ModuleInfo {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    base: String,
-    #[serde(default)]
-    size: u64,
-    #[serde(default)]
-    exports: Vec<String>,
-}
-
-/// 追踪模式上报的导入模块信息。
-#[derive(Deserialize)]
-struct ImportInfo {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    imports: Vec<String>,
 }
 
 /// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
@@ -636,12 +572,6 @@ fn serve_client(stream: std::net::TcpStream) {
                     on_ioctl_bytes(&bytes);
                 }
             }
-            "gatt_read_other" => {
-                core_log::log_debug(&format!(
-                    "[hid-tap] 非目标 IOCTL 数据: {}, raw={}",
-                    msg.message, msg.raw
-                ));
-            }
             "heartbeat" => {
                 if let Some(stats) = &msg.stats {
                     let key = (
@@ -665,33 +595,11 @@ fn serve_client(stream: std::net::TcpStream) {
                 core_log::log_info(&format!(
                     "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}，追踪模式={}）",
                     if msg.eat_enabled { "开启" } else { "关闭" },
-                    if msg.trace_enabled { "开启" } else { "关闭" }
-                ));
-            }
-            "module_list" => {
-                for m in &msg.modules {
-                    core_log::log_info(&format!(
-                        "[hid-tap] 模块: {} base={} size={}",
-                        m.name, m.base, m.size
-                    ));
-                    for e in &m.exports {
-                        core_log::log_info(&format!("[hid-tap]   导出: {e}"));
+                    if msg.trace_enabled {
+                        "开启"
+                    } else {
+                        "关闭"
                     }
-                }
-            }
-            "import_list" => {
-                for m in &msg.imports {
-                    core_log::log_info(&format!(
-                        "[hid-tap] 导入模块: {} -> {}",
-                        m.name,
-                        m.imports.join(", ")
-                    ));
-                }
-            }
-            "ioctl_trace" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] IOCTL 追踪: ioctl=0x{:08X} status=0x{:X} in={} out={} in_hex={} out_hex={}",
-                    msg.ioctl, msg.status, msg.input_len, msg.output_len, msg.input_hex, msg.output_hex
                 ));
             }
             "memcpy_trace" => {
@@ -715,55 +623,14 @@ fn serve_client(stream: std::net::TcpStream) {
                     if msg.eat_enabled { "开启" } else { "关闭" }
                 ));
             }
-            "writefile_trace" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] NtWriteFile 追踪: handle={} len={} hex={}",
-                    msg.handle, msg.len, msg.hex
-                ));
-            }
-            "scan_result" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] IOCTL 常量扫描: {}",
-                    msg.addresses.join(", ")
-                ));
-            }
-            "disasm" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] 反汇编 @ {}:",
-                    msg.address
-                ));
-                for line in &msg.lines {
-                    core_log::log_info(&format!("[hid-tap]   {line}"));
-                }
-            }
-            "global_info" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] 全局对象: A={} ({}) B={} ({}) B_vtable={} ({})",
-                    msg.a, msg.a_resolved, msg.b, msg.b_resolved, msg.b_vtable, msg.b_vtable_resolved
-                ));
-                for line in &msg.table {
-                    core_log::log_info(&format!("[hid-tap]   函数表 {line}"));
-                }
-            }
             "vcall_trace" => {
                 core_log::log_info(&format!(
-                    "[hid-tap] 间接调用: target={} ({}) ret={} args=[{}] out1={} out2={}",
+                    "[hid-tap] 间接调用: target={} ({}) ret={} args=[{}]",
                     msg.target,
                     msg.target_resolved,
                     msg.ret,
-                    msg.args.join(", "),
-                    msg.out1,
-                    msg.out2
+                    msg.args.join(", ")
                 ));
-            }
-            "backtrace" => {
-                core_log::log_info(&format!(
-                    "[hid-tap] 调用栈 @ {}:",
-                    msg.address
-                ));
-                for frame in &msg.frames {
-                    core_log::log_info(&format!("[hid-tap]   {frame}"));
-                }
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
             _ => {}

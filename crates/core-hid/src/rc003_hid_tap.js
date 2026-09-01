@@ -33,7 +33,6 @@ let output = null;
 let connecting = false;
 let reconnectTimer = null;
 let hookInstalled = false;
-let globalDumped = false;
 
 // 串行写链：每次 writeAll 都排在上一次之后，避免并发写把 socket 写坏。
 let writeChain = Promise.resolve();
@@ -97,107 +96,6 @@ function resolveModule(addr) {
     }
   } catch (_e) {}
   return addr.toString();
-}
-
-// 安全读指针：失败返回 null 指针，避免读坏地址拖垮脚本。
-function readPointer(addr) {
-  try {
-    return addr.readPointer();
-  } catch (_e) {
-    return ptr(0);
-  }
-}
-
-// 读驱动全局对象：A=[base+0x32dc0]（函数表/接口指针），B=[base+0x32dc8]（对象）。
-function readGlobalAB() {
-  const driver = Process.findModuleByName(
-    "microsoft.bluetooth.profiles.hidovergatt.dll"
-  );
-  if (!driver) {
-    return { a: ptr(0), b: ptr(0) };
-  }
-  return {
-    a: readPointer(driver.base.add(0x32dc0)),
-    b: readPointer(driver.base.add(0x32dc8)),
-  };
-}
-
-// 一次性 dump 全局函数表：A 指向的表里每个非空槽位都解析到模块+偏移，
-// 用于识别 [A+0x520]/[A+0x548]/[A+0x580] 到底是 WUDF 框架的哪个方法。
-function dumpGlobalTable() {
-  const { a, b } = readGlobalAB();
-  const table = [];
-  if (!a.isNull()) {
-    for (let off = 0; off < 0x600; off += 8) {
-      const p = readPointer(a.add(off));
-      if (!p.isNull()) {
-        table.push(
-          "+0x" + off.toString(16) + ": " + p.toString() + " -> " + resolveModule(p)
-        );
-      }
-    }
-  }
-  const bVtable = b.isNull() ? ptr(0) : readPointer(b);
-  emit({
-    kind: "global_info",
-    a: a.toString(),
-    b: b.toString(),
-    a_resolved: resolveModule(a),
-    b_resolved: resolveModule(b),
-    b_vtable: bVtable.toString(),
-    b_vtable_resolved: resolveModule(bVtable),
-    table: table,
-  });
-}
-
-// 枚举 WUDFHost 里 HID/BTH 相关模块及其导出函数，用于定位报告转发点。
-function enumerateHidModules() {
-  const modules = Process.enumerateModules();
-  const result = [];
-  for (const m of modules) {
-    const name = m.name.toLowerCase();
-    if (
-      name.includes("hid") ||
-      name.includes("bth") ||
-      name.includes("wudf") ||
-      name.includes("gatt")
-    ) {
-      const exports = [];
-      try {
-        for (const e of m.enumerateExports()) {
-          if (e.name) {
-            exports.push(e.name);
-          }
-        }
-      } catch (_e) {}
-      result.push({
-        name: m.name,
-        base: m.base.toString(),
-        size: m.size,
-        exports: exports,
-      });
-    }
-  }
-  return result;
-}
-
-// 枚举 HOGP 驱动与 UMDF 框架的导入模块，用于判断报告处理调用了哪些库。
-function enumerateImports() {
-  const result = [];
-  const modules = Process.enumerateModules();
-  for (const m of modules) {
-    const name = m.name.toLowerCase();
-    if (name.includes("hidovergatt") || name.includes("wudfx")) {
-      const imports = [];
-      try {
-        for (const imp of m.enumerateImports()) {
-          imports.push(imp.name);
-        }
-      } catch (_e) {}
-      result.push({ name: m.name, imports: imports });
-    }
-  }
-  return result;
 }
 
 // 报告转发路径钩子。不钩 jmp thunk（Frida 对 jmp 的拦截在 WUDFHost 里
@@ -326,128 +224,12 @@ function installReportPathHooks() {
                 "r8=" + args[2].toString(),
                 "r9=" + args[3].toString(),
               ],
-              out1: "",
-              out2: "",
             });
           },
         });
       } catch (_e) {}
     }
   }
-}
-
-// 完整调用栈（带模块解析），用于看清 READ_CHARACTERISTIC_IOCTL 的
-// 驱动侧调用链：谁调用了 0x20720 这个报告处理函数。
-function fullBacktrace(context) {
-  const frames = [];
-  try {
-    const bt = Thread.backtrace(context, Backtracer.ACCURATE);
-    for (const addr of bt) {
-      frames.push(addr.toString() + " " + resolveModule(addr));
-    }
-  } catch (_e) {}
-  return frames;
-}
-
-// 追踪驱动模块内的 NtWriteFile 调用（报告可能经文件句柄转发）。
-function installWriteFileTrace() {
-  const driver = Process.findModuleByName(
-    "microsoft.bluetooth.profiles.hidovergatt.dll"
-  );
-  if (!driver) {
-    return;
-  }
-  const ntdll = Process.findModuleByName("ntdll.dll");
-  const target = ntdll ? ntdll.findExportByName("NtWriteFile") : null;
-  if (!target) {
-    return;
-  }
-  try {
-    Interceptor.attach(target, {
-      onEnter(args) {
-        const ret = this.returnAddress;
-        if (
-          ret.compare(driver.base) < 0 ||
-          ret.compare(driver.base.add(driver.size)) >= 0
-        ) {
-          return;
-        }
-        const buffer = args[1];
-        const length = args[2].toUInt32();
-        if (length < 1 || length > 64 || buffer.isNull()) {
-          return;
-        }
-        emit({
-          kind: "writefile_trace",
-          handle: args[0].toString(),
-          len: length,
-          hex: hex(buffer, Math.min(length, 16)),
-        });
-      },
-    });
-  } catch (_e) {}
-}
-
-// 反汇编指定地址开始的 count 条指令，用于分析驱动读特征后的处理代码。
-function disassemble(start, count) {
-  const lines = [];
-  let addr = start;
-  for (let i = 0; i < count; i++) {
-    try {
-      const insn = Instruction.parse(addr);
-      lines.push(addr.toString() + ": " + insn.mnemonic + " " + insn.opStr);
-      addr = insn.next;
-    } catch (_e) {
-      lines.push(addr.toString() + ": <无法解析>");
-      addr = addr.add(1);
-    }
-  }
-  return lines;
-}
-
-// 在驱动/框架模块内扫描 READ_CHARACTERISTIC_IOCTL 常量（0x80018483 小端），
-// 定位调用读特征 IOCTL 的代码位置。
-function scanIoCtrlCode() {
-  const names = [
-    "microsoft.bluetooth.profiles.hidovergatt.dll",
-    "WUDFx02000.dll",
-  ];
-  const results = [];
-  for (const name of names) {
-    const mod = Process.findModuleByName(name);
-    if (!mod) {
-      continue;
-    }
-    try {
-      const matches = Memory.scanSync(mod.base, mod.size, "83 84 01 80");
-      for (const m of matches) {
-        results.push(name + "+" + m.address.sub(mod.base).toString());
-      }
-    } catch (_e) {}
-  }
-  return results;
-}
-
-// 在调用栈里找驱动模块（hidovergatt.dll）的返回地址。
-function findDriverFrame(context) {
-  const driver = Process.findModuleByName(
-    "microsoft.bluetooth.profiles.hidovergatt.dll"
-  );
-  if (!driver) {
-    return null;
-  }
-  try {
-    const bt = Thread.backtrace(context, Backtracer.ACCURATE);
-    for (const addr of bt) {
-      if (
-        addr.compare(driver.base) >= 0 &&
-        addr.compare(driver.base.add(driver.size)) < 0
-      ) {
-        return addr;
-      }
-    }
-  } catch (_e) {}
-  return null;
 }
 
 // 队列项（8 字节 = 2 字节头 + 3 个 16 位小端 usage）转成 9 字节 IOCTL
@@ -541,15 +323,6 @@ async function connectToHub() {
       eat_enabled: eatEnabled,
       trace_enabled: traceEnabled,
     });
-    if (traceEnabled) {
-      emit({ kind: "module_list", modules: enumerateHidModules() });
-      emit({ kind: "import_list", imports: enumerateImports() });
-      emit({ kind: "scan_result", addresses: scanIoCtrlCode() });
-      if (!globalDumped) {
-        globalDumped = true;
-        dumpGlobalTable();
-      }
-    }
   } catch (_error) {
     output = null;
     connection = null;
@@ -572,42 +345,14 @@ function installHook() {
   Interceptor.attach(target, {
     onEnter(args) {
       stats.calls++;
-      if (traceEnabled) {
-        this.ioctl = args[5].toUInt32();
-        this.input = args[6];
-        this.inputLength = args[7].toUInt32();
-        this.output = args[8];
-        this.outputLength = args[9].toUInt32();
-      }
       // 只对目标 IOCTL 记录输出缓冲区，避免触碰其它 IOCTL 的 args[8]。
       this.capture = args[5].toUInt32() === READ_CHARACTERISTIC_IOCTL;
       if (this.capture) {
         this.output = args[8];
         this.outputLength = args[9].toUInt32();
-        if (traceEnabled) {
-          // 返回地址是 kernel32/ntdll 的 DeviceIoControl 包装，不是驱动代码；
-          // 从调用栈里找驱动模块的帧，反汇编驱动真正处理报告的位置。
-          this.driverRet = findDriverFrame(this.context);
-        }
       }
     },
     onLeave(retval) {
-      if (traceEnabled && !this.capture) {
-        // 追踪所有非目标 IOCTL（含零长度缓冲区）：记录 ioctl 码与状态，
-        // 用于定位「报告从哪个 IOCTL/路径转发给 HID 类驱动」。
-        try {
-          const status = retval.toUInt32();
-          emit({
-            kind: "ioctl_trace",
-            ioctl: this.ioctl,
-            status: status,
-            input_len: this.inputLength,
-            output_len: this.outputLength,
-            input_hex: hex(this.input, Math.min(this.inputLength, 32)),
-            output_hex: hex(this.output, Math.min(this.outputLength, 32)),
-          });
-        } catch (_e) {}
-      }
       if (!this.capture) {
         return;
       }
@@ -624,14 +369,6 @@ function installHook() {
               // 避免同一按键被上报两次。
               if (!eatEnabled) {
                 emit({ kind: "gatt_read", raw: rawHex, eaten: false });
-              }
-              if (traceEnabled && this.driverRet) {
-                // 完整调用栈：看清驱动侧谁在发这个读特征 IOCTL。
-                emit({
-                  kind: "backtrace",
-                  address: this.driverRet.toString(),
-                  frames: fullBacktrace(this.context),
-                });
               }
             }
           } catch (error) {
@@ -682,9 +419,6 @@ rpc.exports = {
     // 0x20080 转发点钩子必须始终安装：eat 可运行时热切换，
     // 不能在初始化时因 eat=false 而漏装。
     installReportPathHooks();
-    if (traceEnabled) {
-      installWriteFileTrace();
-    }
     installHook();
     await connectToHub();
   },

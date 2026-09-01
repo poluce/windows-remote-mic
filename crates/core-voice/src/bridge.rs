@@ -302,7 +302,7 @@ where
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 idle_ticks = idle_ticks.saturating_add(1);
                 // 15 * 2s = 30s
-                if idle_ticks > 0 && idle_ticks % 15 == 0 {
+                if idle_ticks > 0 && idle_ticks.is_multiple_of(15) {
                     let last_ctrl = diag.last_control_at.lock().ok().and_then(|g| *g);
                     let last_aud = diag.last_audio_at.lock().ok().and_then(|g| *g);
                     core_log::log_info(&format!(
