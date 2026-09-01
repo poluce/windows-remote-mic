@@ -113,7 +113,7 @@ cargo check -p remote-mic
 - 触发判定时间可设置：**长按阈值**（默认 550ms）与**双击窗口**（默认 300ms）存于 `config.json` 的 `long_press_ms` / `double_click_ms`，映射页可调，保存后热更新调度器（`set_trigger_timing`）。
 - 前端映射页：
   - 点遥控器图形选按键
-  - 选触发方式（单击/双击/长按）
+  - 选触发方式（单击/双击/长按；**麦克风只有按下/松开**）
   - 选动作分类/动作
   - 保存后写入后端并更新本地列表
 - 映射表只读展示，编辑统一走上方向导。
@@ -122,7 +122,7 @@ cargo check -p remote-mic
 - 当前物理按键来源分三类：
   | 类别 | 链路 | 按键（usage） |
   | --- | --- | --- |
-  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风（主路径；HID 兜底 `0x3E`） |
+  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 音频会话事件（AudioStarted/AudioStopped）；麦克风键实际走 HID 兜底 `0x3E` |
   | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 上 `0x52`、下 `0x51`、左 `0x50`、右 `0x4F`、OK `0x28`、主页 `0x4A`、菜单 `0x65`、电源 `0x66` |
   | HID 应用命令类 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回 `0xF1`、音量+ `0x80`、音量− `0x81`、TV `0x35` |
 - 全部 13 键 usage 表（HID 键盘页 `0x07`）：
@@ -182,7 +182,7 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
-- **Win+H 按键语义（实测）**：首次按 Win+H 打开语音条；弹窗已打开时再次按 Win+H **不会关闭弹窗**，只会停止/重置当前输入会话；关闭弹窗用 Esc 或点 ✕。因此麦克风键按下时**总是直接按 Win+H**（已开时只是重置会话，可接受）；关闭只靠 Esc / ✕ 或把某键映射为 Voice 动作走 toggle。
+- **Win+H 按键语义（实测）**：首次按 Win+H 打开语音条；弹窗已打开时再次按 Win+H **不会关闭弹窗**，只会停止/重置当前输入会话；关闭弹窗用 Esc 或点 ✕。麦克风键的 Press/Release 动作各发一次 Win+H（长按识别后发 Press、长按结束发 Release），快速点按不触发。
 - **Win+H 麦克风绑定机制（重要实测结论）**：
   - Windows 11 语音输入（`TextInputHost.exe`）维护专属的持久化音频偏好，**完全无视系统全局默认麦克风的切换**（无论是通过 `IPolicyConfig` 动态改全局默认，还是杀进程冷启动 `TextInputHost.exe` 均无效）。
   - **正确架构与产品规范**：
