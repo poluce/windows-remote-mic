@@ -85,4 +85,3 @@ cargo test --workspace --exclude remote-mic
 - [CHANGELOG / 发版流程](CHANGELOG.md)
 - [RC003 开发探索信息总档](docs/协议/ATVV/RC003-开发探索信息总档.md)
 - [ATVV 协议事实表](docs/协议/ATVV/协议.md)
-- [社区参考资料](docs/协议/ATVV/社区资料/来源清单.md)
