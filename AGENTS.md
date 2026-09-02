@@ -10,7 +10,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 - 解析 ATVV 协议 / IMA ADPCM 音频
 - 支持 Windows 自带语音输入（Win+H）
 - 支持按键映射、虚拟声卡（VB-CABLE）输出、诊断自检
-- 提供一个右下角扇形快捷菜单（由遥控器「菜单」键呼出）
+- 提供一个右下角扇形快捷菜单（默认由遥控器「菜单」键呼出，可改映射）
 
 ## 技术栈
 
@@ -49,7 +49,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
-│   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input）
+│   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input + HOGP 旁路）
 │   └── core-input        # Windows 按键注入、热键、输入钩子
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
@@ -82,12 +82,12 @@ cargo check -p remote-mic
 
 ### 1. 主窗口与页面
 - 主窗口是一个设置型应用，左侧导航，内容区直接渲染页面（已移除顶栏和页面标题）。
-- 页面：
-  - 连接
+- 页面（实际导航）：
+  - 连接（含设备连接、拦截开关、识别方案、语音模拟）
   - 按键映射
-  - 语音
   - 诊断
   - 引导
+- 注意：**没有独立的「语音」页和「统计」页**；语音相关设置/模拟在连接页，引导页负责首次配置说明。
 
 ### 2. 快捷菜单窗口
 - 在 `src-tauri/src/lib.rs` 的 `setup` 中创建第二个透明窗口 `quick-menu`。
@@ -99,6 +99,10 @@ cargo check -p remote-mic
   - 原版切换/动画逻辑请勿随意改动
   - 边界淡出：外弧内缩 20px，直边内缩 1°
 - `toggle_quick_menu` 命令控制显示/隐藏；显示时会 `window.location.reload()` 以便加载最新 HTML。
+- **菜单键默认动作是 `ToggleQuickMenu`（打开/关闭快捷菜单）**，旧配置 `ContextMenu`（右键菜单）会在启动时自动迁移为 `ToggleQuickMenu`。
+- **菜单独占输入模式（QuickMenu）**：打开快捷菜单时，调度器进入 `InputMode::QuickMenu`，遥控器方向/确定/菜单/返回等按键不再走普通触发检测，而是以 `quick-menu-key` 事件直接转发给快捷菜单窗口；关闭后恢复 `InputMode::Normal`。
+- **快捷菜单状态持久化**：`public/quick-menu.html` 把菜单停留位置与所选环状态保存到 `localStorage`（key `remote-mic-quick-menu-state`），下次打开恢复。
+- 语音桥互斥：新增 `stop_voice_bridge` Tauri 命令；`start_voice_bridge` 通过原子互斥防止并发双桥争用 GATT，重连等待可响应停止请求。
 - 该窗口加载的是静态 HTML，**不走 Vite HMR**；修改后需重新打开窗口（或重启应用）才能生效。
 - **热更新坑（重要）**：如果 `toggle_quick_menu` 中“显示时重新加载”的代码被删除：
   ```rust
@@ -146,6 +150,7 @@ cargo check -p remote-mic
   - 麦克风键**走调度器映射表**（不是硬编码）：HID 兜底 `0x3E` → vkey 116 进 `vkey_map`，默认映射为 **Press→Voice、Release→Voice**。Press/Release 是**长按门控**：按住达到长按阈值（默认 550ms）才发 Press（Win+H 打开/重置会话），长按结束（松开）才发 Release（Win+H 停止当前会话）；快速点按（单击/双击）不产生 Press/Release。用户可在映射页把麦克风的「按下/松开」改成任意动作（如第三方语音助手）。旧配置里的 Mic SingleClick 会在启动时自动迁移为 Press/Release。ATVV Control 的 `MicButtonPressed` 只计数不切换；`AudioStopped` 只停解码不关语音条。
   - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
   - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
+- 菜单键默认映射为 `ToggleQuickMenu`（打开/关闭快捷菜单）；旧 `ContextMenu` 自动迁移。快捷菜单打开时进入独占输入模式，方向/确定/菜单/返回等遥控器按键直接路由给快捷菜单（见第 2 节）。
 - 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。
 
 #### 3.5.1 返回 / 音量 / TV 键的信号通道（重要实测结论）
@@ -187,7 +192,7 @@ cargo check -p remote-mic
   - Windows 11 语音输入（`TextInputHost.exe`）维护专属的持久化音频偏好，**完全无视系统全局默认麦克风的切换**（无论是通过 `IPolicyConfig` 动态改全局默认，还是杀进程冷启动 `TextInputHost.exe` 均无效）。
   - **正确架构与产品规范**：
     - 后端 `AudioSink` 固定将遥控器音频写入 `CABLE Input`；
-    - 首次使用时通过引导页/语音页指引用户按 `Win+H`，在语音条设置中**手动将麦克风选择为 `CABLE Output`**（仅需配置一次，Windows 永久记忆）；
+    - 首次使用时通过连接页/引导页指引用户按 `Win+H`，在语音条设置中**手动将麦克风选择为 `CABLE Output`**（仅需配置一次，Windows 永久记忆）；
     - 这样电脑原本的物理麦克风（如英特尔智音技术）保持为全局默认，开会、微信通话不受任何干扰，遥控器语音输入实现 0 延迟秒级直通。
     - **禁止**在语音链路中做不可靠的“动态改全局默认麦克风”操作。
 

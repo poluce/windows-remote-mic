@@ -184,8 +184,9 @@ function queueToIoctlHex(src, len) {
 
 - **默认开启 + 设置页开关**：`config.json` 的 `hid_tap_eat`（默认 `true`）；后端写入 `%PROGRAMDATA%\RemoteMic\hid-tap\eat-mode.txt`，Frida 脚本每秒轮询热更新，切换不弹 UAC、不重新注入。
 - **应用侧闭环**：全部 13 键经旁路进 `KeyDispatcher` 映射表；麦克风默认 Press→Voice、Release→Voice（**长按门控**：达到长按阈值才发 Press，长按结束才发 Release，快速点按不触发）；普通键单击/双击/长按；长按只触发一次；长按阈值/双击窗口可设置并热更新。
-- **看门狗**：自动释放兜底 2000ms（松开报告丢失时），带日志；150ms 会把长按截断成单击，勿回退。
+- **看门狗**：自动释放兜底 2000ms（松开报告丢失时），带日志；150ms 会把长按截断成单击，勿回退；**麦克风 `0x3E` 禁用自动释放**（长按由真实 HID release / ATVV AudioStopped 结束，否则 2s 超时会提前触发 Release 导致第二次 Win+H 取消语音输入）。
 - 拦截关闭时旁路跳过 `0x3E`（麦克风由 Raw Input 投递），避免双路。
+- **菜单键闭环（快捷菜单）**：默认映射 `ToggleQuickMenu`；打开快捷菜单时调度器进入 `InputMode::QuickMenu`，方向/确定/菜单/返回等键以 `quick-menu-key` 事件直转菜单窗口，不触发普通映射；关闭后恢复普通模式。
 
 ## 附录：可复用代码模板（本次验证可用的完整骨架）
 

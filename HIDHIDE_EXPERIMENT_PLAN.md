@@ -2,6 +2,7 @@
 
 > 目标：验证是否可以通过 **HidHide 隐藏遥控器 + 应用白名单 + HID API 独占读取**，在开启 HVCI（内存完整性）的机器上获取小米遥控器 RC003 的返回、音量+、音量- 原始 HID 报告。
 > 状态：**已判定失败 / 路线终结**。HidHide 能隐藏设备，但 `CreateFile` 仍 AccessDenied(0x5)；官方 FAQ 明确不支持隐藏键盘/鼠标类设备。返回/音量键改走 Frida Gadget 注入 WUDFHost 的 HOGP 旁路。
+> 后记（2026-09-01）：Frida/WUDFHost 旁路已实际跑通（部署到 `%PROGRAMDATA%` + 正确 ACL 后不再被 HVCI 拦截），本页“HVCI 拦截 Frida”仅为当时的初步假设/环境问题，不作为最终结论。
 > 关联问题记录：[docs/项目/问题记录-读取返回音量键.md](docs/项目/问题记录-读取返回音量键.md)
 
 ---

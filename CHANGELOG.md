@@ -30,6 +30,12 @@
   - Press/Release 为长按门控：按住达到长按阈值才发 Press，长按结束才发 Release，快速点按不触发。
   - 旧配置 Mic SingleClick 启动时自动迁移为 Press/Release。
 - 触发时间可配置：`long_press_ms`（默认 550ms）、`double_click_ms`（默认 300ms）持久化到 `config.json`，映射页可调，保存后热更新调度器（`set_trigger_timing`）。
+- 菜单键默认动作改为快捷菜单开关（`ToggleQuickMenu`），旧 `ContextMenu` 配置启动时自动迁移。
+- 快捷菜单增强：
+  - 打开快捷菜单时进入**菜单独占输入模式**（`InputMode::QuickMenu`），遥控器方向/确定/菜单/返回等按键直接路由给快捷菜单窗口（`quick-menu-key` 事件），不触发普通按键映射；关闭后恢复普通模式。
+  - 快捷菜单停留位置与所选环状态持久化到 `localStorage`，下次打开恢复。
+  - `public/quick-menu.html` 接入遥控器按键直通事件监听与按键连发。
+- 语音桥防并发：新增 `stop_voice_bridge` Tauri 命令；`start_voice_bridge` 原子互斥防止并发双桥争用 GATT，重连等待可响应停止请求。
 - 按键映射运行时闭环：新增 `core-dispatch` 调度器（单击/双击/长按 → 查映射 → SendInput），映射保存后热更新；诊断页按键测试时自动暂停调度。
 - HOGP 旁路状态改为结构化枚举（`idle` / `pending` / `attached` / `unavailable`），前端不再靠中文消息关键字推断。
 - 日志功能补齐：
