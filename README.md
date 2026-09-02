@@ -83,5 +83,5 @@ cargo test --workspace --exclude remote-mic
 - [真机验收](docs/项目/真机验收.md)
 - [问题记录：读取返回/音量键](docs/项目/问题记录-读取返回音量键.md)
 - [CHANGELOG / 发版流程](CHANGELOG.md)
-- [RC003 开发探索信息总档](docs/协议/ATVV/RC003-开发探索信息总档.md)
-- [ATVV 协议事实表](docs/协议/ATVV/协议.md)
+- [RC003 开发探索信息总档](docs/协议/RC003-开发探索信息总档.md)
+- [ATVV 协议](docs/协议/ATVV-协议.md)
