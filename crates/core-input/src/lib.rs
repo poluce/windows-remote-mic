@@ -42,6 +42,23 @@ pub fn press_win_h() -> Result<()> {
     ))
 }
 
+/// 打开 Windows 语音输入（Win+H）。每次都直接按 Win+H：
+/// 弹窗关闭时打开；弹窗已打开时只会重置当前输入会话（实测不会关闭弹窗），
+/// 可接受。关闭弹窗用 Esc / ✕。
+#[cfg(target_os = "windows")]
+pub fn open_voice_typing() -> Result<()> {
+    crate::log_line("[input] 语音输入 -> 开启 (Win+H)");
+    crate::hotkey::press_win_h()
+}
+
+/// 非 Windows 平台桩实现。
+#[cfg(not(target_os = "windows"))]
+pub fn open_voice_typing() -> Result<()> {
+    Err(InputError::Windows(
+        "input injection is only implemented on Windows".to_string(),
+    ))
+}
+
 /// 按下 Escape 关闭 Windows 语音输入。
 #[cfg(target_os = "windows")]
 pub fn press_escape() -> Result<()> {

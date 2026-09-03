@@ -80,7 +80,14 @@ pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     core_log::log_info(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
     let device = open_ble_device(device_id)?;
-    core_log::log_info("[ble/gatt] ATVV 链路连接成功");
+    match device.ConnectionStatus() {
+        Ok(status) => core_log::log_info(&format!(
+            "[ble/gatt] ATVV 链路连接成功，当前 ConnectionStatus={status:?}"
+        )),
+        Err(e) => core_log::log_info(&format!(
+            "[ble/gatt] ATVV 链路连接成功，但读取 ConnectionStatus 失败: {e}"
+        )),
+    }
     Ok(AtvvLink {
         _device: device,
         _service: service,
@@ -500,21 +507,57 @@ impl AtvvLink {
         let handler = Arc::new(Mutex::new(callback));
         let event_handler = handler.clone();
 
-        let typed =
-            TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(move |sender, _args| {
+        let typed = TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(
+            move |sender, _args| {
                 if let Some(device) = sender.as_ref() {
-                    if let Ok(status) = device.ConnectionStatus() {
-                        if let Ok(mut guard) = event_handler.lock() {
-                            guard(status == BluetoothConnectionStatus::Connected);
+                    let device_id = device
+                        .DeviceId()
+                        .ok()
+                        .map(|id| id.to_string())
+                        .unwrap_or_else(|| "(unknown)".into());
+                    let status = match device.ConnectionStatus() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            core_log::log_warn(&format!(
+                                "[ble/gatt] ConnectionStatusChanged 但读取状态失败: device={device_id}, err={e}"
+                            ));
+                            return Ok(());
                         }
+                    };
+                    let connected = status == BluetoothConnectionStatus::Connected;
+                    // 断链定位：记录 WinRT 原始枚举，区分 Connected/Disconnected。
+                    core_log::log_info(&format!(
+                        "[ble/gatt] ConnectionStatusChanged: status={status:?}, connected={connected}, device={device_id}"
+                    ));
+                    if let Ok(mut guard) = event_handler.lock() {
+                        guard(connected);
                     }
+                } else {
+                    core_log::log_warn(
+                        "[ble/gatt] ConnectionStatusChanged: sender 为空，无法读取设备状态",
+                    );
                 }
                 Ok(())
-            });
+            },
+        );
 
         self._device
             .ConnectionStatusChanged(&typed)
             .map_err(|e| BleError::Windows(e.to_string()))
+    }
+}
+
+impl Drop for AtvvLink {
+    fn drop(&mut self) {
+        // 若先 Drop 链路再收到 WinRT 断连回调，可据此判断是“我们主动释放”还是“对端/系统先断”。
+        let status = self
+            ._device
+            .ConnectionStatus()
+            .map(|s| format!("{s:?}"))
+            .unwrap_or_else(|e| format!("read_err={e}"));
+        core_log::log_info(&format!(
+            "[ble/gatt] AtvvLink Drop：释放 GATT 句柄，此刻 ConnectionStatus={status}"
+        ));
     }
 }
 

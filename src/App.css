@@ -223,6 +223,35 @@ button {
   margin-top: 4px;
 }
 
+/* 拦截 HID 按键信号开关行 */
+.device-eat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.device-eat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-eat-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.device-eat-row .hint {
+  margin: 0;
+}
+
 .device-status-pill {
   font-size: 12px;
   padding: 4px 14px;
@@ -903,6 +932,30 @@ button {
 .trigger-name {
   font-weight: 600;
   font-size: 14px;
+}
+
+.timing-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.timing-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.timing-label select {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
 }
 
 .category-tabs {

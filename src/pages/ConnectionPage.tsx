@@ -61,9 +61,43 @@ export function ConnectionPage() {
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("unknown");
   const [driverOpen, setDriverOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
+  const [eatEnabled, setEatEnabled] = useState<boolean | null>(null);
+  const [eatBusy, setEatBusy] = useState(false);
   const driverRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
   const simInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setEatEnabled(true);
+      return;
+    }
+    invoke<boolean>("get_hid_tap_eat")
+      .then(setEatEnabled)
+      .catch(() => setEatEnabled(true));
+  }, []);
+
+  async function toggleEat() {
+    if (!isTauri() || eatEnabled === null || eatBusy) {
+      return;
+    }
+    setEatBusy(true);
+    try {
+      const next = await invoke<boolean>("set_hid_tap_eat", {
+        enabled: !eatEnabled,
+      });
+      setEatEnabled(next);
+      setFeedback(
+        next
+          ? "已开启：系统不再响应遥控器按键，由本应用注入映射动作"
+          : "已关闭：系统会同时响应遥控器按键",
+      );
+    } catch (err) {
+      setFeedback(`切换失败：${err}`);
+    } finally {
+      setEatBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (voiceTarget !== "windows_voice") {
@@ -258,6 +292,25 @@ export function ConnectionPage() {
         </div>
         {feedback && <p className="hint device-feedback">{feedback}</p>}
         {tapMessage && <p className="hint device-feedback">{tapMessage}</p>}
+        <div className="device-eat-row">
+          <div className="device-eat-info">
+            <div className="device-eat-title">拦截 HID 按键信号</div>
+            <p className="hint">
+              {eatEnabled === null
+                ? "读取中…"
+                : eatEnabled
+                  ? "已开启：系统不响应遥控器按键，只由本应用注入映射动作"
+                  : "已关闭：系统会同时响应遥控器按键"}
+            </p>
+          </div>
+          <button
+            className={`btn${eatEnabled ? "" : " primary"}`}
+            onClick={toggleEat}
+            disabled={eatEnabled === null || eatBusy || !isTauri()}
+          >
+            {eatBusy ? "切换中…" : eatEnabled ? "关闭" : "开启"}
+          </button>
+        </div>
         <div className="device-status">
           {briefs.map((b) => (
             <span

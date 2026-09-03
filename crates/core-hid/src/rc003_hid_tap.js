@@ -1,11 +1,15 @@
-// HOGP 报告探针。默认只读；开启「吃掉」模式后，会把返回/音量键的
-// usage 从输出缓冲区里清零，让系统 HOGP 层看不到这些键，只由本应用注入。
+// HOGP 报告探针。默认只读；开启「吃掉」模式后，在驱动真正的报告转发点
+// （0x20080 的 memcpy 源缓冲区，即队列项）把 usage 清零，系统 HOGP 层
+// 看不到任何遥控器按键；同时把清零前的原始报告转成 9 字节 IOCTL 格式
+// 上报给应用，由应用注入映射动作（单一持有者）。
 //
 // 关键约束（与已验证可用的 remote-bridge-hub 实现一致）：
 // - 只 hook 目标 IOCTL `READ_CHARACTERISTIC_IOCTL`(0x80018483)；
 // - 只在返回 STATUS_SUCCESS 且输出长度恰为 9 字节时读取输出缓冲区。
 // 不读取其它 IOCTL 的 args[8]：那可能是 MDL / 内核指针 / 已释放缓冲，
 // 读它既无意义又有风险。
+// - 不钩 jmp thunk（Frida 对 jmp 的拦截在 WUDFHost 里会 fastfail），
+//   只钩函数入口与 call 指令。
 
 const READ_CHARACTERISTIC_IOCTL = 0x80018483;
 const EXPECTED_OUTPUT_LENGTH = 9;
@@ -13,13 +17,16 @@ const STATUS_SUCCESS = 0;
 const STATUS_PENDING = 0x103;
 const HEARTBEAT_MS = 5000;
 const RECONNECT_MS = 1000;
-// 需要吃掉的 usage：返回、音量+、音量-（钩子和 Raw Input 都看不到它们）。
-const EAT_USAGES = [0x00f1, 0x0080, 0x0081];
+const EAT_POLL_MS = 1000;
 
 let host = "127.0.0.1";
 let port = 17331;
-// 是否开启「吃掉」模式：由 Gadget config 的 parameters.eat 传入。
+// 是否开启「吃掉」模式：初始值由 Gadget config 的 parameters.eat 传入，
+// 运行中每秒轮询 eat-mode.txt 热更新（设置页切换无需重新注入）。
 let eatEnabled = false;
+let eatModePath = "C:\\ProgramData\\RemoteMic\\hid-tap\\eat-mode.txt";
+// 是否开启 IOCTL/模块追踪：由 Gadget config 的 parameters.trace 传入。
+let traceEnabled = false;
 // 保持 SocketConnection 引用，防止 QuickJS GC 提前关闭 socket。
 let connection = null;
 let output = null;
@@ -34,9 +41,33 @@ let writeChain = Promise.resolve();
 let stats = { calls: 0, captured: 0, success: 0, pending: 0, other_status: 0 };
 
 function asciiBytes(text) {
+  // 真正的 UTF-8 编码：之前按 charCodeAt & 0xff 截断，中文会变成非法
+  // UTF-8 字节流，把旁路 socket 写坏（Rust 端报 stream did not contain
+  // valid UTF-8 并断开重连）。
   const out = [];
   for (let i = 0; i < text.length; i++) {
-    out.push(text.charCodeAt(i) & 0xff);
+    let c = text.charCodeAt(i);
+    if (c < 0x80) {
+      out.push(c);
+    } else if (c < 0x800) {
+      out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+    } else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      const d = text.charCodeAt(i + 1);
+      if (d >= 0xdc00 && d <= 0xdfff) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00);
+        i++;
+        out.push(
+          0xf0 | (c >> 18),
+          0x80 | ((c >> 12) & 0x3f),
+          0x80 | ((c >> 6) & 0x3f),
+          0x80 | (c & 0x3f)
+        );
+      } else {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      }
+    } else {
+      out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
   }
   return out;
 }
@@ -53,29 +84,192 @@ function hex(pointer, length) {
   return result;
 }
 
-// 吃掉返回/音量键：把输出缓冲区里的目标 usage 清零。
-// 报告格式：01 00 00 + 3 个 16 位小端 usage（共 9 字节）。
-// 只对确定格式动手，其它情况一律跳过，避免误伤驱动缓冲区。
-function eatUsages(outputPtr, length) {
-  if (!eatEnabled || length !== EXPECTED_OUTPUT_LENGTH) {
+// 把地址解析成「模块名+偏移」，解析失败就返回原始地址字符串。
+function resolveModule(addr) {
+  if (addr.isNull()) {
+    return "null";
+  }
+  try {
+    const m = Process.findModuleByAddress(addr);
+    if (m) {
+      return m.name + "+0x" + addr.sub(m.base).toString(16);
+    }
+  } catch (_e) {}
+  return addr.toString();
+}
+
+// 报告转发路径钩子。不钩 jmp thunk（Frida 对 jmp 的拦截在 WUDFHost 里
+// 会 fastfail），改为钩具体 call 指令与函数入口：
+// - 0x1febc：报告处理函数入口，r9 指向队列项 {begin,end}，报告字节在 [begin,end)；
+// - 0x20080：函数内 memcpy 调用点（dst=新分配缓冲区, src=报告, len=长度）；
+// - 0x2097f / 0x20aa2 / 0x20b4c：三个框架间接调用点（rax=目标函数）。
+// 吃掉模式挂在 0x20080：拷贝前把 src 清零，memcpy 自然把零拷进转发
+// 缓冲区；同时把清零前的原始报告转成 9 字节格式上报应用调度。
+function installReportPathHooks() {
+  const driver = Process.findModuleByName(
+    "microsoft.bluetooth.profiles.hidovergatt.dll"
+  );
+  if (!driver) {
     return;
   }
-  const bytes = new Uint8Array(outputPtr.readByteArray(length));
-  if (bytes[0] !== 0x01 || bytes[1] !== 0x00 || bytes[2] !== 0x00) {
-    return;
+  function rangeOf(addr) {
+    try {
+      const range = Process.findRangeByAddress(addr);
+      if (range) {
+        return (
+          range.base.toString() +
+          " size=0x" +
+          range.size.toString(16) +
+          " prot=" +
+          range.protection +
+          (range.file ? " file=" + range.file.path : " anon")
+        );
+      }
+    } catch (_e) {}
+    return "";
   }
-  let changed = false;
-  for (let i = 3; i + 1 < length; i += 2) {
-    const usage = bytes[i] | (bytes[i + 1] << 8);
-    if (EAT_USAGES.indexOf(usage) !== -1) {
-      bytes[i] = 0;
-      bytes[i + 1] = 0;
-      changed = true;
+  // 报告处理函数入口：记录队列项里的报告字节（仅追踪模式）。
+  if (traceEnabled) {
+    try {
+      Interceptor.attach(driver.base.add(0x1febc), {
+        onEnter(args) {
+          const begin = args[3];
+          if (begin.isNull()) {
+            return;
+          }
+          let end = ptr(0);
+          let len = 0;
+          try {
+            end = begin.readPointer();
+            const endPtr = args[3].add(8).readPointer();
+            len = endPtr.sub(end).toUInt32();
+          } catch (_e) {
+            return;
+          }
+          if (len < 1 || len > 64) {
+            return;
+          }
+          emit({
+            kind: "report_path",
+            func: "0x1febc",
+            dst: "",
+            src: end.toString(),
+            len: len,
+            hex: hex(end, Math.min(len, 16)),
+            dst_range: "",
+          });
+        },
+      });
+    } catch (_e) {}
+  }
+  // 报告拷贝点：memcpy(dst, src, len)。dst 就是交给 WDF 请求、最终被内核
+  // HID 驱动读取的转发缓冲区——真正的「写入点」。
+  try {
+    Interceptor.attach(driver.base.add(0x20080), {
+      onEnter(args) {
+        const dst = args[0];
+        const src = args[1];
+        const len = args[2].toUInt32();
+        if (len < 1 || len > 64 || src.isNull() || dst.isNull()) {
+          return;
+        }
+        if (traceEnabled) {
+          emit({
+            kind: "memcpy_trace",
+            func: "0x20080",
+            dst: dst.toString(),
+            src: src.toString(),
+            len: len,
+            hex: hex(src, Math.min(len, 16)),
+            dst_range: rangeOf(dst),
+          });
+        }
+        if (!eatEnabled) {
+          return;
+        }
+        // 先把清零前的原始报告转成 9 字节格式上报应用（应用据此注入
+        // 映射动作），再清零源缓冲区，让系统 HOGP 层看不到按键。
+        const ioctlHex = queueToIoctlHex(src, len);
+        if (ioctlHex) {
+          emit({ kind: "gatt_read", raw: ioctlHex, eaten: true });
+        }
+        try {
+          for (let i = 0; i < len; i++) {
+            src.add(i).writeU8(0);
+          }
+          emit({
+            kind: "eaten_report",
+            message: "已清零报告源缓冲区 len=" + len,
+          });
+        } catch (_e) {}
+      },
+    });
+  } catch (_e) {}
+  // 三个框架间接调用点：rax 是目标函数（仅追踪模式）。
+  if (traceEnabled) {
+    const vcallSites = [0x2097f, 0x20aa2, 0x20b4c];
+    for (const off of vcallSites) {
+      try {
+        Interceptor.attach(driver.base.add(off), {
+          onEnter(args) {
+            const target = this.context.rax;
+            emit({
+              kind: "vcall_trace",
+              target: target.toString(),
+              target_resolved: resolveModule(target),
+              ret: this.returnAddress.toString(),
+              args: [
+                "rcx=" + args[0].toString(),
+                "rdx=" + args[1].toString(),
+                "r8=" + args[2].toString(),
+                "r9=" + args[3].toString(),
+              ],
+            });
+          },
+        });
+      } catch (_e) {}
     }
   }
-  if (changed) {
-    outputPtr.writeByteArray(bytes.buffer);
+}
+
+// 队列项（8 字节 = 2 字节头 + 3 个 16 位小端 usage）转成 9 字节 IOCTL
+// 报告格式（01 00 00 + 3 个 usage），供应用侧 hogp_ioctl_payload 解析。
+// 实测：上键队列项 00 00 52 00 00 00 00 00 ↔ IOCTL 01 00 00 52 00 00 00 00 00。
+function queueToIoctlHex(src, len) {
+  if (len !== 8) {
+    return "";
   }
+  try {
+    const bytes = new Uint8Array(src.readByteArray(8));
+    let out = "010000";
+    for (let i = 2; i < 8; i++) {
+      out += bytes[i].toString(16).padStart(2, "0");
+    }
+    return out;
+  } catch (_e) {
+    return "";
+  }
+}
+
+// 轮询设置页写入的 eat-mode.txt（内容为 "1"/"0"），运行中热切换吃掉模式。
+function pollEatModeFile() {
+  try {
+    if (typeof File === "undefined") {
+      return;
+    }
+    const file = new File(eatModePath, "r");
+    const text = file.readText();
+    file.close();
+    const trimmed = text.trim();
+    if (trimmed !== "1" && trimmed !== "0") {
+      return;
+    }
+    const enabled = trimmed === "1";
+    if (enabled !== eatEnabled) {
+      eatEnabled = enabled;
+      emit({ kind: "eat_mode_changed", eat_enabled: enabled });
+    }
+  } catch (_e) {}
 }
 
 function scheduleReconnect() {
@@ -127,6 +321,7 @@ async function connectToHub() {
       pid: Process.id,
       hook_installed: hookInstalled,
       eat_enabled: eatEnabled,
+      trace_enabled: traceEnabled,
     });
   } catch (_error) {
     output = null;
@@ -169,9 +364,12 @@ function installHook() {
           try {
             const rawHex = hex(this.output, this.outputLength);
             if (rawHex) {
-              emit({ kind: "gatt_read", raw: rawHex });
-              // 先上报原始报告，再把目标 usage 清零，让系统看不到这个键。
-              eatUsages(this.output, this.outputLength);
+              // 吃掉模式下，应用调度信号改由 0x20080 转发点上报（那里
+              // 才能拿到清零前的真实报告）；这里只上报原始读特征数据，
+              // 避免同一按键被上报两次。
+              if (!eatEnabled) {
+                emit({ kind: "gatt_read", raw: rawHex, eaten: false });
+              }
             }
           } catch (error) {
             emit({ kind: "error", message: String(error) });
@@ -197,6 +395,10 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS);
 
+setInterval(() => {
+  pollEatModeFile();
+}, EAT_POLL_MS);
+
 rpc.exports = {
   async init(_stage, parameters) {
     if (parameters && parameters.host) {
@@ -205,15 +407,25 @@ rpc.exports = {
     if (parameters && parameters.port) {
       port = parameters.port;
     }
+    if (parameters && parameters.eat_file) {
+      eatModePath = parameters.eat_file;
+    }
     if (parameters && parameters.eat !== undefined) {
       eatEnabled = parameters.eat === true || parameters.eat === "true";
     }
+    if (parameters && parameters.trace !== undefined) {
+      traceEnabled = parameters.trace === true || parameters.trace === "true";
+    }
+    // 0x20080 转发点钩子必须始终安装：eat 可运行时热切换，
+    // 不能在初始化时因 eat=false 而漏装。
+    installReportPathHooks();
     installHook();
     await connectToHub();
   },
 };
 
 try {
+  // 只装 hook，不在这里连接：连接由 rpc.exports.init 在读取 config 参数
+  // （host/port/eat）之后发起，避免 ready 消息带上默认的 eatEnabled=false。
   installHook();
-  connectToHub();
 } catch (_error) {}

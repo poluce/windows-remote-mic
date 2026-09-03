@@ -10,14 +10,6 @@ pub struct SelfTestItem {
     detail: String,
 }
 
-/// 通过语音引擎解码一批 ATVV 音频字节（自检）。
-#[tauri::command]
-pub fn decode_atvv_preview(bytes: Vec<u8>) -> core_voice::VoiceChunk {
-    let mut engine = core_voice::VoiceEngine::new();
-    let _ = engine.on_control(core_atvv::protocol::ControlEvent::StreamStart);
-    engine.feed(&bytes)
-}
-
 /// 运行与硬件无关的能力自检（Windows 负责音频部分）。
 #[tauri::command]
 pub fn run_self_test() -> Vec<SelfTestItem> {

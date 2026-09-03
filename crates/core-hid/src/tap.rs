@@ -19,11 +19,12 @@ const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
-/// 针对未发送显式松开报告的 HOGP 特殊键（如返回键），看门狗超时自动释放时间。
+/// 看门狗自动释放超时：仅作为「松开报告丢失」的兜底。
 ///
-/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖，便于真机调参：
-/// 过短会把长按截断成单击，过长会把单击误判成长按。
-const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(150);
+/// 实测 RC003 所有按键都会发送显式松开报告；按住期间遥控器不重复发报告，
+/// 因此该值必须大于长按阈值（550ms），否则长按会被看门狗截断成单击。
+/// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖调参。
+const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(2000);
 /// 看门狗轮询检查间隔。
 const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
 
@@ -66,11 +67,16 @@ static INJECTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 /// PID we already asked UAC / inject for. Never prompt again for the same host.
 static INJECT_ATTEMPTED_PID: Mutex<Option<u32>> = Mutex::new(None);
 static GRACE_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
+/// 麦克风键的 HID 兜底 usage（F5）。拦截开启时由旁路投递；
+/// 拦截关闭时让 Raw Input 投递，避免 Voice toggle 被双路翻转。
+const MIC_FALLBACK_USAGE: u16 = 0x3E;
 /// 当前处于按下状态的 usage 及其最近一次活跃的时间戳。
 static ACTIVE_USAGES: Mutex<Option<HashMap<u16, Instant>>> = Mutex::new(None);
 static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+/// hook 统计去重键：(calls, captured, success, pending, other_status)。
+type HookStatsKey = (u64, u64, u64, u64, u64);
 /// 上次已记录的 hook 统计，避免心跳每 5 秒重复刷屏。
-static LAST_HOOK_STATS: Mutex<Option<(u64, u64, u64, u64, u64)>> = Mutex::new(None);
+static LAST_HOOK_STATS: Mutex<Option<HookStatsKey>> = Mutex::new(None);
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -83,6 +89,30 @@ struct HubMessage {
     stats: Option<HookStats>,
     #[serde(default)]
     eat_enabled: bool,
+    #[serde(default)]
+    eaten: bool,
+    #[serde(default)]
+    trace_enabled: bool,
+    #[serde(default)]
+    func: String,
+    #[serde(default)]
+    dst: String,
+    #[serde(default)]
+    src: String,
+    #[serde(default)]
+    len: u32,
+    #[serde(default)]
+    hex: String,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    target_resolved: String,
+    #[serde(default)]
+    ret: String,
+    #[serde(default)]
+    args: Vec<String>,
+    #[serde(default)]
+    dst_range: String,
 }
 
 /// Frida 脚本随心跳上报的 hook 统计，用于确认 hook 是否持续被调用。
@@ -107,11 +137,49 @@ fn tap_port() -> u16 {
         .unwrap_or(TAP_PORT)
 }
 
-/// 是否开启「吃掉」模式：旁路把返回/音量键的 usage 从 HOGP 报告缓冲区里
-/// 清零，让系统不处理这些键，只由本应用注入映射动作。
-/// 通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启，默认关闭（只读探针）。
+/// 是否开启「吃掉」模式：驱动层把 HOGP 报告清零，系统不响应遥控器按键，
+/// 只由本应用注入映射动作。
+///
+/// 优先级：`eat-mode.txt`（设置页写入，Frida 脚本热更新）>
+/// 环境变量 `REMOTE_MIC_HID_TAP_EAT`（开发覆盖）> 默认开启。
 fn eat_enabled() -> bool {
+    if let Some(v) = read_eat_mode_file() {
+        return v;
+    }
     std::env::var("REMOTE_MIC_HID_TAP_EAT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true)
+}
+
+/// 吃掉模式热更新文件：设置页/启动时写入，Frida 脚本每秒轮询，
+/// 无需重新注入 WUDFHost 即可生效。
+fn eat_mode_file() -> PathBuf {
+    gadget_dir().join("eat-mode.txt")
+}
+
+fn read_eat_mode_file() -> Option<bool> {
+    let text = std::fs::read_to_string(eat_mode_file()).ok()?;
+    let text = text.trim();
+    if text == "1" || text.eq_ignore_ascii_case("true") {
+        Some(true)
+    } else if text == "0" || text.eq_ignore_ascii_case("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// 写入吃掉模式热更新文件（设置页切换与启动时调用）。
+pub fn write_eat_mode_file(enabled: bool) {
+    let _ = std::fs::create_dir_all(gadget_dir());
+    let _ = std::fs::write(eat_mode_file(), if enabled { "1" } else { "0" });
+}
+
+/// 是否开启 IOCTL/模块追踪：枚举 WUDFHost 的 HID/BTH 模块导出并记录所有
+/// IOCTL 码与缓冲区，用于定位报告转发点。
+/// 通过环境变量 `REMOTE_MIC_HID_TAP_TRACE=1` 开启，默认关闭。
+fn trace_enabled() -> bool {
+    std::env::var("REMOTE_MIC_HID_TAP_TRACE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -220,20 +288,9 @@ pub fn maybe_run_injector() -> bool {
 
 /// 启动 localhost 服务，并在需要时请求提权以执行注入。
 /// 可安全地多次调用。绝不打开 HID GATT 服务。
+///
+/// 缺少 Frida Gadget 时会在后台线程自动下载（不阻塞语音桥初始化）。
 pub fn start_after_atvv() {
-    // 先准备运行时（从旧位置复制 DLL 到 ProgramData、写 config/script、设置 ACL），
-    // 再检查 Gadget 是否可用。
-    if let Err(e) = prepare_runtime() {
-        status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
-        return;
-    }
-    if !gadget_available() {
-        status(
-            TapState::Unavailable,
-            "返回/音量旁路未启用：缺少 Frida Gadget，请运行 scripts/fetch-frida-gadget.ps1",
-        );
-        return;
-    }
     if RUNNING.swap(true, Ordering::SeqCst) {
         core_log::log_info("[hid-tap] 旁路服务已在运行");
         return;
@@ -242,24 +299,53 @@ pub fn start_after_atvv() {
     if let Some(pid) = load_injected_pid() {
         *INJECTED_PID.lock().unwrap() = Some(pid);
     }
+
+    if gadget_available() {
+        status(TapState::Pending, "正在准备返回/音量旁路…");
+    } else {
+        status(
+            TapState::Pending,
+            "正在自动下载 Frida Gadget（首次需要联网）…",
+        );
+    }
+
     std::thread::Builder::new()
         .name("rc003-hid-tap".into())
-        .spawn(hub_loop)
+        .spawn(|| {
+            if let Err(e) = prepare_runtime() {
+                status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
+                RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+            if !gadget_available() {
+                status(
+                    TapState::Unavailable,
+                    "返回/音量旁路未启用：自动安装 Frida Gadget 后仍未找到 DLL",
+                );
+                RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+            status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
+            hub_loop();
+        })
         .ok();
-    status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
 }
 
 fn prepare_runtime() -> Result<(), String> {
     let dir = gadget_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
+    // 先把目录 ACL 设好，确保普通用户可写入下载的 DLL / JS / config，
+    // SYSTEM（WUDFHost）也能加载。
+    ensure_runtime_acl(&dir)?;
+
     let mut wrote_new_file = false;
 
-    // 运行时目录固定为 ProgramData（SYSTEM 可读）。DLL 缺失时直接提示运行下载脚本，
-    // 不再从 LocalAppData 等历史位置复制兜底。
-    let dll_path = gadget_dll_path();
-    if !dll_path.is_file() {
-        return Err("frida-gadget.dll 未找到（请先运行 scripts/fetch-frida-gadget.ps1）".into());
+    // DLL 缺失时自动从 GitHub 下载官方 Gadget（版本/哈希与 fetch 脚本一致）。
+    if !gadget_dll_path().is_file() {
+        crate::gadget_fetch::ensure_frida_gadget(&dir)
+            .map_err(|e| format!("自动获取 Frida Gadget 失败：{e}"))?;
+        wrote_new_file = true;
     }
 
     // 写脚本。ProgramData 已给 Users Modify 权限，正常可写；失败则说明环境异常，阻断并提示。
@@ -271,11 +357,21 @@ fn prepare_runtime() -> Result<(), String> {
     }
 
     // 写 config（文件名必须与 DLL 名匹配：frida-gadget.config）
+    // 吃掉模式热更新文件也一并就位（设置页可随时覆盖）。
+    if !eat_mode_file().is_file() {
+        write_eat_mode_file(eat_enabled());
+    }
     let cfg = serde_json::json!({
         "interaction": {
             "type": "script",
             "path": "rc003-hid-tap.js",
-            "parameters": { "host": "127.0.0.1", "port": tap_port(), "eat": eat_enabled() },
+            "parameters": {
+                "host": "127.0.0.1",
+                "port": tap_port(),
+                "eat": eat_enabled(),
+                "trace": trace_enabled(),
+                "eat_file": eat_mode_file().to_string_lossy()
+            },
             "on_change": "ignore"
         },
         "runtime": "qjs",
@@ -289,8 +385,7 @@ fn prepare_runtime() -> Result<(), String> {
         wrote_new_file = true;
     }
 
-    // 给目录添加 SYSTEM/Administrators 读权限（不改变当前用户写权限），
-    // 确保 WUDFHost（SYSTEM）能加载 DLL/脚本。只在实际写入/新建后执行。
+    // 新写入文件后再巩固一次 ACL（下载/写脚本可能改变继承）。
     if wrote_new_file {
         ensure_runtime_acl(&dir)?;
     }
@@ -472,14 +567,14 @@ fn serve_client(stream: std::net::TcpStream) {
         match msg.kind.as_str() {
             "gatt_read" => {
                 if let Some(bytes) = decode_hex(&msg.raw) {
-                    on_ioctl_bytes(&bytes);
+                    let has_usage = hogp_ioctl_payload(&bytes)
+                        .map(|p| !hogp_payload_usages(p).is_empty())
+                        .unwrap_or(false);
+                    if msg.eaten && has_usage {
+                        core_log::log_info("[hid-tap] 已吃掉按键（系统不可见）");
+                    }
+                    on_ioctl_bytes(&bytes, msg.eaten);
                 }
-            }
-            "gatt_read_other" => {
-                core_log::log_debug(&format!(
-                    "[hid-tap] 非目标 IOCTL 数据: {}, raw={}",
-                    msg.message, msg.raw
-                ));
             }
             "heartbeat" => {
                 if let Some(stats) = &msg.stats {
@@ -502,8 +597,43 @@ fn serve_client(stream: std::net::TcpStream) {
             }
             "ready" => {
                 core_log::log_info(&format!(
-                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}）",
+                    "[hid-tap] Frida 脚本已连接并上报 ready（吃掉模式={}，追踪模式={}）",
+                    if msg.eat_enabled { "开启" } else { "关闭" },
+                    if msg.trace_enabled {
+                        "开启"
+                    } else {
+                        "关闭"
+                    }
+                ));
+            }
+            "memcpy_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] memcpy 追踪: func={} dst={} src={} len={} hex={} dst_range={}",
+                    msg.func, msg.dst, msg.src, msg.len, msg.hex, msg.dst_range
+                ));
+            }
+            "report_path" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 报告处理: func={} src={} len={} hex={}",
+                    msg.func, msg.src, msg.len, msg.hex
+                ));
+            }
+            "eaten_report" => {
+                core_log::log_info(&format!("[hid-tap] 吃掉报告: {}", msg.message));
+            }
+            "eat_mode_changed" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 吃掉模式热更新为：{}",
                     if msg.eat_enabled { "开启" } else { "关闭" }
+                ));
+            }
+            "vcall_trace" => {
+                core_log::log_info(&format!(
+                    "[hid-tap] 间接调用: target={} ({}) ret={} args=[{}]",
+                    msg.target,
+                    msg.target_resolved,
+                    msg.ret,
+                    msg.args.join(", ")
                 ));
             }
             "error" => core_log::log_warn(&format!("[hid-tap] 旁路错误: {}", msg.message)),
@@ -553,6 +683,14 @@ fn ensure_watchdog() {
                 if let Ok(mut guard) = ACTIVE_USAGES.lock() {
                     if let Some(active) = guard.as_mut() {
                         active.retain(|&usage, &mut last_seen| {
+                            // 麦克风键是 PTT：长按期间遥控器不重复发 HID 报告，
+                            // 只持续推 ATVV 音频；真正结束由 HID 松开报告或
+                            // ATVV AudioStopped 负责。若按通用超时自动释放，
+                            // 会在长按中把 Release 提前触发（Win+H 被二次按下
+                            // 导致语音输入被取消）。因此对 0x3E 禁用看门狗兜底。
+                            if usage == MIC_FALLBACK_USAGE {
+                                return true;
+                            }
                             if now.duration_since(last_seen) > auto_release_timeout() {
                                 expired.push(usage);
                                 false
@@ -567,13 +705,16 @@ fn ensure_watchdog() {
                 continue;
             }
             for usage in expired {
+                core_log::log_debug(&format!(
+                    "[hid-tap] 看门狗自动释放 usage=0x{usage:04X}（松开报告丢失兜底）"
+                ));
                 emit_usage(usage, false);
             }
         })
         .ok();
 }
 
-fn on_ioctl_bytes(data: &[u8]) {
+fn on_ioctl_bytes(data: &[u8], eaten: bool) {
     ensure_watchdog();
 
     core_log::log_debug(&format!(
@@ -590,9 +731,16 @@ fn on_ioctl_bytes(data: &[u8]) {
         return;
     };
 
-    let mut next = hogp_payload_usages(payload);
+    let raw = hogp_payload_usages(payload);
+    let mut next = raw.clone();
     next.sort_unstable();
     next.dedup();
+    // 拦截关闭时，麦克风 HID 兜底键（0x3E/F5）由 Raw Input 路径投递；
+    // 旁路再投一次会让 Voice toggle 一秒内开又关。只在拦截开启
+    // （Raw Input 看不到该键）时由旁路投递 0x3E。
+    if !eaten {
+        next.retain(|&u| u != MIC_FALLBACK_USAGE);
+    }
 
     // 记录所有解析出的 usage，包括未知 usage，便于校准真实信号。
     if !next.is_empty() {
@@ -609,7 +757,7 @@ fn on_ioctl_bytes(data: &[u8]) {
         let active = guard.get_or_insert_with(HashMap::new);
 
         // 1. 如果收到了全 0 的报告（显式松开）
-        if next.is_empty() {
+        if raw.is_empty() {
             explicitly_released.extend(active.keys().copied());
             active.clear();
         } else {

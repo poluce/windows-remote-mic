@@ -6,7 +6,7 @@ import {
   FALLBACK_MAPPING,
   REMOTE_BUTTONS,
   TRIGGER_LABEL,
-  TRIGGERS,
+  triggersFor,
 } from "./mapping/constants";
 import type { MappingEntry } from "./mapping/types";
 
@@ -17,6 +17,8 @@ export function MappingPage() {
   const [category, setCategory] = useState("system");
   const [action, setAction] = useState("return");
   const [saveMsg, setSaveMsg] = useState("");
+  const [longPressMs, setLongPressMs] = useState(550);
+  const [doubleClickMs, setDoubleClickMs] = useState(300);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -26,7 +28,27 @@ export function MappingPage() {
     invoke<MappingEntry[]>("get_mappings")
       .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
       .catch(() => setMapping(FALLBACK_MAPPING));
+    invoke<{ long_press_ms: number; double_click_ms: number }>("get_trigger_timing")
+      .then((t) => {
+        setLongPressMs(t.long_press_ms);
+        setDoubleClickMs(t.double_click_ms);
+      })
+      .catch(() => {});
   }, []);
+
+  async function saveTiming(nextLong: number, nextDouble: number) {
+    if (!isTauri()) return;
+    setLongPressMs(nextLong);
+    setDoubleClickMs(nextDouble);
+    try {
+      await invoke("set_trigger_timing", {
+        longPressMs: nextLong,
+        doubleClickMs: nextDouble,
+      });
+    } catch (err) {
+      setSaveMsg(`保存触发时间失败: ${err}`);
+    }
+  }
 
   // 选中按键或切换触发方式时，右侧自动展示该按键已绑定的动作。
   useEffect(() => {
@@ -40,6 +62,16 @@ export function MappingPage() {
     setCategory(cat?.key || "other");
     setAction(actionKey);
   }, [mapping, selected, trigger]);
+
+  // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
+  useEffect(() => {
+    const available = triggersFor(selected);
+    if (!available.some((t) => t.key === trigger)) {
+      setTrigger(available[0]?.key || "single_click");
+    }
+  }, [selected, trigger]);
+
+  const availableTriggers = triggersFor(selected);
 
   const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
   const actionLabel =
@@ -89,7 +121,7 @@ export function MappingPage() {
           <div className="wizard-group">
             <div className="wizard-label">② 触发方式</div>
             <div className="trigger-options">
-              {TRIGGERS.map((t) => (
+              {availableTriggers.map((t) => (
                 <button
                   key={t.key}
                   className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
@@ -99,6 +131,32 @@ export function MappingPage() {
                   <span className="trigger-name">{t.label}</span>
                 </button>
               ))}
+            </div>
+            <div className="timing-row">
+              <label className="timing-label">
+                长按判定
+                <select
+                  value={longPressMs}
+                  onChange={(e) => saveTiming(Number(e.target.value), doubleClickMs)}
+                >
+                  <option value={400}>0.4 秒</option>
+                  <option value={550}>0.55 秒</option>
+                  <option value={700}>0.7 秒</option>
+                  <option value={1000}>1.0 秒</option>
+                </select>
+              </label>
+              <label className="timing-label">
+                双击间隔
+                <select
+                  value={doubleClickMs}
+                  onChange={(e) => saveTiming(longPressMs, Number(e.target.value))}
+                >
+                  <option value={200}>0.2 秒</option>
+                  <option value={300}>0.3 秒</option>
+                  <option value={400}>0.4 秒</option>
+                  <option value={500}>0.5 秒</option>
+                </select>
+              </label>
             </div>
           </div>
 

@@ -6,7 +6,11 @@
 
 - 蓝牙连接小米遥控器（RC003 / 后续扩展 RC001）
 - 语音输入：优先使用 Windows 自带语音输入（Win+H）
-- 普通按键映射：方向、确定、返回、主页、菜单、TV、电源、音量等
+- 按键映射：13 键全部走映射表，支持单击 / 双击 / 长按（长按只触发一次）
+- 麦克风键：长按门控的「按下 / 松开」触发（默认 Win+H，可改为任意动作，支持第三方语音助手）
+- 驱动层「拦截 HID 按键信号」模式（默认开启）：在 WUDFHost HOGP 驱动写入点吃掉原始报告，由本应用独家按键，避免系统原生动作与应用映射动作双重触发；连接页可实时切换
+- 触发时间可配置：长按阈值（默认 550ms）、双击窗口（默认 300ms），映射页可调
+- 快捷菜单：右下角扇形菜单（默认由遥控器「菜单」键呼出，可改映射），支持遥控器独占操作与状态记忆
 - 虚拟声卡路由：输出到 VB-CABLE 等虚拟音频设备
 
 ## 技术栈
@@ -26,7 +30,7 @@ remote-mic/
 │   ├── core-ble/            # 蓝牙 BLE/GATT 连接
 │   ├── core-atvv/           # ATVV 协议 + ADPCM 解码
 │   ├── core-audio/          # WASAPI 音频输出、DSP、诊断
-│   ├── core-hid/            # HID 事件捕获 / 报告解析（Raw Input）
+│   ├── core-hid/            # HID 事件捕获 / 报告解析（Raw Input + HOGP 旁路）
 │   ├── core-input/          # Windows 按键注入、热键、输入钩子
 │   ├── core-mapping/        # 按键映射与触发规则
 │   ├── core-dispatch/       # 按键调度（触发 → 映射 → 执行）
@@ -34,6 +38,8 @@ remote-mic/
 │   ├── core-voice/          # 语音桥：BLE -> 解码 -> 输出
 │   ├── core-log/            # 统一文件日志
 │   └── core-stats/          # 本机统计
+├── public/
+│   └── quick-menu.html      # 快捷菜单独立页面（遥控器独占操作）
 └── docs/                    # 规划与任务文档
 ```
 
@@ -75,6 +81,7 @@ cargo test --workspace --exclude remote-mic
 - [ToDo / 任务清单](docs/项目/任务清单.md)
 - [发布说明](docs/项目/发布说明.md)
 - [真机验收](docs/项目/真机验收.md)
+- [问题记录：读取返回/音量键](docs/项目/问题记录-读取返回音量键.md)
 - [CHANGELOG / 发版流程](CHANGELOG.md)
-- [ATVV 协议事实表](docs/协议/ATVV/协议.md)
-- [社区参考资料](docs/协议/ATVV/社区资料/来源清单.md)
+- [RC003 开发探索信息总档](docs/协议/RC003-开发探索信息总档.md)
+- [ATVV 协议](docs/协议/ATVV-协议.md)

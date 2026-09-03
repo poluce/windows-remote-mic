@@ -315,18 +315,59 @@
       }
     }
 
+    // ---- 菜单状态持久化：记住上次停留的环与选择位置，下次打开恢复 ----
+    const MENU_STATE_KEY = 'remote-mic-quick-menu-state';
+
+    function saveMenuState() {
+      try {
+        localStorage.setItem(
+          MENU_STATE_KEY,
+          JSON.stringify({
+            ring: ring,
+            outer: outerWheel.targetIndex,
+            inner: innerWheel.targetIndex,
+          })
+        );
+      } catch (e) {
+        /* 存储不可用时静默忽略 */
+      }
+    }
+
+    function restoreMenuState() {
+      try {
+        const raw = localStorage.getItem(MENU_STATE_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        const clamp = (v, max) => Math.max(0, Math.min(max, Number(v) || 0));
+        if (s.ring === 'outer' || s.ring === 'inner') ring = s.ring;
+        outerWheel.targetIndex = clamp(s.outer, ALL_ITEMS.length - 1);
+        innerWheel.targetIndex = clamp(s.inner, ALL_ITEMS.length - 1);
+        // 位置直接落定，不做开场滚动动画
+        outerWheel.currentAngle = -outerWheel.targetIndex * outerWheel.slotAngle;
+        innerWheel.currentAngle = -innerWheel.targetIndex * innerWheel.slotAngle;
+      } catch (e) {
+        /* 损坏的状态数据静默忽略 */
+      }
+    }
+
     function scrollCurrent(dir) {
       if (ring === 'outer') outerWheel.scroll(dir);
       else innerWheel.scroll(dir);
       wakeVsync();
+      saveMenuState();
+    }
+
+    function switchRing() {
+      ring = ring === 'outer' ? 'inner' : 'outer';
+      renderFrame();
+      wakeVsync();
+      saveMenuState();
     }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
-        ring = ring === 'outer' ? 'inner' : 'outer';
-        renderFrame();
-        wakeVsync();
+        switchRing();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         scrollCurrent(-1);
@@ -336,6 +377,62 @@
       }
     });
 
+    // 菜单独占模式：遥控器按键经后端直接路由到这里（无需窗口焦点）。
+    // 打开菜单时所有遥控器按键都只驱动本菜单，关闭菜单后恢复正常映射。
+    // 事件契约：payload = { key: 'up'|'down'|'left'|'right'|'ok'|'close', pressed: bool }。
+    // 关闭（close）由后端直接执行，本页收到 close 只做清理，不要再次调用
+    // toggle_quick_menu，否则会与后端形成「关闭→重新打开」的双重开关。
+    if (window.__TAURI__ && window.__TAURI__.event) {
+      let repeatTimer = null;
+
+      function stopMenuRepeat() {
+        if (repeatTimer) {
+          clearInterval(repeatTimer);
+          repeatTimer = null;
+        }
+      }
+
+      function startMenuRepeat(dir) {
+        stopMenuRepeat();
+        scrollCurrent(dir);
+        repeatTimer = setInterval(() => scrollCurrent(dir), 160);
+      }
+
+      window.__TAURI__.event
+        .listen('quick-menu-key', (e) => {
+          const { key, pressed } = e.payload || {};
+          if (!key) return;
+          if (key === 'close') {
+            stopMenuRepeat();
+            return;
+          }
+          if (key === 'left' || key === 'right') {
+            if (pressed) {
+              switchRing();
+            }
+            return;
+          }
+          if (key === 'up' || key === 'down') {
+            // 与原键盘方向一致：上 = +1，下 = −1。
+            const dir = key === 'up' ? 1 : -1;
+            if (pressed) startMenuRepeat(dir);
+            else stopMenuRepeat();
+            return;
+          }
+          if (key === 'ok') {
+            // 选择当前项：菜单条目动作待后续版本接入。
+            stopMenuRepeat();
+          }
+        })
+        .catch((err) =>
+          window.__TAURI__.core
+            .invoke('log_message', { message: '快捷菜单: 事件监听失败: ' + String(err) })
+            .catch(() => {})
+        );
+    }
+
+    // 恢复上次打开时的停留位置，再渲染首帧。
+    restoreMenuState();
     renderFrame();
     document.body.tabIndex = 0;
     document.body.focus();

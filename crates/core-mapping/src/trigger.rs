@@ -1,4 +1,4 @@
-//! 触发检测：单击 / 双击 / 长按，以及按住重复。
+//! 触发检测：单击 / 双击 / 长按（长按只触发一次，不连发）。
 
 use serde::{Deserialize, Serialize};
 
@@ -7,8 +7,6 @@ use crate::Trigger;
 /// 时间常量（毫秒），与常见遥控器惯例保持一致。
 pub const DOUBLE_CLICK_WINDOW_MS: u64 = 300;
 pub const LONG_PRESS_MS: u64 = 550;
-/// 长按触发后，这是按住重复（hold-repeat）的间隔。
-pub const HOLD_REPEAT_MS: u64 = 120;
 
 /// 由触发检测器产生的事件。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,15 +17,14 @@ pub struct TriggerEvent {
 /// 检测单个物理按键的点击触发。
 ///
 /// 依次送入 `press(now_ms)` 和 `release(now_ms)`；当触发被确认时发出事件
-/// （单击会延迟到双击窗口结束后才确认）。
+/// （单击会延迟到双击窗口结束后才确认）。长按在按住超过阈值时只触发一次，
+/// 不做按住连发。
 #[derive(Debug, Clone)]
 pub struct TriggerDetector {
     pressed_at: Option<u64>,
     released_at: Option<u64>,
     last_single_at: Option<u64>,
     long_fired: bool,
-    repeat_armed: bool,
-    last_repeat_at: Option<u64>,
     double_click_window_ms: u64,
     long_press_ms: u64,
 }
@@ -39,8 +36,6 @@ impl Default for TriggerDetector {
             released_at: None,
             last_single_at: None,
             long_fired: false,
-            repeat_armed: false,
-            last_repeat_at: None,
             double_click_window_ms: DOUBLE_CLICK_WINDOW_MS,
             long_press_ms: LONG_PRESS_MS,
         }
@@ -64,7 +59,6 @@ impl TriggerDetector {
     pub fn press(&mut self, now_ms: u64) {
         self.pressed_at = Some(now_ms);
         self.long_fired = false;
-        self.repeat_armed = true;
     }
 
     /// 发生了物理松开。
@@ -76,11 +70,10 @@ impl TriggerDetector {
 
         let held = now_ms.saturating_sub(pressed);
 
-        // 长按：如果按住时间超过阈值，则在松开时触发。
+        // 长按：如果按住时间超过阈值，则在松开时触发（tick 未触发过的兜底）。
         if held >= self.long_press_ms {
             if !self.long_fired {
                 self.long_fired = true;
-                self.repeat_armed = false;
                 self.last_single_at = None;
                 return FeedOutcome::Fire(TriggerEvent {
                     trigger: Trigger::LongPress,
@@ -109,21 +102,15 @@ impl TriggerDetector {
         FeedOutcome::Pending
     }
 
-    /// 周期性的 tick，用于检查按住重复和已过期的单击。
+    /// 周期性的 tick，用于确认长按（只触发一次）和已过期的单击。
     pub fn tick(&mut self, now_ms: u64) -> FeedOutcome {
-        // 当按住时间超过长按阈值时：发出重复 tick。
+        // 按住超过长按阈值：只触发一次，不做按住连发。
         if let Some(pressed) = self.pressed_at {
-            if self.repeat_armed && now_ms.saturating_sub(pressed) >= self.long_press_ms {
-                let interval_due = match self.last_repeat_at {
-                    None => true,
-                    Some(last) => now_ms.saturating_sub(last) >= HOLD_REPEAT_MS,
-                };
-                if interval_due {
-                    self.last_repeat_at = Some(now_ms);
-                    return FeedOutcome::Fire(TriggerEvent {
-                        trigger: Trigger::LongPress,
-                    });
-                }
+            if !self.long_fired && now_ms.saturating_sub(pressed) >= self.long_press_ms {
+                self.long_fired = true;
+                return FeedOutcome::Fire(TriggerEvent {
+                    trigger: Trigger::LongPress,
+                });
             }
         }
 
@@ -145,6 +132,21 @@ impl TriggerDetector {
     /// 重置所有状态（例如设备断开连接时）。
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    /// 设置长按判定阈值（毫秒）。
+    pub fn set_long_press_ms(&mut self, ms: u64) {
+        self.long_press_ms = ms;
+    }
+
+    /// 设置双击判定窗口（毫秒）。
+    pub fn set_double_click_window_ms(&mut self, ms: u64) {
+        self.double_click_window_ms = ms;
+    }
+
+    /// 本次按住是否已被识别为长按（用于门控 Press/Release 边沿触发）。
+    pub fn is_long_held(&self) -> bool {
+        self.long_fired
     }
 }
 

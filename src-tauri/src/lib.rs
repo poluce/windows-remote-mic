@@ -1,4 +1,5 @@
 //! Remote Mic Tauri 应用外壳。
+//! 菜单键 → 快捷菜单：调度器经统一应用事件出口（quick_menu::handle_app_event）处理。
 
 mod commands;
 
@@ -9,7 +10,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use core_atvv::ImaAdpcmDecoder;
-use core_dispatch::KeyDispatcher;
+use core_dispatch::{AppEvent, KeyDispatcher};
 use core_mapping::{ActionKind, ButtonId, Trigger};
 
 #[cfg(target_os = "windows")]
@@ -134,6 +135,8 @@ fn parse_trigger(s: &str) -> Option<Trigger> {
         "single_click" => Some(Trigger::SingleClick),
         "double_click" => Some(Trigger::DoubleClick),
         "long_press" => Some(Trigger::LongPress),
+        "press" => Some(Trigger::Press),
+        "release" => Some(Trigger::Release),
         _ => None,
     }
 }
@@ -157,6 +160,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
         "system_volume_mute" => A::SystemVolumeMute,
         "play_pause" => A::PlayPause,
         "voice" => A::Voice,
+        "toggle_quick_menu" => A::ToggleQuickMenu,
         _ => return None,
     })
 }
@@ -172,6 +176,8 @@ fn trigger_key(trigger: &Trigger) -> String {
         Trigger::SingleClick => "single_click",
         Trigger::DoubleClick => "double_click",
         Trigger::LongPress => "long_press",
+        Trigger::Press => "press",
+        Trigger::Release => "release",
     }
     .to_string()
 }
@@ -197,6 +203,7 @@ fn action_key(action: &ActionKind) -> String {
         ActionKind::PlayPause => "play_pause",
         ActionKind::Voice => "voice",
         ActionKind::OpenApp(_) => "open_app",
+        ActionKind::ToggleQuickMenu => "toggle_quick_menu",
     }
     .to_string()
 }
@@ -221,6 +228,7 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::PlayPause => "播放/暂停".into(),
         ActionKind::Voice => "语音输入（Win+H）".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
+        ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }
 }
 
@@ -299,10 +307,34 @@ pub fn run() {
 
             #[cfg(target_os = "windows")]
             let dispatcher = {
-                let cfg = config_store()
+                let mut cfg = config_store()
                     .map(|s| s.load_or_default())
                     .unwrap_or_default();
+                // 旧版本把麦克风映射为 SingleClick；迁移为按下/松开 PTT。
+                if cfg.mapping.migrate_mic_ptt() {
+                    if let Some(store) = config_store() {
+                        let _ = store.save(&cfg);
+                    }
+                    core_log::log_info("[app] 麦克风映射已迁移为按下/松开（PTT）");
+                }
+                // 旧版本把菜单键映射为右键菜单；迁移为打开/关闭快捷菜单。
+                if cfg.mapping.migrate_menu_quickmenu() {
+                    if let Some(store) = config_store() {
+                        let _ = store.save(&cfg);
+                    }
+                    core_log::log_info("[app] 菜单键映射已迁移为快捷菜单（开/关）");
+                }
+                // 把「吃掉」模式写入热更新文件：注入时据此生成 config，
+                // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
+                core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
+                dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
+                // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
+                // 统一交给 commands::quick_menu::handle_app_event 处理。
+                let app_for_events = app.handle().clone();
+                dispatcher.set_app_event_handler(Some(Arc::new(move |event: AppEvent| {
+                    commands::quick_menu::handle_app_event(app_for_events.clone(), event);
+                })));
                 let stats_dir = std::env::var("LOCALAPPDATA")
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -372,11 +404,10 @@ pub fn run() {
             ping,
             commands::connection::scan_for_rc003,
             commands::connection::connect_rc003,
-            commands::connection::get_persisted_settings,
-            commands::connection::get_connection_status,
             commands::connection::get_runtime_status,
             commands::connection::save_selected_device,
-            commands::connection::save_output_endpoint,
+            commands::connection::get_hid_tap_eat,
+            commands::connection::set_hid_tap_eat,
             commands::connection::open_system_settings,
             commands::log::log_message,
             commands::log::get_log_info,
@@ -389,16 +420,16 @@ pub fn run() {
             commands::mapping::save_key_calibrations,
             commands::mapping::get_key_calibrations,
             commands::mapping::set_dispatch_enabled,
-            commands::audio::list_audio_endpoints,
+            commands::mapping::get_trigger_timing,
+            commands::mapping::set_trigger_timing,
             commands::audio::start_voice_bridge,
+            commands::audio::stop_voice_bridge,
             commands::audio::simulate_voice_chain,
             commands::audio::vb_cable_status,
             commands::audio::install_vb_cable,
             commands::audio::audio_diagnostics,
-            commands::audio::play_test_tone,
             commands::audio::play_test_tone_loop,
             commands::audio::trigger_voice_typing,
-            commands::diagnostics::decode_atvv_preview,
             commands::diagnostics::run_self_test,
             commands::quick_menu::toggle_quick_menu,
         ])

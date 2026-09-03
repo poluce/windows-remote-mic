@@ -3,13 +3,13 @@
 //! 这是把「按键映射」从纯配置变成运行时闭环的核心一环：
 //! Raw Input 标准流与 HOGP 旁路在 src-tauri 汇聚后调用
 //! [`KeyDispatcher::on_vkey`]；调度器为每个按键维护一个
-//! `TriggerDetector`（单击/双击/长按/按住重复），确认触发后查
+//! `TriggerDetector`（单击/双击/长按/按下/松开），确认触发后查
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
-//! 麦克风键刻意不走调度器：它是语音会话的 toggle（开/关 Win+H 语音
-//! 输入），状态与 ATVV 控制流绑定，留在 core-voice 的 bridge 内处理。
-//! 因此 `vkey_map` 中不含麦克风键（含 F5 兜底 116）。
+//! 麦克风键也走调度器：默认映射为 Press→Voice、Release→Voice
+//! （`core_input::open_voice_typing`，Win+H）。用户可在映射页把麦克风
+//! 的按下/松开改成任意动作（如第三方语音助手），映射表不是摆设。
 //!
 //! 重复投递防护分工：
 //! - WM_APPCOMMAND 的合成按下/松开在 core-hid 源头抑制（键盘路径
@@ -33,17 +33,10 @@ use std::time::{Duration, Instant};
 
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
-use core_mapping::{action_allows_repeat, ActionKind, ButtonId, MappingConfig, Trigger};
+use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
 
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
-
-/// 长按触发来源：`release`（松开确认）或 `tick`（按住重复节拍）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LongSource {
-    Release,
-    Tick,
-}
 
 /// 单个按键的运行时状态。
 #[derive(Default)]
@@ -60,6 +53,26 @@ struct Inner {
     vkey_map: HashMap<u16, ButtonId>,
     buttons: HashMap<ButtonId, ButtonRuntime>,
     enabled: bool,
+    /// 输入路由模式：普通映射 / 快捷菜单独占（按键直转菜单回调）。
+    mode: InputMode,
+}
+
+/// 输入路由模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    /// 普通模式：按键走触发检测与映射。
+    Normal,
+    /// 快捷菜单独占模式：所有按键事件直接转发给应用事件回调。
+    QuickMenu,
+}
+
+/// 需要 Tauri 层执行的应用事件（调度器 → 应用壳的唯一出口）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppEvent {
+    /// 映射动作：打开/关闭快捷菜单（由 `ToggleQuickMenu` 动作触发）。
+    ToggleQuickMenu,
+    /// 菜单独占模式下遥控器按键直转（参数 = 物理按键, 是否按下边沿）。
+    MenuKey(ButtonId, bool),
 }
 
 /// 一条待执行的动作任务。
@@ -78,6 +91,10 @@ pub struct KeyDispatcher {
     inner: Mutex<Inner>,
     jobs_tx: mpsc::Sender<ActionJob>,
     jobs_rx: Mutex<Option<mpsc::Receiver<ActionJob>>>,
+    /// 应用事件出口：需要 Tauri 层执行的动作（开关快捷菜单、
+    /// 菜单独占模式的按键直转）统一经此回调解出。须在 `spawn_runtime`
+    /// 之前设置。
+    app_event: Mutex<Option<Arc<dyn Fn(AppEvent) + Send + Sync>>>,
 }
 
 impl KeyDispatcher {
@@ -94,20 +111,44 @@ impl KeyDispatcher {
                 buttons: default_button_runtimes(),
                 mapping,
                 enabled: true,
+                mode: InputMode::Normal,
             }),
             jobs_tx: tx,
             jobs_rx: Mutex::new(Some(rx)),
+            app_event: Mutex::new(None),
         })
+    }
+
+    /// 设置应用事件出口（开关快捷菜单、菜单独占按键直转等）。
+    /// 须在 `spawn_runtime` 之前调用。
+    pub fn set_app_event_handler(&self, handler: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>) {
+        *self.app_event.lock().unwrap() = handler;
+    }
+
+    /// 切换输入路由模式：快捷菜单独占模式下所有按键绕过触发检测与映射，
+    /// 直接以 `AppEvent::MenuKey` 转发给应用事件出口；切回普通模式恢复
+    /// 常规调度。切换时清空按键中间状态。
+    pub fn set_input_mode(&self, mode: InputMode) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.mode == mode {
+            return;
+        }
+        inner.mode = mode;
+        for rt in inner.buttons.values_mut() {
+            *rt = ButtonRuntime::default();
+        }
+        core_log::log_line(&format!("[dispatch] 输入模式已切换: {mode:?}"));
     }
 
     /// 启动动作执行线程与 tick 线程。
     ///
     /// `stats_dir` 为按键统计存储目录（`core-stats`）。
     pub fn spawn_runtime(self: &Arc<Self>, stats_dir: PathBuf) {
+        let app_event = self.app_event.lock().unwrap().clone();
         if let Some(rx) = self.jobs_rx.lock().unwrap().take() {
             std::thread::Builder::new()
                 .name("rc003-dispatch-exec".into())
-                .spawn(move || execute_loop(rx, stats_dir))
+                .spawn(move || execute_loop(rx, stats_dir, app_event))
                 .ok();
         }
         let weak = Arc::downgrade(self);
@@ -126,7 +167,22 @@ impl KeyDispatcher {
     }
 
     /// 事件入口：一个虚拟键的按下/松开。
+    ///
+    /// 快捷菜单独占模式下不经过触发检测与映射，直接以
+    /// `AppEvent::MenuKey` 转发给应用事件出口。
     pub fn on_vkey(&self, vkey: u16, pressed: bool) {
+        let (mode, button) = {
+            let inner = self.inner.lock().unwrap();
+            (inner.mode, inner.vkey_map.get(&vkey).copied())
+        };
+        if mode == InputMode::QuickMenu {
+            if let Some(cb) = self.app_event.lock().unwrap().as_ref() {
+                if let Some(button) = button {
+                    cb(AppEvent::MenuKey(button, pressed));
+                }
+            }
+            return;
+        }
         for job in self.feed(vkey, pressed, self.now_ms()) {
             let _ = self.jobs_tx.send(job);
         }
@@ -140,6 +196,15 @@ impl KeyDispatcher {
     /// 热更新校准表（保存校准后调用），并重建虚拟键反查表。
     pub fn update_calibrations(&self, calibrations: &HashMap<String, KeyCalibration>) {
         self.inner.lock().unwrap().vkey_map = build_vkey_map(calibrations);
+    }
+
+    /// 热更新触发判定时间：长按阈值与双击窗口（毫秒）。
+    pub fn set_trigger_timing(&self, long_press_ms: u64, double_click_ms: u64) {
+        let mut inner = self.inner.lock().unwrap();
+        for rt in inner.buttons.values_mut() {
+            rt.detector.set_long_press_ms(long_press_ms);
+            rt.detector.set_double_click_window_ms(double_click_ms);
+        }
     }
 
     /// 暂停/恢复调度。按键测试与校准界面应暂停，避免测试按键
@@ -183,7 +248,7 @@ impl KeyDispatcher {
             return jobs;
         };
         let rt = buttons.entry(button).or_default();
-        let fired = if pressed {
+        if pressed {
             if rt.down {
                 // 系统按住重复：只算一次物理按下
                 return jobs;
@@ -191,27 +256,33 @@ impl KeyDispatcher {
             rt.down = true;
             rt.long_executed = false;
             rt.detector.press(now);
-            None
+            // Press 边沿触发不在这里发：等 tick 识别为长按后才发，
+            // 快速点按（单击/双击）不产生 Press/Release。
         } else {
             if !rt.down {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
                 return jobs;
             }
             rt.down = false;
-            match rt.detector.release(now) {
-                FeedOutcome::Fire(ev) => Some((ev.trigger, LongSource::Release)),
-                FeedOutcome::Pending => None,
+            // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
+            let outcome = rt.detector.release(now);
+            // Release 边沿触发：只有长按结束才发。
+            if rt.detector.is_long_held() {
+                if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
+                    jobs.push(job);
+                }
             }
-        };
-        if let Some((trigger, source)) = fired {
-            if let Some(job) = build_job(mapping, button, trigger, source, rt) {
-                jobs.push(job);
+            // 单击/双击/长按等手势确认。
+            if let FeedOutcome::Fire(ev) = outcome {
+                if let Some(job) = build_job(mapping, button, ev.trigger, rt) {
+                    jobs.push(job);
+                }
             }
         }
         jobs
     }
 
-    /// 驱动一次触发检测（确认延迟的单击、按住重复）。
+    /// 驱动一次触发检测（确认延迟的单击与长按）。
     fn tick_once(&self, now: u64) -> Vec<ActionJob> {
         let mut jobs = Vec::new();
         let mut inner = self.inner.lock().unwrap();
@@ -222,8 +293,16 @@ impl KeyDispatcher {
             mapping, buttons, ..
         } = &mut *inner;
         for (button, rt) in buttons.iter_mut() {
-            if let FeedOutcome::Fire(ev) = rt.detector.tick(now) {
-                if let Some(job) = build_job(mapping, *button, ev.trigger, LongSource::Tick, rt) {
+            let was_long = rt.detector.is_long_held();
+            let outcome = rt.detector.tick(now);
+            // 长按刚被识别：发 Press 边沿触发（麦克风 PTT 的「按下」）。
+            if !was_long && rt.detector.is_long_held() {
+                if let Some(job) = build_job(mapping, *button, Trigger::Press, rt) {
+                    jobs.push(job);
+                }
+            }
+            if let FeedOutcome::Fire(ev) = outcome {
+                if let Some(job) = build_job(mapping, *button, ev.trigger, rt) {
                     jobs.push(job);
                 }
             }
@@ -234,14 +313,11 @@ impl KeyDispatcher {
 
 /// 由触发事件构建动作任务；无绑定或禁用的按键返回 `None`。
 ///
-/// 长按规则：本次按住的第一次长按触发总是执行（无论动作是否可重复）；
-/// 之后的按住重复节拍只有可重复动作才继续执行；松开时的长按确认在
-/// tick 已经触发过的情况下跳过，避免多执行一次。
+/// 长按只执行一次：tick 已触发过则松开时的兜底确认直接跳过。
 fn build_job(
     mapping: &MappingConfig,
     button: ButtonId,
     trigger: Trigger,
-    source: LongSource,
     rt: &mut ButtonRuntime,
 ) -> Option<ActionJob> {
     let action = mapping.resolve(button, trigger)?.clone();
@@ -250,14 +326,9 @@ fn build_job(
     }
     if trigger == Trigger::LongPress {
         if rt.long_executed {
-            match source {
-                LongSource::Release => return None,
-                LongSource::Tick if !action_allows_repeat(&action) => return None,
-                LongSource::Tick => {}
-            }
-        } else {
-            rt.long_executed = true;
+            return None;
         }
+        rt.long_executed = true;
     }
     Some(ActionJob {
         button,
@@ -268,14 +339,11 @@ fn build_job(
 
 /// 构建虚拟键 -> 物理按键反查表。
 ///
-/// 默认项来自 core-hid 的 usage 表（麦克风键除外），随后应用校准表
-/// 覆盖（校准表里 `vkey` 非空的条目优先）。
+/// 默认项来自 core-hid 的 usage 表（含麦克风 F5 兜底 116），随后应用
+/// 校准表覆盖（校准表里 `vkey` 非空的条目优先）。
 fn build_vkey_map(calibrations: &HashMap<String, KeyCalibration>) -> HashMap<u16, ButtonId> {
     let mut map = HashMap::new();
     for button in ButtonId::ALL {
-        if button == ButtonId::Mic {
-            continue;
-        }
         if let Some(usage) = core_hid::button_to_usage(button) {
             if let Some(vk) = core_hid::usage_to_vkey(usage) {
                 map.insert(vk, button);
@@ -292,9 +360,6 @@ fn build_vkey_map(calibrations: &HashMap<String, KeyCalibration>) -> HashMap<u16
         else {
             continue;
         };
-        if button == ButtonId::Mic {
-            continue;
-        }
         // 移除该按钮的默认虚拟键绑定，避免同一按钮由两个键触发；
         // 校准值之间冲突时后写的优先。
         map.retain(|_, b| *b != button);
@@ -312,10 +377,14 @@ fn default_button_runtimes() -> HashMap<ButtonId, ButtonRuntime> {
 }
 
 /// 执行线程主体：执行动作并记录按键统计。
-fn execute_loop(rx: mpsc::Receiver<ActionJob>, stats_dir: PathBuf) {
+fn execute_loop(
+    rx: mpsc::Receiver<ActionJob>,
+    stats_dir: PathBuf,
+    app_event: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>,
+) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
-        let outcome = execute_action(&job.action);
+        let outcome = execute_action(&job.action, app_event.as_ref());
         match &outcome {
             Ok(()) => core_log::log_info(&format!(
                 "[dispatch] 已执行: {} {:?} -> {:?}",
@@ -342,7 +411,10 @@ fn send_combo(tokens: &[&str]) -> Result<(), String> {
     core_input::send_key_combo(tokens).map_err(|e| e.to_string())
 }
 
-fn execute_action(action: &ActionKind) -> Result<(), String> {
+fn execute_action(
+    action: &ActionKind,
+    app_event: Option<&Arc<dyn Fn(AppEvent) + Send + Sync>>,
+) -> Result<(), String> {
     use ActionKind as A;
     match action {
         A::Disabled => Ok(()),
@@ -364,13 +436,17 @@ fn execute_action(action: &ActionKind) -> Result<(), String> {
         A::SystemVolumeDown => send_combo(&["volume_down"]),
         A::SystemVolumeMute => send_combo(&["volume_mute"]),
         A::PlayPause => send_combo(&["play_pause"]),
-        A::Voice => {
-            // 与 bridge 的开启路径一致：先关闭已有的语音条再唤出
-            core_input::press_escape().map_err(|e| e.to_string())?;
-            std::thread::sleep(Duration::from_millis(100));
-            core_input::press_win_h().map_err(|e| e.to_string())
-        }
+        A::Voice => core_input::open_voice_typing()
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
+        A::ToggleQuickMenu => match app_event {
+            Some(handler) => {
+                handler(AppEvent::ToggleQuickMenu);
+                Ok(())
+            }
+            None => Err("快捷菜单动作未接线（缺少应用事件出口）".to_string()),
+        },
     }
 }
 
@@ -388,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn vkey_map_defaults_and_mic_excluded() {
+    fn vkey_map_defaults_including_mic() {
         let map = build_vkey_map(&HashMap::new());
         assert_eq!(map.get(&38), Some(&ButtonId::Up));
         assert_eq!(map.get(&166), Some(&ButtonId::Back));
@@ -396,8 +472,12 @@ mod tests {
         assert_eq!(map.get(&174), Some(&ButtonId::VolumeDown));
         // 主页：实测 Windows 映射为 VK_HOME(36)
         assert_eq!(map.get(&36), Some(&ButtonId::Home));
-        assert!(!map.contains_key(&172), "主页不应再绑定 VK_BROWSER_HOME(172)");
-        assert!(!map.contains_key(&116), "麦克风键（F5 兜底）不走调度器");
+        assert!(
+            !map.contains_key(&172),
+            "主页不应再绑定 VK_BROWSER_HOME(172)"
+        );
+        // 麦克风 F5 兜底 116 进调度器，走 Press/Release 映射
+        assert_eq!(map.get(&116), Some(&ButtonId::Mic));
     }
 
     #[test]
@@ -494,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn hold_repeat_only_for_repeatable_actions() {
+    fn long_press_fires_only_once() {
         let d = dispatcher();
         d.update_mapping(MappingConfig {
             bindings: vec![core_mapping::KeyBinding {
@@ -504,27 +584,9 @@ mod tests {
             }],
         });
         jobs_of(&d, 175, true, 0);
-        let first = d.tick_once(600);
-        assert_eq!(first.len(), 1, "第一次长按节拍应触发");
-        let second = d.tick_once(750);
-        assert_eq!(second.len(), 1, "可重复动作按住期间持续触发");
+        assert_eq!(d.tick_once(600).len(), 1, "按住超过阈值触发一次");
+        assert!(d.tick_once(750).is_empty(), "继续按住不再重复");
         assert!(jobs_of(&d, 175, false, 800).is_empty(), "松开确认不重复");
-    }
-
-    #[test]
-    fn long_press_non_repeatable_fires_only_once() {
-        let d = dispatcher();
-        d.update_mapping(MappingConfig {
-            bindings: vec![core_mapping::KeyBinding {
-                button: ButtonId::Tv,
-                trigger: Trigger::LongPress,
-                action: ActionKind::AppSwitcher,
-            }],
-        });
-        jobs_of(&d, 180, true, 0);
-        assert_eq!(d.tick_once(600).len(), 1);
-        assert!(d.tick_once(750).is_empty(), "不可重复动作不应重复");
-        assert!(jobs_of(&d, 180, false, 800).is_empty());
     }
 
     #[test]
@@ -575,14 +637,40 @@ mod tests {
     fn all_default_buttons_have_binding() {
         let map = build_vkey_map(&HashMap::new());
         let cfg = MappingConfig::default();
-        assert_eq!(map.len(), 12);
+        assert_eq!(map.len(), 13);
         for (vk, button) in map {
             assert!(
-                cfg.resolve(button, Trigger::SingleClick).is_some(),
+                cfg.bindings.iter().any(|b| b.button == button),
                 "vkey {vk} ({button:?}) 缺少默认映射"
             );
         }
-        assert_eq!(default_mapping().len(), 13);
+        assert_eq!(default_mapping().len(), 14);
+    }
+
+    #[test]
+    fn mic_ptt_fires_after_long_press() {
+        let d = dispatcher();
+        assert!(jobs_of(&d, 116, true, 0).is_empty(), "按下瞬间不发 Press");
+        let press_jobs = d.tick_once(600);
+        assert_eq!(press_jobs.len(), 1);
+        assert_eq!(press_jobs[0].trigger, Trigger::Press);
+        assert_eq!(press_jobs[0].action, ActionKind::Voice);
+
+        let release_jobs = jobs_of(&d, 116, false, 800);
+        assert_eq!(release_jobs.len(), 1);
+        assert_eq!(release_jobs[0].trigger, Trigger::Release);
+        assert_eq!(release_jobs[0].action, ActionKind::Voice);
+    }
+
+    #[test]
+    fn mic_quick_tap_fires_nothing() {
+        let d = dispatcher();
+        assert!(jobs_of(&d, 116, true, 0).is_empty());
+        assert!(
+            jobs_of(&d, 116, false, 100).is_empty(),
+            "快速点按不产生 Press/Release"
+        );
+        assert!(d.tick_once(400).is_empty());
     }
 
     #[test]
@@ -592,5 +680,58 @@ mod tests {
         for vk in map.keys() {
             assert!(seen.insert(*vk), "虚拟键 {vk} 被映射到多个按键");
         }
+    }
+
+    #[test]
+    fn toggle_quick_menu_without_handler_errors() {
+        let err = execute_action(&ActionKind::ToggleQuickMenu, None).unwrap_err();
+        assert!(err.contains("未接线"), "缺少回调时应报错：{err}");
+    }
+
+    #[test]
+    fn toggle_quick_menu_calls_app_event_handler() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
+            let calls = calls.clone();
+            move |event| {
+                assert_eq!(event, AppEvent::ToggleQuickMenu);
+                calls.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        execute_action(&ActionKind::ToggleQuickMenu, Some(&handler)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn quick_menu_mode_routes_keys_to_handler_and_skips_mapping() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let d = dispatcher();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
+            let calls = calls.clone();
+            move |event| match event {
+                AppEvent::MenuKey(ButtonId::Up, true) => {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+        });
+        d.set_app_event_handler(Some(handler));
+        d.set_input_mode(InputMode::QuickMenu);
+        d.on_vkey(38, true);
+        d.on_vkey(38, false);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "按下边沿应转发一次");
+        assert!(
+            d.tick_once(400).is_empty(),
+            "菜单独占模式下不应产生普通映射任务"
+        );
+        // 切回普通模式后恢复普通单击。
+        d.set_input_mode(InputMode::Normal);
+        d.on_vkey(38, true);
+        d.on_vkey(38, false);
+        let jobs = d.tick_once(400);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].action, ActionKind::ArrowUp);
     }
 }

@@ -1,4 +1,6 @@
-# Fetch the official Frida Gadget used by the optional RC003 HID tap.
+# Manual fallback: fetch the official Frida Gadget for the optional RC003 HID tap.
+# The app auto-downloads the same Gadget when missing; use this script for offline
+# prep or when diagnosing network/ACL issues.
 # ASCII-only so Windows PowerShell 5.1 can parse this file.
 # Does not inject; the app starts the tap after ATVV is ready.
 param(

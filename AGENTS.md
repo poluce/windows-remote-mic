@@ -10,7 +10,9 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 - 解析 ATVV 协议 / IMA ADPCM 音频
 - 支持 Windows 自带语音输入（Win+H）
 - 支持按键映射、虚拟声卡（VB-CABLE）输出、诊断自检
-- 提供一个右下角扇形快捷菜单（由遥控器「菜单」键呼出）
+- 提供一个右下角扇形快捷菜单（默认由遥控器「菜单」键呼出，可改映射）
+
+> RC003 开发过程中探索到的协议/按键/音频/系统行为知识沉淀见 [docs/协议/RC003-开发探索信息总档.md](docs/协议/RC003-开发探索信息总档.md)。
 
 ## 技术栈
 
@@ -49,7 +51,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-voice        # 语音桥 / 模拟链路
 │   ├── core-log          # 统一文件日志（分级 + DEBUG 开关）
 │   ├── core-stats        # 本机统计
-│   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input）
+│   ├── core-hid          # HID 底层事件捕获 / 报告解析（Raw Input + HOGP 旁路）
 │   └── core-input        # Windows 按键注入、热键、输入钩子
 ├── public/
 │   └── quick-menu.html   # 快捷菜单窗口（独立 Canvas 页面）
@@ -82,12 +84,12 @@ cargo check -p remote-mic
 
 ### 1. 主窗口与页面
 - 主窗口是一个设置型应用，左侧导航，内容区直接渲染页面（已移除顶栏和页面标题）。
-- 页面：
-  - 连接
+- 页面（实际导航）：
+  - 连接（含设备连接、拦截开关、识别方案、语音模拟）
   - 按键映射
-  - 语音
   - 诊断
   - 引导
+- 注意：**没有独立的「语音」页和「统计」页**；语音相关设置/模拟在连接页，引导页负责首次配置说明。
 
 ### 2. 快捷菜单窗口
 - 在 `src-tauri/src/lib.rs` 的 `setup` 中创建第二个透明窗口 `quick-menu`。
@@ -99,6 +101,10 @@ cargo check -p remote-mic
   - 原版切换/动画逻辑请勿随意改动
   - 边界淡出：外弧内缩 20px，直边内缩 1°
 - `toggle_quick_menu` 命令控制显示/隐藏；显示时会 `window.location.reload()` 以便加载最新 HTML。
+- **菜单键默认动作是 `ToggleQuickMenu`（打开/关闭快捷菜单）**，旧配置 `ContextMenu`（右键菜单）会在启动时自动迁移为 `ToggleQuickMenu`。
+- **菜单独占输入模式（QuickMenu）**：打开快捷菜单时，调度器进入 `InputMode::QuickMenu`，遥控器方向/确定/菜单/返回等按键不再走普通触发检测，而是以 `quick-menu-key` 事件直接转发给快捷菜单窗口；关闭后恢复 `InputMode::Normal`。
+- **快捷菜单状态持久化**：`public/quick-menu.html` 把菜单停留位置与所选环状态保存到 `localStorage`（key `remote-mic-quick-menu-state`），下次打开恢复。
+- 语音桥互斥：新增 `stop_voice_bridge` Tauri 命令；`start_voice_bridge` 通过原子互斥防止并发双桥争用 GATT，重连等待可响应停止请求。
 - 该窗口加载的是静态 HTML，**不走 Vite HMR**；修改后需重新打开窗口（或重启应用）才能生效。
 - **热更新坑（重要）**：如果 `toggle_quick_menu` 中“显示时重新加载”的代码被删除：
   ```rust
@@ -110,9 +116,10 @@ cargo check -p remote-mic
 ### 3. 按键映射持久化
 - 后端 `save_mapping` 保存到 `%LOCALAPPDATA%\RemoteMic\RC003\config.json`。
 - `get_mappings` 返回完整映射（含 trigger）。
+- 触发判定时间可设置：**长按阈值**（默认 550ms）与**双击窗口**（默认 300ms）存于 `config.json` 的 `long_press_ms` / `double_click_ms`，映射页可调，保存后热更新调度器（`set_trigger_timing`）。
 - 前端映射页：
   - 点遥控器图形选按键
-  - 选触发方式（单击/双击/长按）
+  - 选触发方式（单击/双击/长按；**麦克风只有按下/松开**）
   - 选动作分类/动作
   - 保存后写入后端并更新本地列表
 - 映射表只读展示，编辑统一走上方向导。
@@ -121,7 +128,7 @@ cargo check -p remote-mic
 - 当前物理按键来源分三类：
   | 类别 | 链路 | 按键（usage） |
   | --- | --- | --- |
-  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 麦克风（主路径；HID 兜底 `0x3E`） |
+  | ATVV 控制流（非 HID） | BLE `Control` -> `core-voice` | 音频会话事件（AudioStarted/AudioStopped）；麦克风键实际走 HID 兜底 `0x3E` |
   | HID 标准流 | 标准 HID 键盘报告 -> Raw Input / WH_KEYBOARD_LL | 上 `0x52`、下 `0x51`、左 `0x50`、右 `0x4F`、OK `0x28`、主页 `0x4A`、菜单 `0x65`、电源 `0x66` |
   | HID 应用命令类 / HOGP 旁路 | HidOverGatt IOCTL / Frida Tap | 返回 `0xF1`、音量+ `0x80`、音量− `0x81`、TV `0x35` |
 - 全部 13 键 usage 表（HID 键盘页 `0x07`）：
@@ -140,11 +147,11 @@ cargo check -p remote-mic
   | 电源 | `0x66` | 标准 | 255 |
   | 音量+ | `0x80` | 标准（Keyboard Volume Up） | 175 |
   | 音量− | `0x81` | 标准（Keyboard Volume Down） | 174 |
-  - 注：静音 usage `0x7F` 是标准键盘页 usage，但**遥控器无实体静音键**，项目映射表（`usage_to_vkey`）刻意不包含它，不参与任何按键流。
 - 三类流最终汇聚方式：
-  - 麦克风键仍由 `core-voice` 桥内硬编码处理（语音会话 toggle：Win+H / Escape），不走映射表。
+  - 麦克风键**走调度器映射表**（不是硬编码）：HID 兜底 `0x3E` → vkey 116 进 `vkey_map`，默认映射为 **Press→Voice、Release→Voice**。Press/Release 是**长按门控**：按住达到长按阈值（默认 550ms）才发 Press（Win+H 打开/重置会话），长按结束（松开）才发 Release（Win+H 停止当前会话）；快速点按（单击/双击）不产生 Press/Release。用户可在映射页把麦克风的「按下/松开」改成任意动作（如第三方语音助手）。旧配置里的 Mic SingleClick 会在启动时自动迁移为 Press/Release。ATVV Control 的 `MicButtonPressed` 只计数不切换；`AudioStopped` 只停解码不关语音条。
   - 其余 12 键：Raw Input / HOGP 旁路 → `core_dispatch::KeyDispatcher`（每键一个 `TriggerDetector`）→ 查 `MappingConfig` → `core-input` 注入，并写入 `core-stats`。
   - 映射页保存后通过 `save_mapping` 热更新调度器；诊断页按键测试进行时调用 `set_dispatch_enabled(false)` 暂停调度。
+- 菜单键默认映射为 `ToggleQuickMenu`（打开/关闭快捷菜单）；旧 `ContextMenu` 自动迁移。快捷菜单打开时进入独占输入模式，方向/确定/菜单/返回等遥控器按键直接路由给快捷菜单（见第 2 节）。
 - 音频流与按键流是不同线程：音频走 GATT Audio 回调 -> channel -> 桥接主线程 -> `AudioSink`；按键/控制走 GATT Control 回调或 HID Hook / Raw Input 线程。
 
 #### 3.5.1 返回 / 音量 / TV 键的信号通道（重要实测结论）
@@ -158,9 +165,15 @@ cargo check -p remote-mic
   - 但 **Frida 旁路（HOGP 驱动层）四个键都能捕获到**（实测，日志可见 `0x00F1` / `0x0080` / `0x0081` / `0x0035`）。
   - 返回键**没有被系统丢弃**——它和音量/TV 键完全同类，只是 usage 编号是厂商自定义的。
 - **主页键 vkey 映射（已修复）**：键盘页 `0x4A` 实测 Windows 映射为 `VK_HOME(36)`，不是 `VK_BROWSER_HOME(172)`。`usage_to_vkey(0x4A)` 已改为 36；消费类页 `0x0223` 仍映射 172（不同通道）。
-- **双重处理问题**：系统原生执行（音量+1 / 浏览器后退）+ 旁路注入映射动作 = 一个信号做两件事。普通键（方向/OK/菜单等）同样存在此问题（系统原生 + Raw Input 注入）。
-- **「吃掉」模式（已实现，默认关闭）**：Frida 脚本在 `onLeave` 里先上报原始报告，再把返回/音量键的 usage 从输出缓冲区清零，让系统 HOGP 层看不到这些键，只由本应用注入。通过环境变量 `REMOTE_MIC_HID_TAP_EAT=1` 开启（写入 `frida-gadget.config` 的 `parameters.eat`）。真机验证通过后再改默认值。
-- **规划中的拦截层**：普通键（钩子能看到）计划在 WH_KEYBOARD_LL 钩子里拦截（return 1），实现「单一持有者」——系统不处理，只由调度器注入。难点是钩子层面区分遥控器与 PC 键盘（vkey+scan code 相同，需 `dwExtraInfo` 或 Raw Input 设备识别配合；实测钩子会把 PC 键盘的静音键 173 也当遥控器键转发）。
+- **双重处理问题**：系统原生执行（音量+1 / 浏览器后退）+ 旁路注入映射动作 = 一个信号做两件事。普通键（方向/OK/菜单等）同样存在此问题（系统原生 + Raw Input 注入）。现已由驱动层「吃掉」模式解决（见下）。
+- **「吃掉」模式（已实现并真机验证，默认开启，连接页可切换）**：真实报告路径是 **GATT 通知 → 8 字节队列项 → `0x1febc` 分配 WDF 请求缓冲区 → `0x20080` 的 memcpy 拷入 → 完成请求 → 内核 HID 驱动**。Frida 脚本钩住 `0x20080` 这个 memcpy 调用点：先把清零前的队列项原始报告转成 9 字节 IOCTL 格式（`01 00 00` + 3 个 usage）以 `gatt_read` 上报应用调度器，再把源缓冲区清零——系统 HOGP 层看不到任何遥控器按键，只由本应用注入映射动作。
+  - **持久化与热切换**：开关存于 `config.json` 的 `hid_tap_eat`（默认 `true`）；后端启动/切换时写入 `%PROGRAMDATA%\RemoteMic\hid-tap\eat-mode.txt`，Frida 脚本每秒轮询该文件热更新，**切换无需重新注入 WUDFHost / 不弹 UAC**。注入时 `frida-gadget.config` 的 `parameters.eat` 只是初始值。
+  - **优先级**：`eat-mode.txt`（用户设置）> 环境变量 `REMOTE_MIC_HID_TAP_EAT`（开发兜底）> 默认开启。
+  - 注意：eat 开启时如果某键未配映射动作，该键对系统与本应用都无效（信号被应用独家持有）。
+  - **旧方案（清 READ_CHARACTERISTIC_IOCTL 输出缓冲）已证明无效并已删除**：该 IOCTL 是报告处理完后的「补读」，输出缓冲区实测返回全零，不是系统消费的数据。
+  - 驱动更新导致偏移失效时，按 skill `hogp-report-path-re` 重新定位（见 `.agent/skills/hogp-report-path-re/SKILL.md`）。
+- **已废弃的规划**：曾计划在 WH_KEYBOARD_LL 钩子里拦截普通键（return 1）实现「单一持有者」。驱动层 eat 生效后不再需要；且钩子层面无法区分遥控器与 PC 键盘（vkey+scan code 相同，实测会把 PC 键盘的静音键 173 也当遥控器键转发）。
+- **HOGP 探针代码已收敛**：RE 期的诊断噪音（模块/导入枚举、函数表 dump、IOCTL 全量追踪、反汇编/调用栈上报）已删除。保留的轻量追踪（`report_path` / `memcpy_trace` / `vcall_trace`）仅在 `REMOTE_MIC_HID_TAP_TRACE=1` 时输出，用于偏移失效时重新定位。
 
 ### 4. ATVV / 音频要点
 - GATT 服务：`AB5E0001-...`
@@ -175,11 +188,12 @@ cargo check -p remote-mic
   - `CAPS=0x0B`
 - 音频：IMA/DVI ADPCM 16kHz，高 nibble 优先。
 - 语音优先走 Windows 自带语音输入（Win+H）。
+- **Win+H 按键语义（实测）**：首次按 Win+H 打开语音条；弹窗已打开时再次按 Win+H **不会关闭弹窗**，只会停止/重置当前输入会话；关闭弹窗用 Esc 或点 ✕。麦克风键的 Press/Release 动作各发一次 Win+H（长按识别后发 Press、长按结束发 Release），快速点按不触发。
 - **Win+H 麦克风绑定机制（重要实测结论）**：
   - Windows 11 语音输入（`TextInputHost.exe`）维护专属的持久化音频偏好，**完全无视系统全局默认麦克风的切换**（无论是通过 `IPolicyConfig` 动态改全局默认，还是杀进程冷启动 `TextInputHost.exe` 均无效）。
   - **正确架构与产品规范**：
     - 后端 `AudioSink` 固定将遥控器音频写入 `CABLE Input`；
-    - 首次使用时通过引导页/语音页指引用户按 `Win+H`，在语音条设置中**手动将麦克风选择为 `CABLE Output`**（仅需配置一次，Windows 永久记忆）；
+    - 首次使用时通过连接页/引导页指引用户按 `Win+H`，在语音条设置中**手动将麦克风选择为 `CABLE Output`**（仅需配置一次，Windows 永久记忆）；
     - 这样电脑原本的物理麦克风（如英特尔智音技术）保持为全局默认，开会、微信通话不受任何干扰，遥控器语音输入实现 0 延迟秒级直通。
     - **禁止**在语音链路中做不可靠的“动态改全局默认麦克风”操作。
 
@@ -256,3 +270,4 @@ cargo check -p remote-mic
   ```
 - 提交前检查 `git status`，避免把临时文件或平台相关 node_modules 提交进去。
 - 需要重启 Tauri dev 时，先结束旧 `remote-mic.exe` / 占用 `1420` 的进程，再重新启动。
+- **HOGP 旁路 / 吃掉模式失效时**：先调用 skill `hogp-report-path-re`（`.agent/skills/hogp-report-path-re/SKILL.md`），按其中的方法论与 Playbook 重新定位驱动报告写入点；不要凭旧偏移盲改。

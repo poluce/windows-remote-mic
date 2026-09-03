@@ -84,6 +84,10 @@ pub enum Trigger {
     SingleClick,
     DoubleClick,
     LongPress,
+    /// 物理按下瞬间触发（麦克风 PTT 等场景）。
+    Press,
+    /// 物理松开瞬间触发。
+    Release,
 }
 
 /// 一个动作在 Windows 上可以执行的操作。
@@ -107,6 +111,8 @@ pub enum ActionKind {
     PlayPause,
     Voice,
     OpenApp(String),
+    /// 打开/关闭应用自带的右下角快捷菜单（由 Tauri 层执行）。
+    ToggleQuickMenu,
 }
 
 /// 一个 (button, gesture) -> action 绑定。
@@ -132,24 +138,68 @@ impl Default for MappingConfig {
 }
 
 impl MappingConfig {
-    /// 解析某个按钮对应的单击/双击/长按动作。
+    /// 解析某个按钮对应的触发动作（单击/双击/长按/按下/松开）。
     pub fn resolve(&self, button: ButtonId, trigger: Trigger) -> Option<&ActionKind> {
         self.bindings
             .iter()
             .find(|b| b.button == button && b.trigger == trigger)
             .map(|b| &b.action)
     }
+
+    /// 旧版本把麦克风映射为 SingleClick；迁移为按下/松开 PTT 默认。
+    /// 返回是否发生了迁移。
+    pub fn migrate_mic_ptt(&mut self) -> bool {
+        let has_press = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::Press);
+        let has_release = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::Release);
+        if has_press || has_release {
+            return false;
+        }
+        let had_single = self
+            .bindings
+            .iter()
+            .any(|b| b.button == ButtonId::Mic && b.trigger == Trigger::SingleClick);
+        if !had_single {
+            return false;
+        }
+        self.bindings
+            .retain(|b| !(b.button == ButtonId::Mic && b.trigger == Trigger::SingleClick));
+        self.bindings.push(KeyBinding {
+            button: ButtonId::Mic,
+            trigger: Trigger::Press,
+            action: ActionKind::Voice,
+        });
+        self.bindings.push(KeyBinding {
+            button: ButtonId::Mic,
+            trigger: Trigger::Release,
+            action: ActionKind::Voice,
+        });
+        true
+    }
+
+    /// 旧版本把菜单键映射为右键菜单（ContextMenu）；迁移为打开/关闭
+    /// 应用自带的快捷菜单。返回是否发生了迁移。
+    pub fn migrate_menu_quickmenu(&mut self) -> bool {
+        let mut changed = false;
+        for b in self.bindings.iter_mut() {
+            if b.button == ButtonId::Menu
+                && b.trigger == Trigger::SingleClick
+                && b.action == ActionKind::ContextMenu
+            {
+                b.action = ActionKind::ToggleQuickMenu;
+                changed = true;
+            }
+        }
+        changed
+    }
 }
 
-/// 判断一个动作在物理按键按住期间是否保持可重复触发。
-pub fn action_allows_repeat(action: &ActionKind) -> bool {
-    !matches!(
-        action,
-        ActionKind::OpenApp(_) | ActionKind::AppSwitcher | ActionKind::Voice
-    )
-}
-
-/// 构建默认的 13 键单击映射。
+/// 构建默认映射：12 键单击 + 麦克风按下/松开（PTT，Voice 动作）。
 pub fn default_mapping() -> Vec<KeyBinding> {
     let mut bindings = Vec::new();
     use ActionKind as A;
@@ -165,11 +215,10 @@ pub fn default_mapping() -> Vec<KeyBinding> {
         (B::Ok, A::Return),
         (B::Back, A::DeleteBackward),
         (B::Home, A::ShowDesktop),
-        (B::Menu, A::ContextMenu),
+        (B::Menu, A::ToggleQuickMenu),
         (B::Tv, A::AppSwitcher),
         (B::VolumeUp, A::SystemVolumeUp),
         (B::VolumeDown, A::SystemVolumeDown),
-        (B::Mic, A::Voice),
     ];
 
     for (button, action) in singles {
@@ -179,6 +228,18 @@ pub fn default_mapping() -> Vec<KeyBinding> {
             action,
         });
     }
+
+    // 麦克风是 PTT：按下和松手各触发一次 Voice（Win+H）。
+    bindings.push(KeyBinding {
+        button: B::Mic,
+        trigger: T::Press,
+        action: A::Voice,
+    });
+    bindings.push(KeyBinding {
+        button: B::Mic,
+        trigger: T::Release,
+        action: A::Voice,
+    });
     bindings
 }
 
@@ -187,36 +248,99 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_has_13_single_click_bindings() {
+    fn default_has_12_single_click_and_mic_ptt() {
         let cfg = MappingConfig::default();
         assert_eq!(
             cfg.bindings
                 .iter()
                 .filter(|b| b.trigger == Trigger::SingleClick)
                 .count(),
-            13
+            12
         );
+        assert_eq!(cfg.bindings.len(), 14);
     }
 
     #[test]
-    fn mic_is_voice() {
+    fn mic_is_voice_on_press_and_release() {
         let cfg = MappingConfig::default();
         assert_eq!(
-            cfg.resolve(ButtonId::Mic, Trigger::SingleClick),
+            cfg.resolve(ButtonId::Mic, Trigger::Press),
             Some(&ActionKind::Voice)
         );
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Release),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(cfg.resolve(ButtonId::Mic, Trigger::SingleClick), None);
     }
 
     #[test]
-    fn arrows_repeat_but_open_app_does_not() {
-        assert!(action_allows_repeat(&ActionKind::ArrowUp));
-        assert!(!action_allows_repeat(&ActionKind::OpenApp("codex".into())));
-        assert!(!action_allows_repeat(&ActionKind::AppSwitcher));
+    fn migrate_mic_ptt_replaces_legacy_single_click() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Mic,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::Voice,
+            }],
+        };
+        assert!(cfg.migrate_mic_ptt());
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Press),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(
+            cfg.resolve(ButtonId::Mic, Trigger::Release),
+            Some(&ActionKind::Voice)
+        );
+        assert_eq!(cfg.resolve(ButtonId::Mic, Trigger::SingleClick), None);
+        assert!(!cfg.migrate_mic_ptt(), "已迁移后不应重复迁移");
     }
 
     #[test]
     fn resolve_missing_trigger_returns_none() {
         let cfg = MappingConfig::default();
         assert_eq!(cfg.resolve(ButtonId::Ok, Trigger::LongPress), None);
+    }
+
+    #[test]
+    fn menu_defaults_to_toggle_quick_menu() {
+        let cfg = MappingConfig::default();
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::ToggleQuickMenu)
+        );
+    }
+
+    #[test]
+    fn migrate_menu_quickmenu_replaces_legacy_context_menu() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Menu,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::ContextMenu,
+            }],
+        };
+        assert!(cfg.migrate_menu_quickmenu());
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::ToggleQuickMenu)
+        );
+        assert!(!cfg.migrate_menu_quickmenu(), "已迁移后不应重复迁移");
+    }
+
+    #[test]
+    fn migrate_menu_quickmenu_keeps_custom_menu_binding() {
+        let mut cfg = MappingConfig {
+            bindings: vec![KeyBinding {
+                button: ButtonId::Menu,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::OpenApp("notepad".into()),
+            }],
+        };
+        assert!(!cfg.migrate_menu_quickmenu(), "自定义映射不应被迁移覆盖");
+        assert_eq!(
+            cfg.resolve(ButtonId::Menu, Trigger::SingleClick),
+            Some(&ActionKind::OpenApp("notepad".into()))
+        );
     }
 }

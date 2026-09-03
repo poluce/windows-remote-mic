@@ -28,13 +28,6 @@ pub struct Rc003Connection {
     pub endpoints: core_ble::gatt::AtvvEndpoints,
 }
 
-/// 暴露给界面的持久化设置。
-#[derive(Serialize)]
-pub struct PersistedSettings {
-    pub selected_device_id: Option<String>,
-    pub output_endpoint_id: Option<String>,
-}
-
 #[tauri::command]
 pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
     core_log::log_info("[commands/connection] 前端请求扫描 RC003");
@@ -77,21 +70,28 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// 返回当前 ATVV/BLE 链路是否已连接。
 #[tauri::command]
-pub fn get_connection_status() -> bool {
-    core_voice::connection_active()
+pub fn get_hid_tap_eat() -> bool {
+    config_store()
+        .map(|s| s.load_or_default().hid_tap_eat)
+        .unwrap_or(true)
 }
 
+/// 切换「吃掉」模式：持久化到配置并写入热更新文件，Frida 脚本
+/// 秒级轮询生效，无需重新注入 WUDFHost / 重新连接。
 #[tauri::command]
-pub fn get_persisted_settings() -> PersistedSettings {
-    let cfg = config_store()
-        .and_then(|s| s.load().ok())
-        .unwrap_or_default();
-    PersistedSettings {
-        selected_device_id: cfg.selected_device_id,
-        output_endpoint_id: cfg.output_endpoint_id,
-    }
+pub fn set_hid_tap_eat(enabled: bool) -> Result<bool, String> {
+    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
+    let mut cfg = store.load().unwrap_or_default();
+    cfg.hid_tap_eat = enabled;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    core_hid::tap::write_eat_mode_file(enabled);
+    core_log::log_info(&format!(
+        "[commands/connection] 吃掉模式已{}（系统{}响应遥控器按键）",
+        if enabled { "开启" } else { "关闭" },
+        if enabled { "不" } else { "会" }
+    ));
+    Ok(enabled)
 }
 
 #[tauri::command]
@@ -100,18 +100,6 @@ pub fn save_selected_device(device_id: String) -> Result<(), String> {
         .and_then(|s| s.load().ok())
         .unwrap_or_default();
     cfg.selected_device_id = Some(device_id);
-    config_store()
-        .ok_or_else(|| "无法创建配置目录".to_string())?
-        .save(&cfg)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn save_output_endpoint(endpoint_id: String) -> Result<(), String> {
-    let mut cfg = config_store()
-        .and_then(|s| s.load().ok())
-        .unwrap_or_default();
-    cfg.output_endpoint_id = Some(endpoint_id);
     config_store()
         .ok_or_else(|| "无法创建配置目录".to_string())?
         .save(&cfg)

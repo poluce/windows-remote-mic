@@ -1,20 +1,19 @@
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::Emitter;
 
-use core_audio::endpoint::{list_output_endpoints, placeholder_output, AudioEndpoint};
-
 use crate::find_install_script;
 
-#[tauri::command]
-pub fn list_audio_endpoints() -> Vec<AudioEndpoint> {
-    match list_output_endpoints() {
-        Ok(list) if !list.is_empty() => list,
-        _ => vec![placeholder_output()],
-    }
-}
+/// 已 spawn 的语音桥重连循环数（每次调用 start_voice_bridge +1，永不减）。
+static BRIDGE_LOOP_SEQ: AtomicU64 = AtomicU64::new(0);
+/// 语音桥重连循环是否正在运行（互斥：同一时刻只允许一条循环，防止并发双桥争用 GATT）。
+static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
+/// 请求停止当前语音桥循环（stop_voice_bridge 置位，循环在安全点检查后退出）。
+static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// 启动真实设备的语音桥（仅 Windows）。在工作线程中运行。
+/// 互斥：已有重连循环在跑时拒绝新请求，避免并发双桥争用同一 GATT 会话。
 #[tauri::command]
 pub fn start_voice_bridge(
     app: tauri::AppHandle,
@@ -23,41 +22,78 @@ pub fn start_voice_bridge(
 ) -> String {
     #[cfg(target_os = "windows")]
     {
+        if BRIDGE_RUNNING.swap(true, Ordering::SeqCst) {
+            core_log::log_warn("[commands/audio] 拒绝重复启动：语音桥循环已在运行");
+            return "语音桥已在运行（请勿重复启动）".to_string();
+        }
+        BRIDGE_STOP_REQUESTED.store(false, Ordering::SeqCst);
+        let loop_id = BRIDGE_LOOP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
         core_log::log_info(&format!(
-            "[commands/audio] 收到启动语音桥请求：设备 ID='{device_id}'，输出='{output_device}'"
+            "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, 设备 ID='{device_id}'，输出='{output_device}'"
         ));
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
             let mut attempt: u64 = 0;
             loop {
+                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    break;
+                }
                 let app_cb = app_for_thread.clone();
                 let on_status = move |connected: bool| {
                     let _ = app_cb.emit("ble-connection-status", connected);
                 };
 
                 core_log::log_line(&format!(
-                    "[commands/audio] 语音桥第 {} 次尝试启动",
+                    "[commands/audio] 语音桥启动: loop_id={loop_id}, attempt={}",
                     attempt + 1
                 ));
                 let result = core_voice::run_bridge(&device_id, &output_device, on_status);
                 match result {
                     Ok(()) => {
-                        core_log::log_line("[commands/audio] 语音桥已停止，准备重连");
+                        core_log::log_line(&format!(
+                            "[commands/audio] 语音桥已停止，准备重连: loop_id={loop_id}, attempt={}",
+                            attempt + 1
+                        ));
                     }
                     Err(e) => {
-                        core_log::log_error(&format!("[commands/audio] 语音桥错误: {e}"));
+                        core_log::log_error(&format!(
+                            "[commands/audio] 语音桥错误: loop_id={loop_id}, attempt={}, err={e}",
+                            attempt + 1
+                        ));
                     }
                 }
                 // 注意：不要在这里无条件 emit ble-connection-status=false。
                 // run_bridge 内部已通过 on_status 在 BLE 真正连接/断开时推送状态；
                 // 这里只是“语音桥本次会话结束”，不代表遥控器连接断开。
                 attempt += 1;
+                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    break;
+                }
                 let delay_secs = (attempt * 2).min(10);
                 core_log::log_line(&format!(
-                    "[commands/audio] 将在 {delay_secs} 秒后重连（第 {attempt} 次）"
+                    "[commands/audio] 将在 {delay_secs} 秒后重连（loop_id={loop_id}, 第 {attempt} 次）"
                 ));
-                std::thread::sleep(Duration::from_secs(delay_secs));
+                // 分秒睡眠，期间响应停止请求（最迟 1 秒内退出）。
+                let mut slept: u64 = 0;
+                while slept < delay_secs {
+                    if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                    slept += 1;
+                }
+                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    break;
+                }
+                core_log::log_line(&format!(
+                    "[commands/audio] 重连等待结束，开始下一次尝试（loop_id={loop_id}, 即将 attempt={}）",
+                    attempt + 1
+                ));
             }
+            BRIDGE_RUNNING.store(false, Ordering::SeqCst);
+            core_log::log_line(&format!(
+                "[commands/audio] 语音桥循环已停止（loop_id={loop_id}），可重新启动"
+            ));
         });
         "语音桥已启动（断线后自动重连）".to_string()
     }
@@ -66,6 +102,16 @@ pub fn start_voice_bridge(
         let _ = (app, device_id, output_device);
         "语音桥仅在 Windows 可用".to_string()
     }
+}
+
+/// 停止语音桥重连循环（当前 run_bridge 会话结束后、或最迟 1 秒内生效）。
+#[tauri::command]
+pub fn stop_voice_bridge() -> String {
+    if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
+        return "语音桥未在运行".to_string();
+    }
+    BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
+    "已请求停止语音桥（当前会话结束后生效）".to_string()
 }
 
 /// 在没有真实遥控器的情况下模拟完整语音链路。
@@ -170,23 +216,6 @@ pub fn play_test_tone_loop(device_name: Option<String>, repetitions: Option<u32>
         let _ = device_name;
         let _ = reps;
         "测试音循环仅在 Windows 可用".to_string()
-    }
-}
-
-/// 向所选输出端点播放 1 秒测试音（模糊名称匹配）。
-#[tauri::command]
-pub fn play_test_tone(device_name: Option<String>) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        match core_audio::playback::play_test_tone(device_name.as_deref()) {
-            Ok(()) => "测试音已播放".to_string(),
-            Err(e) => format!("测试音播放失败: {e}"),
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = device_name;
-        "测试音播放仅在 Windows 可用".to_string()
     }
 }
 
