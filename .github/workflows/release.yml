@@ -44,8 +44,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Copy-Item "src-tauri/target/release/bundle/nsis/*.exe" staging/
-          Copy-Item "src-tauri/target/release/*.exe" staging/
+          Copy-Item "target/release/bundle/nsis/*.exe" staging/
+          Copy-Item "target/release/*.exe" staging/
           Get-ChildItem staging/*.exe | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)" | Add-Content staging/SHA256SUMS.txt
