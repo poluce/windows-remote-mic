@@ -75,6 +75,9 @@ pub enum AppEvent {
     MenuKey(ButtonId, bool),
 }
 
+/// 应用事件回调：需要 Tauri 层执行的动作（开关快捷菜单、菜单独占按键直转）。
+type AppEventHandler = Arc<dyn Fn(AppEvent) + Send + Sync>;
+
 /// 一条待执行的动作任务。
 #[derive(Debug, Clone)]
 pub struct ActionJob {
@@ -94,7 +97,7 @@ pub struct KeyDispatcher {
     /// 应用事件出口：需要 Tauri 层执行的动作（开关快捷菜单、
     /// 菜单独占模式的按键直转）统一经此回调解出。须在 `spawn_runtime`
     /// 之前设置。
-    app_event: Mutex<Option<Arc<dyn Fn(AppEvent) + Send + Sync>>>,
+    app_event: Mutex<Option<AppEventHandler>>,
 }
 
 impl KeyDispatcher {
@@ -121,7 +124,7 @@ impl KeyDispatcher {
 
     /// 设置应用事件出口（开关快捷菜单、菜单独占按键直转等）。
     /// 须在 `spawn_runtime` 之前调用。
-    pub fn set_app_event_handler(&self, handler: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>) {
+    pub fn set_app_event_handler(&self, handler: Option<AppEventHandler>) {
         *self.app_event.lock().unwrap() = handler;
     }
 
@@ -380,7 +383,7 @@ fn default_button_runtimes() -> HashMap<ButtonId, ButtonRuntime> {
 fn execute_loop(
     rx: mpsc::Receiver<ActionJob>,
     stats_dir: PathBuf,
-    app_event: Option<Arc<dyn Fn(AppEvent) + Send + Sync>>,
+    app_event: Option<AppEventHandler>,
 ) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
@@ -411,10 +414,7 @@ fn send_combo(tokens: &[&str]) -> Result<(), String> {
     core_input::send_key_combo(tokens).map_err(|e| e.to_string())
 }
 
-fn execute_action(
-    action: &ActionKind,
-    app_event: Option<&Arc<dyn Fn(AppEvent) + Send + Sync>>,
-) -> Result<(), String> {
+fn execute_action(action: &ActionKind, app_event: Option<&AppEventHandler>) -> Result<(), String> {
     use ActionKind as A;
     match action {
         A::Disabled => Ok(()),
@@ -692,7 +692,7 @@ mod tests {
     fn toggle_quick_menu_calls_app_event_handler() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
-        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
+        let handler: AppEventHandler = Arc::new({
             let calls = calls.clone();
             move |event| {
                 assert_eq!(event, AppEvent::ToggleQuickMenu);
@@ -708,13 +708,12 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let d = dispatcher();
         let calls = Arc::new(AtomicUsize::new(0));
-        let handler: Arc<dyn Fn(AppEvent) + Send + Sync> = Arc::new({
+        let handler: AppEventHandler = Arc::new({
             let calls = calls.clone();
-            move |event| match event {
-                AppEvent::MenuKey(ButtonId::Up, true) => {
+            move |event| {
+                if let AppEvent::MenuKey(ButtonId::Up, true) = event {
                     calls.fetch_add(1, Ordering::SeqCst);
                 }
-                _ => {}
             }
         });
         d.set_app_event_handler(Some(handler));

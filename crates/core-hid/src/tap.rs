@@ -921,8 +921,10 @@ fn find_rc003_host_pid() -> Option<u32> {
         if kind == REG_SZ {
             let n = (size as usize / 2).saturating_sub(1);
             let wide: Vec<u16> = data[..size as usize]
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
                 .take(n)
                 .collect();
             return String::from_utf16_lossy(&wide).parse().ok();
