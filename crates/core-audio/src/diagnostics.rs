@@ -39,6 +39,7 @@ fn is_cable(name: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn non_windows_diagnostics_sees_placeholder_cable_input() {
         let d = run();
