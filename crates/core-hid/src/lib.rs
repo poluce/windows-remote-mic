@@ -127,8 +127,8 @@ pub fn hogp_payload_usages(payload: &[u8]) -> Vec<u16> {
     }
     let mut out = Vec::new();
     // 优先尝试 2 字节小端序（例如 F1 00 -> 0x00F1）
-    for chunk in payload.chunks_exact(2) {
-        let u = u16::from_le_bytes([chunk[0], chunk[1]]);
+    for chunk in payload.as_chunks::<2>().0 {
+        let u = u16::from_le_bytes(*chunk);
         if u != 0 {
             out.push(u);
         }
@@ -171,8 +171,8 @@ pub fn parse_hid_report_vkeys(report: &[u8]) -> Vec<u16> {
         }
     }
 
-    for chunk in report.chunks_exact(2) {
-        let usage = u16::from_le_bytes([chunk[0], chunk[1]]) as u32;
+    for chunk in report.as_chunks::<2>().0 {
+        let usage = u32::from(u16::from_le_bytes(*chunk));
         if usage == 0 {
             continue;
         }
@@ -183,8 +183,8 @@ pub fn parse_hid_report_vkeys(report: &[u8]) -> Vec<u16> {
 
     // 可选的报告 ID 前缀（1..15），随后是 16 位 usage。
     if report.len() >= 3 && report[0] > 0 && report[0] < 16 {
-        for chunk in report[1..].chunks_exact(2) {
-            let usage = u16::from_le_bytes([chunk[0], chunk[1]]) as u32;
+        for chunk in report[1..].as_chunks::<2>().0 {
+            let usage = u32::from(u16::from_le_bytes(*chunk));
             if usage == 0 {
                 continue;
             }

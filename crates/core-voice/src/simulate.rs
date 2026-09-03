@@ -231,8 +231,8 @@ fn load_wav_pcm(data: &[u8]) -> Result<(u32, Vec<i16>), String> {
     let mut pcm = Vec::with_capacity(raw_data.len() / 2);
     match bits_per_sample {
         16 => {
-            for pair in raw_data.chunks_exact(2) {
-                pcm.push(i16::from_le_bytes([pair[0], pair[1]]));
+            for pair in raw_data.as_chunks::<2>().0 {
+                pcm.push(i16::from_le_bytes(*pair));
             }
         }
         8 => {
