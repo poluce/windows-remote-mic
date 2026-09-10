@@ -19,6 +19,40 @@ export function MappingPage() {
   const [saveMsg, setSaveMsg] = useState("");
   const [longPressMs, setLongPressMs] = useState(550);
   const [doubleClickMs, setDoubleClickMs] = useState(300);
+  const [eatEnabled, setEatEnabled] = useState<boolean | null>(null);
+  const [eatBusy, setEatBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setEatEnabled(true);
+      return;
+    }
+    invoke<boolean>("get_hid_tap_eat")
+      .then(setEatEnabled)
+      .catch(() => setEatEnabled(true));
+  }, []);
+
+  async function toggleEat() {
+    if (!isTauri() || eatEnabled === null || eatBusy) {
+      return;
+    }
+    setEatBusy(true);
+    try {
+      const next = await invoke<boolean>("set_hid_tap_eat", {
+        enabled: !eatEnabled,
+      });
+      setEatEnabled(next);
+      setSaveMsg(
+        next
+          ? "已开启拦截：系统不再响应遥控器按键，只由本应用注入映射动作"
+          : "已关闭拦截：系统会同时响应遥控器按键",
+      );
+    } catch (err) {
+      setSaveMsg(`切换失败：${err}`);
+    } finally {
+      setEatBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!isTauri()) {
@@ -111,6 +145,30 @@ export function MappingPage() {
   return (
     <div className="page">
       <div className="section-label">按键配置</div>
+
+      <section className="card eat-card">
+        <div className="eat-info">
+          <div className="eat-title">拦截 HID 按键信号</div>
+          <p className="hint">
+            {eatEnabled === null
+              ? "读取中…"
+              : eatEnabled
+                ? "已开启：系统不响应遥控器按键，只由本应用注入映射动作"
+                : "已关闭：系统会同时响应遥控器按键"}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={eatEnabled === true}
+          className={`switch${eatEnabled ? " on" : ""}`}
+          onClick={toggleEat}
+          disabled={eatEnabled === null || eatBusy || !isTauri()}
+        >
+          <span className="switch-thumb" />
+        </button>
+      </section>
+
       <div className="mapping-wizard">
         <section className="card remote-card">
           <div className="card-title">① 选择按键</div>

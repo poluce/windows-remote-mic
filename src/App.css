@@ -187,7 +187,7 @@ button:focus-visible,
   flex: 1;
   overflow-y: auto;
   padding: 26px 32px 48px;
-  max-width: 920px;
+  max-width: 1060px;
   width: 100%;
 }
 
@@ -226,6 +226,86 @@ button:focus-visible,
 
 .page > .section-label:first-child {
   margin-top: 0;
+}
+
+/* ---------- 连接页双栏 ---------- */
+.conn-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.conn-col {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .conn-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- 拦截开关（macOS 拨动开关） ---------- */
+.eat-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+}
+
+.eat-info {
+  min-width: 0;
+}
+
+.eat-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.eat-card .hint {
+  margin: 3px 0 0;
+}
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.switch.on {
+  background: #34c759;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0.5px rgba(0, 0, 0, 0.2);
+  transition: left 0.18s ease;
+}
+
+.switch.on .switch-thumb {
+  left: 18px;
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- 连接 ---------- */
@@ -368,6 +448,25 @@ button:focus-visible,
 .vbcable-msg {
   margin: 0;
   flex-basis: 100%;
+}
+
+/* ---------- 诊断页双栏 ---------- */
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.diag-grid .card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .diag-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- 诊断操作紧凑行 ---------- */
@@ -830,13 +929,21 @@ button:focus-visible,
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  grid-template-columns: minmax(170px, 195px) 1fr;
+  grid-template-columns: minmax(230px, 250px) 1fr;
   gap: 16px;
   align-items: start;
 }
 
 .remote-card {
-  padding: 16px 14px;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 映射向导里的遥控器放大展示 */
+.mapping-wizard .x2pro-remote {
+  zoom: 1.3;
 }
 
 .wizard-group {

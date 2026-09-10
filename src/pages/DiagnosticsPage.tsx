@@ -260,6 +260,7 @@ export function DiagnosticsPage() {
   return (
     <div className="page">
       <div className="section-label">状态与自检</div>
+      <div className="diag-grid">
       <section className="card vbcable-card">
         <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
         <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
@@ -310,6 +311,7 @@ export function DiagnosticsPage() {
           </div>
         )}
       </section>
+      </div>
 
       <div className="section-label">日志</div>
       <section className="card">
