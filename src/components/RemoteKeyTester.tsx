@@ -678,7 +678,7 @@ export function RemoteKeyTester() {
                 })}
               </div>
               <p className="hint" style={{ marginTop: 12, fontSize: 12 }}>
-                💡 只采集遥控器按键，电脑打字/退格不会写入校准。随时可点击任意按键卡片进行**单独重录**。
+                只采集遥控器按键，电脑打字/退格不会写入校准。随时可点击任意按键卡片进行**单独重录**。
               </p>
             </>
           )}

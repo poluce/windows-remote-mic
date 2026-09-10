@@ -5,6 +5,7 @@ import {
   tapStatusLabel,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
+import { IconBluetooth, IconMic } from "../components/icons";
 
 type Rc003Device = {
   id: string;
@@ -266,7 +267,9 @@ export function ConnectionPage() {
       <section className="card device-card">
         <div className="device-top">
           <div className="device-info">
-            <span className="device-icon">📡</span>
+            <span className="device-icon">
+              <IconBluetooth size={22} />
+            </span>
             <div>
               <div className="device-name">小米蓝牙遥控器 2 Pro</div>
               <div className="device-model">RC003 · VID 0x2717 · PID 0x32B8</div>
@@ -318,6 +321,7 @@ export function ConnectionPage() {
               className={`device-status-pill ${b.tone}`}
               title={b.title}
             >
+              <span className="pill-dot" />
               {b.label}
             </span>
           ))}
@@ -410,7 +414,7 @@ export function ConnectionPage() {
               </div>
             </div>
             <p className="hint">当前音频出口：{selected}。</p>
-            <p className="hint">首次使用：按 Win+H 唤出语音条，在 ⚙️ 设置中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
+            <p className="hint">首次使用：按 Win+H 唤出语音条，在「设置」中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
           </>
         )}
       </section>
@@ -430,7 +434,8 @@ export function ConnectionPage() {
                 : `模拟 ${imeName}（未接入）`}
             </button>
             <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
-              🎙️ 唤出语音输入条（Win + H）
+              <IconMic size={14} />
+              唤出语音输入条（Win + H）
             </button>
           </div>
         </section>

@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useState } from "react";
+import { IconMic } from "../components/icons";
 
 const STEPS = [
   {
@@ -13,7 +14,7 @@ const STEPS = [
   {
     title: "3. 【关键】绑定 Windows 语音输入麦克风",
     detail:
-      "点击下方「唤出语音输入条」或按快捷键 Win+H，在语音条的 ⚙️ 设置中将麦克风选择为「CABLE Output」。（仅需设置一次，Windows 永久记忆；电脑日常物理麦克风保持不变，开会不受干扰，遥控器语音 0 延迟直通）。",
+      "点击下方「唤出语音输入条」或按快捷键 Win+H，在语音条的「设置」中将麦克风选择为「CABLE Output」。（仅需设置一次，Windows 永久记忆；电脑日常物理麦克风保持不变，开会不受干扰，遥控器语音 0 延迟直通）。",
   },
   {
     title: "4. 模拟自检与日常使用",
@@ -55,7 +56,8 @@ export function OnboardingPage() {
         <div className="card-title">快捷入口与配置</div>
         <div className="actions">
           <button className="btn primary" onClick={triggerVoiceTyping}>
-            🎙️ 唤出语音输入条（配置麦克风）
+            <IconMic size={14} />
+            唤出语音输入条（配置麦克风）
           </button>
           <button className="btn" onClick={() => openSetting("bluetooth")}>
             打开 Windows 蓝牙设置

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Remote Mic — UI 重构初稿 v2（保留 4 页 · 增强与清理）</title>
+<style>
+  :root {
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --border: #e2e7ef;
+    --border-strong: #cdd5e0;
+    --text: #1c2433;
+    --text-2: #566073;
+    --text-3: #8a94a6;
+    --accent: #2f6fed;
+    --accent-soft: #e9f0fe;
+    --green: #1e9e5a;
+    --green-bg: #e3f6ec;
+    --yellow: #b7791f;
+    --yellow-bg: #fdf3dc;
+    --red: #d64545;
+    --red-bg: #fdeaea;
+    --gray: #8a94a6;
+    --gray-bg: #eef1f5;
+    --blue: #2f6fed;
+    --blue-bg: #e9f0fe;
+    --radius: 14px;
+    --radius-sm: 9px;
+    --shadow: 0 1px 2px rgba(20, 30, 50, .05), 0 2px 10px rgba(20, 30, 50, .06);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+  .draft-note {
+    background: #fff8e6; border-bottom: 1px solid #ecd9a0; color: #7a5b12;
+    padding: 6px 14px; font-size: 12px; text-align: center;
+  }
+  .app { display: flex; height: calc(100vh - 31px); overflow: hidden; }
+
+  /* ---------- 侧栏 ---------- */
+  .sidebar {
+    width: 218px; flex-shrink: 0; background: #f7f9fc; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 18px 12px 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 16px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .brand-logo { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #2f6fed, #5b8cff); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 15px; }
+  .brand-name { font-weight: 700; font-size: 15px; }
+  .brand-sub { font-size: 11px; color: var(--text-3); }
+
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: none; background: transparent;
+    border-radius: 10px; color: var(--text-2); font-size: 13.5px; font-weight: 500; cursor: pointer; text-align: left;
+  }
+  .nav-item:hover { background: #edf1f6; }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .nav-ico { width: 20px; text-align: center; font-size: 16px; }
+  .svg-ico { width: 17px; height: 17px; flex-shrink: 0; }
+  .svg-ico.lg { width: 24px; height: 24px; }
+
+  /* 侧栏底部：连接摘要 */
+  .sidebar-foot { margin-top: auto; border-top: 1px solid var(--border); padding-top: 12px; }
+  .conn-mini { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow); }
+  .conn-mini-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-2); }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+    padding: 3px 10px; border-radius: 999px; cursor: default;
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip.ok   { background: var(--green-bg); color: #157a45; } .chip.ok .dot { background: var(--green); }
+  .chip.warn { background: var(--yellow-bg); color: #8a5a10; } .chip.warn .dot { background: var(--yellow); }
+  .chip.err  { background: var(--red-bg); color: #a52a2a; } .chip.err .dot { background: var(--red); }
+  .chip.idle { background: var(--gray-bg); color: #6a7283; } .chip.idle .dot { background: var(--gray); }
+  .chip.busy { background: var(--blue-bg); color: #2456c4; } .chip.busy .dot { background: var(--blue); }
+
+  /* 内容 */
+  .content { flex: 1; overflow-y: auto; padding: 22px 28px 40px; max-width: 980px; width: 100%; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .page-title { font-size: 21px; font-weight: 700; margin: 0; }
+  .page-desc { color: var(--text-3); font-size: 12.5px; margin: 4px 0 0; }
+  .head-actions { display: flex; gap: 8px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9px;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--text-3); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+
+  .grid { display: grid; gap: 14px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 14px; }
+  .card-title { font-size: 14px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card-title .badge-mini { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--gray-bg); color: var(--text-3); }
+  .hint { color: var(--text-3); font-size: 12px; margin: 8px 0 0; }
+  .muted { color: var(--text-3); }
+
+  /* 设备卡 */
+  .device-hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .device-hero .icon { width: 52px; height: 52px; border-radius: 15px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-size: 26px; }
+  .device-name { font-size: 17px; font-weight: 700; }
+  .device-model { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .spacer { flex: 1; }
+
+  /* 行项目 */
+  .row-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+  .row-item:last-child { border-bottom: none; }
+  .row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .row-name { font-weight: 600; font-size: 13.5px; }
+  .row-desc { font-size: 12px; color: var(--text-3); }
+
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .kv-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 12px; }
+  .kv-item .label { font-size: 11px; color: var(--text-3); }
+  .kv-item .value { font-size: 13px; font-weight: 600; margin-top: 2px; word-break: break-all; }
+
+  .page { display: none; }
+  .page.show { display: block; }
+
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 2px; gap: 2px; }
+  .seg button { border: none; background: transparent; padding: 5px 12px; border-radius: 8px; font-size: 12.5px; color: var(--text-2); cursor: pointer; font-weight: 500; }
+  .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+  /* 语音识别目标/虚拟声卡 下拉（模拟） */
+  .status-select { position: relative; display: inline-flex; }
+  .status-select-trigger { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 9px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot.ready, .status-dot.ok { background: var(--green); }
+  .status-dot.preview { background: var(--gray); }
+
+  .empty { text-align: center; padding: 26px 12px; color: var(--text-3); }
+  .empty .big { font-size: 30px; margin-bottom: 8px; }
+
+  @media (max-width: 860px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .content { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="draft-note">UI 重构初稿 v2（保留 4 页结构 · 增强与清理）— 点击左侧导航切换页面。此稿严格对应当前代码功能，未引入已删除的可视化。</div>
+
+<div class="app">
+  <!-- ============ 侧栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 512 512" width="36" height="36" style="border-radius:9px;flex-shrink:0;background:linear-gradient(160deg,#eef4ff,#dbe7ff)">
+        <rect x="16" y="16" width="480" height="480" rx="108" fill="#fff" stroke="#cbd5e1"/>
+        <path d="M 196 180 a 60 60 0 0 1 120 0 v 80 a 60 60 0 0 1 -120 0 z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="14"/>
+        <path d="M 160 300 a 96 96 0 0 0 192 0" fill="none" stroke="#334155" stroke-width="16" stroke-linecap="round"/>
+        <path d="M 120 230 a 130 130 0 0 1 0 80" fill="none" stroke="#0ea5e9" stroke-width="14" stroke-linecap="round" opacity="0.5"/>
+        <path d="M 392 230 a 130 130 0 0 0 0 80" fill="none" stroke="#0ea5e9" stroke-width="14" stroke-linecap="round" opacity="0.5"/>
+        <polyline points="238,196 288,244 262,270 262,192 288,218 238,266" fill="none" stroke="#0f172a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <div class="brand-name">Remote Mic</div>
+        <div class="brand-sub">Windows 无线麦</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-page="connection"><span class="nav-ico"><svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></span>连接</button>
+      <button class="nav-item" data-page="mapping"><span class="nav-ico"><svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>按键映射</button>
+      <button class="nav-item" data-page="diagnostics"><span class="nav-ico"><svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>诊断</button>
+      <button class="nav-item" data-page="guidance"><span class="nav-ico"><svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>引导</button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="conn-mini">
+        <div class="conn-mini-row"><span>遥控器</span><span class="chip ok"><i class="dot"></i>已连接</span></div>
+        <div class="conn-mini-row"><span>语音桥</span><span class="chip busy"><i class="dot"></i>运行中</span></div>
+        <div class="conn-mini-row"><span>拦截 HID</span><span class="chip ok"><i class="dot"></i>已开启</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <div class="content">
+
+      <!-- ============ 连接页 ============ -->
+      <section class="page show" id="page-connection">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">连接</h1>
+            <p class="page-desc">连接遥控器、管理按键拦截、配置识别方案与语音模拟。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn">扫描</button>
+            <button class="btn primary">连接</button>
+          </div>
+        </div>
+
+        <!-- 设备卡：保留现有 device-card 全部功能 -->
+        <div class="card">
+          <div class="device-hero">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            </div>
+            <div>
+              <div class="device-name">小米蓝牙语音遥控器 2 Pro</div>
+              <div class="device-model">RC003 · VID 0x2717 · PID 0x32B8</div>
+            </div>
+            <div class="spacer"></div>
+            <span class="chip ok"><i class="dot"></i>已连接</span>
+          </div>
+          <div style="height:12px"></div>
+          <!-- 拦截 HID 开关（独立成块、更突出） -->
+          <div class="row-item">
+            <div class="row-main">
+              <span class="row-name">拦截 HID 按键信号</span>
+              <span class="row-desc">已开启：系统不响应遥控器按键，只由本应用注入映射动作</span>
+            </div>
+            <button class="btn primary sm">关闭</button>
+          </div>
+          <!-- 三状态 pill 保留 -->
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <span class="chip ok"><i class="dot"></i>ATVV 语音桥</span>
+            <span class="chip ok"><i class="dot"></i>返回/音量旁路已附着</span>
+            <span class="chip ok"><i class="dot"></i>ATVV 端点</span>
+          </div>
+        </div>
+
+        <!-- 识别方案卡 -->
+        <div class="card">
+          <div class="card-title">识别方案</div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+            <div>
+              <div class="row-desc" style="margin-bottom:6px">语音识别目标</div>
+              <div class="status-select">
+                <button class="status-select-trigger"><span class="status-dot ready"></span>Windows 语音键入（Win + H）<span class="muted">▾</span></button>
+              </div>
+            </div>
+            <div>
+              <div class="row-desc" style="margin-bottom:6px">虚拟声卡</div>
+              <div class="status-select">
+                <button class="status-select-trigger"><span class="status-dot ready"></span>VB-CABLE<span class="muted">▾</span></button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">首次使用：按 Win+H 唤出语音条，在「设置」中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
+        </div>
+
+        <!-- 模拟语音链卡 -->
+        <div class="card">
+          <div class="card-title">模拟语音链</div>
+          <textarea rows="3" style="width:100%;border:1px solid var(--border-strong);border-radius:9px;padding:8px 10px;font-family:inherit;resize:vertical" placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn primary">模拟完整语音链（无遥控器）</button>
+            <button class="btn">唤出语音输入条（Win + H）</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 按键映射页 ============ -->
+      <section class="page" id="page-mapping">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">按键映射</h1>
+            <p class="page-desc">点选遥控器按键，设置触发方式与执行动作。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn primary">保存映射</button>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">① 选择按键</div>
+            <!-- 占位：真实为 Xiaomi2ProRemote SVG 图 -->
+            <div class="empty" style="border:1px dashed var(--border-strong);border-radius:12px">
+              <div style="font-size:13px;font-weight:600;color:var(--text-2)">[ Xiaomi2ProRemote 遥控器图示占位 ]</div>
+              <div class="row-desc" style="margin-top:6px">此处复用现有 Xiaomi2ProRemote 组件</div>
+            </div>
+            <p class="hint" style="text-align:center">当前选中：确定</p>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:0">
+            <div class="card">
+              <div class="card-title">② 触发方式</div>
+              <div class="seg">
+                <button class="on">单击</button><button>双击</button><button>长按</button>
+              </div>
+              <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+                <label class="row-desc">长按判定
+                  <select style="border:1px solid var(--border-strong);border-radius:8px;padding:4px 8px;margin-left:6px">
+                    <option>0.55 秒</option><option>0.4 秒</option><option>0.7 秒</option><option>1.0 秒</option>
+                  </select>
+                </label>
+                <label class="row-desc">双击间隔
+                  <select style="border:1px solid var(--border-strong);border-radius:8px;padding:4px 8px;margin-left:6px">
+                    <option>0.3 秒</option><option>0.2 秒</option><option>0.4 秒</option><option>0.5 秒</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">③ 动作分类与动作</div>
+              <div class="seg">
+                <button class="on">系统</button><button>键盘</button><button>媒体</button><button>应用</button>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+                <button class="btn sm">显示桌面</button>
+                <button class="btn sm primary">回车（Enter）</button>
+                <button class="btn sm">切换应用</button>
+                <button class="btn sm">音量 +</button>
+              </div>
+              <div class="preview-box" style="margin-top:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+                <span class="row-desc">即将保存</span>
+                <div class="row-name">确定 · 单击 → 回车（Enter）</div>
+              </div>
+              <button class="btn primary sm" style="margin-top:10px">保存此键</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">当前映射表</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 20px">
+            <div class="row-desc">电源 · 单击 → Esc</div>
+            <div class="row-desc">上 · 单击 → ↑</div>
+            <div class="row-desc">下 · 单击 → ↓</div>
+            <div class="row-desc">确定 · 单击 → Enter</div>
+            <div class="row-desc">返回 · 单击 → 退格</div>
+            <div class="row-desc">主页 · 单击 → Win+D</div>
+            <div class="row-desc">菜单 · 单击 → 快捷菜单</div>
+            <div class="row-desc">麦克风 · 按下 → Win+H</div>
+            <div class="row-desc">麦克风 · 松开 → Win+H</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 诊断页 ============ -->
+      <section class="page" id="page-diagnostics">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">诊断</h1>
+            <p class="page-desc">虚拟声卡、自检、快捷菜单与日志。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn primary">运行系统全自检</button>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">虚拟声卡（VB-CABLE）</div>
+            <div class="row-item"><div class="row-main"><span class="row-name">整体状态</span></div><span class="chip ok"><i class="dot"></i>正常</span></div>
+            <div class="row-item"><div class="row-main"><span class="row-name">CABLE 输入</span></div><span class="chip ok"><i class="dot"></i>正常</span></div>
+            <div class="row-item"><div class="row-main"><span class="row-name">CABLE 输出</span></div><span class="chip ok"><i class="dot"></i>正常</span></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">快捷操作</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn">循环播放测试音（3 次）</button>
+              <button class="btn">打开/关闭快捷菜单</button>
+            </div>
+            <div class="row-desc" style="margin-top:10px">全自检结果：8 项通过 · 0 项失败</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">日志</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn sm">清空日志</button>
+            <button class="btn sm">打开日志目录</button>
+            <button class="btn sm">开启 DEBUG</button>
+            <span style="flex:1"></span>
+            <button class="btn sm">刷新</button>
+          </div>
+          <div style="background:#0f1722;color:#9fe6c0;border-radius:10px;padding:12px;font:12px/1.7 Consolas,Menlo,monospace;height:200px;overflow:auto;white-space:pre">[17:27:27.216] [bridge] AudioStarted session=68
+[17:27:27.787] [dispatch] 麦克风 Press -> Voice
+[17:27:32.265] [bridge] AudioStopped
+[17:27:32.267] [hid-tap] usage=0x3E release</div>
+        </div>
+      </section>
+
+      <!-- ============ 引导页 ============ -->
+      <section class="page" id="page-guidance">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">引导</h1>
+            <p class="page-desc">快捷入口与首次配置向导。</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">快捷入口与配置</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary">唤出语音输入条（配置麦克风）</button>
+            <button class="btn">打开 Windows 蓝牙设置</button>
+            <button class="btn">打开声音设置</button>
+            <button class="btn">打开麦克风隐私设置</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">设置向导</div>
+          <ol style="display:flex;flex-direction:column;gap:14px;padding-left:0;list-style:none;margin:0">
+            <li style="display:flex;gap:12px"><span class="chip ok" style="width:26px;height:26px;border-radius:50%;justify-content:center;padding:0">✓</span><div><div class="row-name">1. 蓝牙配对</div><div class="row-desc">长按遥控器「主页 + 菜单」键直到指示灯快闪，在 Windows 蓝牙设置中添加并连接 RC003。</div></div></li>
+            <li style="display:flex;gap:12px"><span class="chip ok" style="width:26px;height:26px;border-radius:50%;justify-content:center;padding:0">✓</span><div><div class="row-name">2. 确认虚拟声卡驱动</div><div class="row-desc">确保已安装 VB-CABLE 虚拟音频驱动（未安装可前往「连接」页或官网一键安装）。</div></div></li>
+            <li style="display:flex;gap:12px"><span class="chip warn" style="width:26px;height:26px;border-radius:50%;justify-content:center;padding:0">3</span><div><div class="row-name">3. 【关键】绑定 Windows 语音输入麦克风</div><div class="row-desc">点击下方「唤出语音输入条」或按快捷键 Win+H，在语音条的「设置」中将麦克风选择为「CABLE Output」。</div></div></li>
+            <li style="display:flex;gap:12px"><span class="chip idle" style="width:26px;height:26px;border-radius:50%;justify-content:center;padding:0">4</span><div><div class="row-name">4. 模拟自检与日常使用</div><div class="row-desc">前往「连接」页点击「模拟完整语音链」验证打字上屏；平时长按遥控器语音键即可秒级语音输入。</div></div></li>
+          </ol>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const nav = document.getElementById("nav");
+  nav.addEventListener("click", (e) => {
+    const btn = e.target.closest(".nav-item");
+    if (!btn) return;
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("show"));
+    document.getElementById("page-" + btn.dataset.page).classList.add("show");
+  });
+</script>
+</body>
+</html>

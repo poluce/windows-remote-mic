@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { RemoteKeyTester } from "../components/RemoteKeyTester";
+import { IconSearch } from "../components/icons";
 
 type Diagnostics = {
   has_vb_cable: boolean;
@@ -258,16 +259,18 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
-
       <section className="card vbcable-card">
         <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
         <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
+          <span className="pill-dot" />
           {data.has_vb_cable ? "正常" : "未就绪"}
         </span>
         <span className={`vbcable-status ${data.cable_input_present ? "ok" : "warn"}`}>
+          <span className="pill-dot" />
           CABLE 输入
         </span>
         <span className={`vbcable-status ${data.cable_output_present ? "ok" : "warn"}`}>
+          <span className="pill-dot" />
           CABLE 输出
         </span>
         {checked && !data.has_vb_cable && (
@@ -280,7 +283,8 @@ export function DiagnosticsPage() {
 
       <section className="card diag-actions-card">
         <button className="btn primary" onClick={runSelfTest}>
-          🔍 运行系统全自检
+          <IconSearch size={14} />
+          运行系统全自检
         </button>
         <button className="btn" onClick={loopTone} disabled={looping}>
           {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
