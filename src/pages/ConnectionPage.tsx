@@ -280,11 +280,10 @@ export function ConnectionPage() {
 
       <div className="conn-col">
       <div className="section-label">语音链路</div>
-      <section className="card">
-        <div className="card-title">识别方案</div>
-        <div className="wizard-group">
-          <div className="wizard-label">语音识别目标</div>
-          <div className="status-select" ref={targetRef}>
+      <section className="card form-card">
+        <div className="form-row">
+          <span className="form-label">语音识别目标</span>
+          <div className="status-select form-control" ref={targetRef}>
             <button
               type="button"
               className={`status-select-trigger${targetOpen ? " open" : ""}`}
@@ -322,9 +321,9 @@ export function ConnectionPage() {
         </div>
         {voiceTarget === "windows_voice" && (
           <>
-            <div className="wizard-group">
-              <div className="wizard-label">虚拟声卡</div>
-              <div className="status-select" ref={driverRef}>
+            <div className="form-row">
+              <span className="form-label">虚拟声卡</span>
+              <div className="status-select form-control" ref={driverRef}>
                 <button
                   type="button"
                   className={`status-select-trigger${driverOpen ? " open" : ""}`}
@@ -365,8 +364,7 @@ export function ConnectionPage() {
                 )}
               </div>
             </div>
-            <p className="hint">当前音频出口：{selected}。</p>
-            <p className="hint">首次使用：按 Win+H 唤出语音条，在「设置」中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
+            <p className="form-foot">当前音频出口：{selected}。首次使用：按 Win+H 唤出语音条，在「设置」中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
           </>
         )}
       </section>
@@ -374,22 +372,22 @@ export function ConnectionPage() {
       {voiceTarget === "windows_voice" && (
         <>
         <div className="section-label">测试</div>
-        <section className="card sim-card">
+        <section className="card">
           <textarea
             ref={simInputRef}
-            className="sim-input"
+            className="sim-input sim-input-wide"
             rows={3}
             placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
           />
-          <div className="sim-actions">
+          <div className="sim-actions-row">
+            <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
+              <IconMic size={14} />
+              唤出语音输入条（Win + H）
+            </button>
             <button className="btn primary" onClick={runVoiceSimulation} disabled={!isTauri()}>
               {voiceTarget === "windows_voice"
                 ? "模拟完整语音链（无遥控器）"
                 : `模拟 ${imeName}（未接入）`}
-            </button>
-            <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
-              <IconMic size={14} />
-              唤出语音输入条（Win + H）
             </button>
           </div>
         </section>

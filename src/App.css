@@ -246,6 +246,43 @@ button:focus-visible,
   }
 }
 
+/* ---------- 表单分组行（macOS 系统设置式） ---------- */
+.form-card {
+  padding: 6px 18px 10px;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+}
+
+.form-row + .form-row {
+  border-top: 0.5px solid var(--border);
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.form-control.status-select {
+  width: 250px;
+  max-width: 250px;
+  flex-shrink: 0;
+}
+
+.form-foot {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 /* ---------- 拦截开关（macOS 拨动开关） ---------- */
 .eat-card {
   display: flex;
@@ -777,6 +814,18 @@ button:focus-visible,
   display: flex;
   align-items: flex-start;
   gap: 16px;
+}
+
+.sim-input-wide {
+  max-width: none;
+  min-height: 72px;
+}
+
+.sim-actions-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .sim-card .sim-input {
