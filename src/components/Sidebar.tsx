@@ -3,11 +3,16 @@ import { IconActivity, IconBluetooth, IconCompass, IconGrid } from "./icons";
 
 export type PageId = "connection" | "mapping" | "diagnostics" | "guidance";
 
-const NAV_ITEMS: { id: PageId; label: string; icon: typeof IconBluetooth }[] = [
-  { id: "connection", label: "连接", icon: IconBluetooth },
-  { id: "mapping", label: "按键映射", icon: IconGrid },
-  { id: "diagnostics", label: "诊断", icon: IconActivity },
-  { id: "guidance", label: "引导", icon: IconCompass },
+const NAV_ITEMS: {
+  id: PageId;
+  label: string;
+  icon: typeof IconBluetooth;
+  color: string;
+}[] = [
+  { id: "connection", label: "连接", icon: IconBluetooth, color: "#007aff" },
+  { id: "mapping", label: "按键映射", icon: IconGrid, color: "#af52de" },
+  { id: "diagnostics", label: "诊断", icon: IconActivity, color: "#5e5ce6" },
+  { id: "guidance", label: "引导", icon: IconCompass, color: "#ff9f0a" },
 ];
 
 export function Sidebar({
@@ -57,7 +62,9 @@ export function Sidebar({
               className={page === item.id ? "nav-item active" : "nav-item"}
               onClick={() => onChange(item.id)}
             >
-              <Icon size={17} className="nav-icon" />
+              <span className="nav-ico" style={{ background: item.color }}>
+                <Icon size={13} />
+              </span>
               <span>{item.label}</span>
             </button>
           );

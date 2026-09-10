@@ -264,6 +264,7 @@ export function ConnectionPage() {
 
   return (
     <div className="page">
+      <div className="section-label">设备</div>
       <section className="card device-card">
         <div className="device-top">
           <div className="device-info">
@@ -328,6 +329,7 @@ export function ConnectionPage() {
         </div>
       </section>
 
+      <div className="section-label">语音链路</div>
       <section className="card">
         <div className="card-title">识别方案</div>
         <div className="wizard-group">
@@ -420,6 +422,8 @@ export function ConnectionPage() {
       </section>
 
       {voiceTarget === "windows_voice" && (
+        <>
+        <div className="section-label">测试</div>
         <section className="card sim-card">
           <textarea
             ref={simInputRef}
@@ -439,6 +443,7 @@ export function ConnectionPage() {
             </button>
           </div>
         </section>
+        </>
       )}
 
       {simResult && (

@@ -52,6 +52,7 @@ export function OnboardingPage() {
 
   return (
     <div className="page">
+      <div className="section-label">快捷操作</div>
       <section className="card">
         <div className="card-title">快捷入口与配置</div>
         <div className="actions">
@@ -72,6 +73,7 @@ export function OnboardingPage() {
         {msg && <p className="hint">{msg}</p>}
       </section>
 
+      <div className="section-label">设置向导</div>
       <section className="card">
         <div className="card-title">设置向导</div>
         <ol className="onboarding-list">

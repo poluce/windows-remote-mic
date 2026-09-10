@@ -259,6 +259,7 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
+      <div className="section-label">状态与自检</div>
       <section className="card vbcable-card">
         <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
         <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
@@ -310,6 +311,7 @@ export function DiagnosticsPage() {
         )}
       </section>
 
+      <div className="section-label">日志</div>
       <section className="card">
         <div className="log-actions">
           <button className="btn" onClick={clearLogFile}>清空日志</button>
@@ -353,6 +355,7 @@ export function DiagnosticsPage() {
         </div>
       </section>
 
+      <div className="section-label">按键测试</div>
       <RemoteKeyTester />
     </div>
   );

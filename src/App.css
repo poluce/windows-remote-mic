@@ -3,33 +3,34 @@
     "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   line-height: 1.6;
-  color: #1c2330;
-  background: #eef1f6;
+  color: #1d1d1f;
+  background: #f5f5f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --bg: #eef1f6;
+  --bg: #f5f5f7;
   --surface: #ffffff;
-  --surface-2: #f6f8fa;
-  --border: #e4e8ee;
-  --border-strong: #d3d9e2;
-  --text: #1c2330;
-  --text-2: #566174;
-  --text-3: #8b95a5;
-  --accent: #2f6fed;
-  --accent-strong: #1f5fe0;
-  --accent-soft: #e9f0fe;
-  --ok: #1a7f37;
-  --ok-bg: #e4f3e9;
-  --warn: #9a6700;
-  --warn-bg: #fdf1dd;
-  --err: #cf222e;
-  --err-bg: #fdeceb;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow: 0 1px 2px rgba(28, 35, 48, 0.04), 0 2px 8px rgba(28, 35, 48, 0.05);
+  --surface-2: #f7f7f9;
+  --sidebar-bg: #eceef3;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #86868b;
+  --accent: #007aff;
+  --accent-strong: #0062d0;
+  --accent-soft: rgba(0, 122, 255, 0.1);
+  --ok: #248a3d;
+  --ok-bg: rgba(52, 199, 89, 0.14);
+  --warn: #b25000;
+  --warn-bg: rgba(255, 159, 10, 0.15);
+  --err: #d70015;
+  --err-bg: rgba(255, 59, 48, 0.12);
+  --radius: 12px;
+  --radius-sm: 7px;
+  --shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -65,16 +66,16 @@ button:focus-visible,
 
 /* ---------- 侧边栏 ---------- */
 .sidebar {
-  width: 232px;
+  width: 224px;
   flex-shrink: 0;
   flex-grow: 0;
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f8fafc;
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
-  padding: 20px 12px 14px;
+  padding: 20px 10px 14px;
 }
 
 .brand {
@@ -114,48 +115,39 @@ button:focus-visible,
 }
 
 .nav-item {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px 9px 14px;
+  gap: 9px;
+  padding: 6px 8px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-2);
-  font-size: 13.5px;
-  font-weight: 500;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s;
 }
 
-.nav-icon {
+.nav-ico {
   flex-shrink: 0;
-  opacity: 0.9;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 }
 
 .nav-item:hover {
-  background: #edf0f5;
-  color: var(--text);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.nav-item.active::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 16px;
-  border-radius: 2px;
-  background: var(--accent);
+  background: rgba(0, 0, 0, 0.08);
+  font-weight: 500;
 }
 
 /* 侧栏底部：全局运行状态的唯一展示位 */
@@ -222,6 +214,18 @@ button:focus-visible,
   font-size: 13px;
   color: var(--text);
   letter-spacing: 0.02em;
+}
+
+/* 功能分区标签：macOS 系统设置式的小号灰色分区标题 */
+.section-label {
+  margin: 22px 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.page > .section-label:first-child {
+  margin-top: 0;
 }
 
 /* ---------- 连接 ---------- */
@@ -501,32 +505,32 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 15px;
+  padding: 4px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
-    transform 0.05s;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--text-3);
-  box-shadow: var(--shadow);
+  background: var(--surface-2);
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(0.5px);
+  filter: brightness(0.94);
 }
 
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  font-weight: 500;
 }
 
 .btn.primary:hover:not(:disabled) {

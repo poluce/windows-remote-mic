@@ -110,6 +110,7 @@ export function MappingPage() {
 
   return (
     <div className="page">
+      <div className="section-label">按键配置</div>
       <div className="mapping-wizard">
         <section className="card remote-card">
           <div className="card-title">① 选择按键</div>
@@ -205,6 +206,7 @@ export function MappingPage() {
         </section>
       </div>
 
+      <div className="section-label">映射表</div>
       <section className="card">
         <div className="card-title">当前映射表</div>
         <div className="mapping-list">
