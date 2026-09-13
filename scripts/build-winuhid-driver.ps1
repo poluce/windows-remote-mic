@@ -18,6 +18,14 @@ $cfile = Join-Path $srcDir "WinUHid.c"
 $obj = Join-Path $outDir "WinUHid.obj"
 $dll = Join-Path $outDir "WinUHidDriver.dll"
 
+# Fail loudly with the offending path instead of letting the compiler emit a
+# bare C1083 for wdf.h later on.
+foreach ($required in @((Join-Path $incUmdf "wdf.h"), $libVhf, $libWdf, $cfile)) {
+    if (-not (Test-Path $required)) {
+        throw "Missing build input: $required (run scripts\fetch-wdk-nupkg.ps1 first)"
+    }
+}
+
 $cmd = @"
 call `"$vsdev`" -arch=amd64 -host_arch=amd64
 cl /nologo /c /W3 /O2 /MD /utf-8 ^
