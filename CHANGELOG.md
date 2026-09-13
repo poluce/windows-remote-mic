@@ -20,6 +20,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-13
+
 ### 新增
 - 安装包内置虚拟 HID 键盘驱动，普通用户不再需要手动跑脚本：
   - 新增 `scripts/prepare-vhid-bundle.ps1`：一键汇编驱动包（编 UMDF 驱动 → stampinf/Inf2Cat/签名 → 连同 `devcon.exe`、安装/卸载脚本、测试证书输出到 `src-tauri/windows/driver/`，该目录已加入 `.gitignore`）。
