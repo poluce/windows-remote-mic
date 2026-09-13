@@ -60,6 +60,9 @@ jobs:
           if (-not (Get-ChildItem $dir -Filter *.cat)) {
             throw "Driver bundle has no catalog (.cat)"
           }
+          if (-not (Get-ChildItem $dir -Filter '*.dll.xz')) {
+            throw "Driver bundle has no Frida Gadget archive (*.dll.xz)"
+          }
           Get-ChildItem $dir | Select-Object Name, Length
 
       - name: Build installer

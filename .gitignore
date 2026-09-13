@@ -36,3 +36,5 @@ frida-gadget.dll
 
 # Virtual HID driver bundle assembled by scripts/prepare-vhid-bundle.ps1
 /src-tauri/windows/driver/
+# Frida Gadget archive fetched for that bundle
+/third_party/frida-gadget/

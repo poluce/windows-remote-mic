@@ -37,7 +37,61 @@ fn archive_url() -> String {
     )
 }
 
-/// 若 `dir/frida-gadget.dll` 已存在则直接返回；否则下载、校验并解压到该目录。
+/// 安装包内置的 Gadget 压缩包：`<安装目录>\vhid\<archive_name>`。
+///
+/// 安装器会把整个虚拟 HID 负载释放到该目录（见 `src-tauri\windows\hooks.nsh`），
+/// 因此正常安装的用户不需要访问 GitHub。
+fn bundled_archive_in(exe_dir: &Path) -> Option<PathBuf> {
+    let candidate = exe_dir.join("vhid").join(archive_name());
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn bundled_archive() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    bundled_archive_in(exe.parent()?)
+}
+
+/// 确保 `dir` 里有一个校验通过的 Gadget 压缩包，并返回其路径。
+///
+/// 优先使用安装包内置的压缩包：HOGP 旁路（返回/音量/TV 键，以及实测的麦克风键）
+/// 依赖这个 Gadget，而首次运行访问 GitHub 在国内经常失败。只有内置包缺失或校验
+/// 不过时才回退到下载。
+fn acquire_archive(dir: &Path, bundled: Option<&Path>) -> Result<PathBuf, String> {
+    let archive_path = dir.join(archive_name());
+    if archive_path.is_file() && archive_sha_ok(&archive_path) {
+        return Ok(archive_path);
+    }
+
+    match bundled.filter(|p| archive_sha_ok(p)) {
+        Some(bundled) => {
+            core_log::log_info(&format!(
+                "[hid-tap] 使用安装包内置的 Frida Gadget: {}",
+                bundled.display()
+            ));
+            std::fs::copy(bundled, &archive_path)
+                .map_err(|e| format!("复制内置 Gadget 压缩包失败: {e}"))?;
+        }
+        None => {
+            if bundled.is_some() {
+                core_log::log_warn("[hid-tap] 安装包内置的 Gadget 校验失败，改为从 GitHub 下载");
+            }
+            download_archive(&archive_url(), &archive_path)?;
+        }
+    }
+
+    if !archive_sha_ok(&archive_path) {
+        let _ = std::fs::remove_file(&archive_path);
+        return Err("Frida Gadget 压缩包 SHA-256 校验失败，已删除损坏文件".into());
+    }
+    Ok(archive_path)
+}
+
+/// 若 `dir/frida-gadget.dll` 已存在则直接返回；否则取压缩包（优先用安装包内置的，
+/// 其次从 GitHub 下载）、校验 SHA-256 并解压到该目录。
 pub fn ensure_frida_gadget(dir: &Path) -> Result<PathBuf, String> {
     let dll_path = dir.join("frida-gadget.dll");
     if dll_path.is_file() {
@@ -46,14 +100,8 @@ pub fn ensure_frida_gadget(dir: &Path) -> Result<PathBuf, String> {
 
     std::fs::create_dir_all(dir).map_err(|e| format!("创建 Gadget 目录失败: {e}"))?;
 
-    let archive_path = dir.join(archive_name());
-    if !archive_path.is_file() || !archive_sha_ok(&archive_path) {
-        download_archive(&archive_url(), &archive_path)?;
-        if !archive_sha_ok(&archive_path) {
-            let _ = std::fs::remove_file(&archive_path);
-            return Err("Frida Gadget 压缩包 SHA-256 校验失败，已删除损坏文件".into());
-        }
-    }
+    let bundled = bundled_archive();
+    let archive_path = acquire_archive(dir, bundled.as_deref())?;
 
     let extracted_path = dir.join(extracted_name());
     if extracted_path.is_file() {
@@ -174,6 +222,63 @@ mod tests {
         assert_eq!(extracted_name(), "frida-gadget-17.15.3-windows-x86_64.dll");
         assert!(archive_url().contains("/17.15.3/"));
         assert_eq!(GADGET_ARCHIVE_SHA256.len(), 64);
+    }
+
+    #[test]
+    fn bundled_archive_is_looked_up_under_vhid() {
+        let dir = std::env::temp_dir().join("remote-mic-gadget-bundled-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vhid")).unwrap();
+
+        // 未放入压缩包时不应命中。
+        assert_eq!(bundled_archive_in(&dir), None);
+
+        let archive = dir.join("vhid").join(archive_name());
+        std::fs::write(&archive, b"stub").unwrap();
+        assert_eq!(bundled_archive_in(&dir), Some(archive));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 用真实归档验证「安装包内置 → 校验 → 解压」整条路径，全程不联网。
+    /// 归档由 `scripts/prepare-vhid-bundle.ps1` 拉到 third_party/frida-gadget；
+    /// 没有该文件时（例如 CI）跳过。
+    #[test]
+    fn bundled_archive_yields_usable_dll_without_network() {
+        let bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("third_party")
+            .join("frida-gadget")
+            .join(archive_name());
+        if !bundled.is_file() {
+            eprintln!(
+                "skip: bundled archive not present at {} (run scripts/prepare-vhid-bundle.ps1)",
+                bundled.display()
+            );
+            return;
+        }
+
+        let dir = std::env::temp_dir().join("remote-mic-gadget-bundled-smoke");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let archive = acquire_archive(&dir, Some(&bundled)).expect("acquire from bundled archive");
+        assert!(
+            archive.is_file(),
+            "archive not copied into {}",
+            dir.display()
+        );
+
+        let extracted = dir.join(extracted_name());
+        extract_archive(&dir, &archive, &extracted).expect("extract bundled archive");
+        let size = std::fs::metadata(&extracted).unwrap().len();
+        assert!(
+            size > 1_000_000,
+            "extracted gadget looks too small: {size} bytes"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 手动联网验证：`cargo test -p core-hid --lib downloads_gadget_to_temp -- --ignored --nocapture`

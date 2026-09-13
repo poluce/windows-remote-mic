@@ -20,6 +20,16 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-13
+
+### 新增
+- 安装包内置 Frida Gadget，安装后无需任何运行时下载：
+  - HOGP 旁路依赖 `frida-gadget.dll`，此前由应用在首次需要时从 GitHub Releases 下载（6.8 MB），国内网络经常失败——而返回/音量/TV 键只有这条通道可见，实测麦克风键也走这条通道。
+  - `gadget_fetch.rs` 改为优先使用安装包内置的压缩包：先查 `<安装目录>\vhid\<name>.dll.xz`，校验通过则复制到 `%PROGRAMDATA%\RemoteMic\hid-tap` 并解压；仅在缺失或校验失败时才回落下载。
+  - `scripts/fetch-frida-gadget.ps1` 新增 `-DestDir` 与 `-ArchiveOnly`，供 `prepare-vhid-bundle.ps1` 把归档拉进安装包负载；Release 工作流校验负载中必须含 `*.dll.xz`。
+  - 安装包体积 2.4 MB → 9.2 MB（Gadget 的 `.xz` 本身已压缩，几乎原样计入）。
+  - 新增离线验证测试：用真实归档走完「内置 → 校验 → 解压」，确认不联网也能得到可用 DLL。
+
 ## [0.3.0] - 2026-09-13
 
 ### 新增
