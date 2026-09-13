@@ -3,6 +3,7 @@ import { Sidebar, type PageId } from "./components/Sidebar";
 import { ConnectionPage } from "./pages/ConnectionPage";
 import { MappingPage } from "./pages/MappingPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
+import { LogPage } from "./pages/LogPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { initRuntimeStatus } from "./store/runtimeStatus";
 import "./App.css";
@@ -24,6 +25,7 @@ function App() {
           {page === "connection" && <ConnectionPage />}
           {page === "mapping" && <MappingPage />}
           {page === "diagnostics" && <DiagnosticsPage />}
+          {page === "log" && <LogPage />}
           {page === "guidance" && <OnboardingPage />}
         </div>
       </main>

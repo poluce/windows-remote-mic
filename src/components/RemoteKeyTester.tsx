@@ -162,12 +162,10 @@ function isCollectableRemoteKey(e: KeyboardEvent): boolean {
 }
 
 export function RemoteKeyTester() {
-  const [mode, setMode] = useState<"live" | "guided">("live");
   const [active, setActive] = useState(false);
   const [calibrations, setCalibrations] = useState<Record<string, KeyCalibration>>({});
   const [lastRawKey, setLastRawKey] = useState<string>("");
 
-  // 自由模式状态
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<Record<string, TriggerRecord>>(() => {
     const init: Record<string, TriggerRecord> = {};
@@ -177,23 +175,12 @@ export function RemoteKeyTester() {
     return init;
   });
 
-  // 向导模式状态
-  const [guidedIndex, setGuidedIndex] = useState(0);
-  const [guidedDoneKeys, setGuidedDoneKeys] = useState<string[]>([]);
-
-  // 时序判定 Ref
   const pressTimes = useRef<Record<string, number>>({});
   const lastSingleRelease = useRef<Record<string, number>>({});
   const singleTimers = useRef<Record<string, number>>({});
-  const modeRef = useRef(mode);
-  const guidedIndexRef = useRef(guidedIndex);
   const calibrationsRef = useRef(calibrations);
-  const guidedDoneKeysRef = useRef(guidedDoneKeys);
   const lastIngestRef = useRef({ vkey: -1, pressed: false, at: 0 });
-  modeRef.current = mode;
-  guidedIndexRef.current = guidedIndex;
   calibrationsRef.current = calibrations;
-  guidedDoneKeysRef.current = guidedDoneKeys;
 
   // 加载已保存的校准表
   useEffect(() => {
@@ -273,39 +260,11 @@ export function RemoteKeyTester() {
       if (alreadyIngested(e.keyCode || 0, true)) return;
 
       const now = performance.now();
-      const codeVal = e.code && e.code !== "Unidentified" ? e.code : (e.key && e.key !== "Unidentified" ? e.key : `VK_${e.keyCode}`);
-      const keyVal = e.key && e.key !== "Unidentified" ? e.key : codeVal;
 
       const logStr = `[tester] keydown received: code='${e.code || ""}', key='${e.key || ""}', keyCode=${e.keyCode}`;
       setLastRawKey(`code: ${e.code || "空"}, key: ${e.key || "空"}, vkey: ${e.keyCode}`);
       if (isTauri()) {
         invoke("log_message", { message: logStr }).catch(() => {});
-      }
-
-      if (modeRef.current === "guided") {
-        const guidedIndex = guidedIndexRef.current;
-        if (guidedIndex < REMOTE_KEYS.length) {
-          const target = REMOTE_KEYS[guidedIndex];
-          const newCal: KeyCalibration = {
-            button: target.id,
-            code: codeVal,
-            key: keyVal,
-            vkey: e.keyCode || 0,
-          };
-          const nextCalibs = { ...calibrationsRef.current, [target.id]: newCal };
-          setCalibrations(nextCalibs);
-
-          const nextDone = Array.from(new Set([...guidedDoneKeysRef.current, target.id]));
-          setGuidedDoneKeys(nextDone);
-
-          const nextIdx = guidedIndex + 1;
-          if (nextIdx < REMOTE_KEYS.length) {
-            setGuidedIndex(nextIdx);
-          } else {
-            finishGuided(nextCalibs);
-          }
-        }
-        return;
       }
 
       const btnId = resolveButton(e);
@@ -323,7 +282,6 @@ export function RemoteKeyTester() {
         e.stopPropagation();
       }
 
-      if (modeRef.current === "guided") return;
       if (!isCollectableRemoteKey(e)) return;
       if (alreadyIngested(e.keyCode || 0, false)) return;
 
@@ -439,7 +397,7 @@ export function RemoteKeyTester() {
     };
   }, [active]);
 
-  // 测试 / 校准进行时暂停按键调度，避免测试按键触发真实动作。
+  // 测试进行时暂停按键调度，避免测试按键触发真实动作。
   // 源头去重：仅当 active 状态真正发生变化时才调用后端 IPC，避免普通挂载和重复渲染发送冗余信号。
   const lastActiveRef = useRef<boolean | null>(null);
   useEffect(() => {
@@ -461,94 +419,19 @@ export function RemoteKeyTester() {
     };
   }, [active]);
 
-  function switchToLive() {
-    setMode("live");
-    setActive(false);
-    setCurrentKey(null);
-  }
-
-  function startGuided(initialIdx = 0) {
-    setMode("guided");
-    setActive(true);
-    setGuidedIndex(initialIdx);
-  }
-
-  function finishGuided(calibsToSave = calibrations) {
-    if (isTauri()) {
-      invoke("save_key_calibrations", { calibrations: calibsToSave }).catch(() => {});
-    }
-    // 校准完成时保持在当前页面展示完成状态，并同步持久化
-    setGuidedIndex(REMOTE_KEYS.length);
-  }
-
-  function skipCurrentKey() {
-    const nextIdx = guidedIndex + 1;
-    if (nextIdx < REMOTE_KEYS.length) {
-      setGuidedIndex(nextIdx);
-    } else {
-      finishGuided(calibrations);
-    }
-  }
-
-  function resetToDefaults() {
-    setCalibrations({});
-    setGuidedDoneKeys([]);
-    if (isTauri()) {
-      invoke("save_key_calibrations", { calibrations: {} });
-    }
-  }
-
-  const currentGuidedTarget =
-    mode === "guided" && guidedIndex < REMOTE_KEYS.length
-      ? REMOTE_KEYS[guidedIndex]
-      : null;
-
   return (
     <section className="card remote-tester-card">
-      <div className="tester-header">
-        <div className="tester-modes">
-          <button
-            className={`mode-tab ${mode === "live" ? "active" : ""}`}
-            onClick={switchToLive}
-          >
-            快速测试
-          </button>
-          <button
-            className={`mode-tab ${mode === "guided" ? "active" : ""}`}
-            onClick={() => startGuided(0)}
-          >
-            逐键校准
-          </button>
-        </div>
-      </div>
-
       <div className="tester-body">
-        {/* 左侧仿真遥控器 */}
         <div className="tester-remote-pane">
-          <Xiaomi2ProRemote
-            selected={mode === "live" ? currentKey || undefined : undefined}
-            targetKey={currentGuidedTarget ? currentGuidedTarget.id : undefined}
-            doneKeys={mode === "guided" ? guidedDoneKeys : undefined}
-            onSelect={(k) => {
-              if (mode === "guided") {
-                const idx = REMOTE_KEYS.findIndex((item) => item.id === k);
-                if (idx !== -1) setGuidedIndex(idx);
-              }
-            }}
-          />
+          <Xiaomi2ProRemote selected={currentKey || undefined} />
         </div>
 
-        {/* 右侧交互与看板区 */}
         <div className="tester-info-pane">
-          {/* 模式 1：自由测试模式 */}
-          {mode === "live" && (
-            <>
               <div className="live-actions-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <button
                   className={`btn ${active ? "active" : "primary"}`}
                   onClick={() => {
                     if (!active) {
-                      // 开始测试时自动清空之前的测试矩阵
                       const resetMat: Record<string, TriggerRecord> = {};
                       for (const k of REMOTE_KEYS) {
                         resetMat[k.id] = { single: false, double: false, long: false };
@@ -570,28 +453,18 @@ export function RemoteKeyTester() {
                 )}
               </div>
 
-              {/* 13 键触发矩阵 */}
               <div>
                 <div className="key-matrix-grid">
-                  {REMOTE_KEYS.map((k, idx) => {
+                  {REMOTE_KEYS.map((k) => {
                     const rec = matrix[k.id] || { single: false, double: false, long: false };
                     const allPass = rec.single && rec.double && rec.long;
-                    const isCalibrated = !!calibrations[k.id];
                     return (
                       <div
                         key={k.id}
                         className={`matrix-card ${allPass ? "all-passed" : ""}`}
-                        style={{ cursor: "pointer" }}
-                        title="点击单独重新校准该键"
-                        onClick={() => startGuided(idx)}
                       >
                         <div className="matrix-row-left">
                           <span className="matrix-name">{k.name}</span>
-                          {isCalibrated && (
-                            <span className="hint" style={{ fontSize: 10, color: "#16a34a" }}>
-                              ✓ 已校准
-                            </span>
-                          )}
                         </div>
                         <div className="matrix-triggers">
                           <span className={`trig-pill ${rec.single ? "passed" : ""}`}>
@@ -609,79 +482,9 @@ export function RemoteKeyTester() {
                   })}
                 </div>
                 <p className="hint" style={{ marginTop: 12, fontSize: 12 }}>
-                  ℹ️ 提示：只采集遥控器按键，电脑键盘打字会被忽略。点击任意按键卡片可随时进入**单键重新校准**；【麦克风】键走 HID 兜底（usage 0x3E），默认映射为「按下/松开 → 语音输入（Win+H）」，可在映射页改成任意动作。
+                  只采集遥控器按键，电脑键盘打字会被忽略。点「开始测试」后按遥控器，看单击/双击/长按是否点亮。
                 </p>
               </div>
-            </>
-          )}
-
-          {/* 模式 2：逐键校准模式 */}
-          {mode === "guided" && (
-            <>
-              <div className="guided-top-bar">
-                <div className="guided-current-info">
-                  <span className="guided-badge">
-                    {currentGuidedTarget
-                      ? `请按【${currentGuidedTarget.name}】`
-                      : "✓ 全部校准已保存"}
-                  </span>
-                  <span className="guided-count">
-                    {Math.min(guidedIndex + 1, REMOTE_KEYS.length)} / {REMOTE_KEYS.length}
-                  </span>
-                </div>
-                <div className="guided-actions">
-                  {currentGuidedTarget ? (
-                    <>
-                      <button className="btn" onClick={skipCurrentKey}>
-                        {guidedIndex >= REMOTE_KEYS.length - 1 ? "跳过并完成" : "跳过此键"}
-                      </button>
-                      <button className="btn primary" onClick={() => finishGuided(calibrations)}>
-                        保存并完成
-                      </button>
-                    </>
-                  ) : (
-                    <button className="btn primary" onClick={switchToLive}>
-                      ▶ 进入快速测试
-                    </button>
-                  )}
-                  <button className="btn" onClick={resetToDefaults}>
-                    重置为默认
-                  </button>
-                </div>
-              </div>
-
-              {/* 13 键校准状态矩阵 */}
-              <div className="key-matrix-grid">
-                {REMOTE_KEYS.map((k, idx) => {
-                  const isCurrent = currentGuidedTarget?.id === k.id;
-                  const isDone = guidedDoneKeys.includes(k.id) || !!calibrations[k.id];
-                  return (
-                    <div
-                      key={k.id}
-                      className={`matrix-card ${
-                        isCurrent ? "guided-active-card" : isDone ? "all-passed" : ""
-                      }`}
-                      style={{ cursor: "pointer" }}
-                      title="点击选择该按键重新录入"
-                      onClick={() => setGuidedIndex(idx)}
-                    >
-                      <div className="matrix-row-left">
-                        <span className="matrix-name">{k.name}</span>
-                      </div>
-                      <div className="matrix-triggers">
-                        <span className={`trig-pill ${isDone ? "passed" : ""}`}>
-                          {isDone ? "已采集 ✓" : isCurrent ? "录入中…" : "待校准"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="hint" style={{ marginTop: 12, fontSize: 12 }}>
-                只采集遥控器按键，电脑打字/退格不会写入校准。随时可点击任意按键卡片进行**单独重录**。
-              </p>
-            </>
-          )}
         </div>
       </div>
     </section>

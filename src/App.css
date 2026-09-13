@@ -231,9 +231,10 @@ button:focus-visible,
 /* ---------- 连接页双栏 ---------- */
 .conn-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) 1fr;
-  gap: 20px;
+  grid-template-columns: 1fr;
+  gap: 0;
   align-items: start;
+  max-width: 720px;
 }
 
 .conn-col {
@@ -270,9 +271,10 @@ button:focus-visible,
 }
 
 .form-control.status-select {
-  width: 250px;
+  width: min(250px, 100%);
   max-width: 250px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .form-foot {
@@ -821,11 +823,21 @@ button:focus-visible,
   min-height: 72px;
 }
 
+.form-card .sim-input-wide {
+  margin-top: 12px;
+}
+
 .sim-actions-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+.sim-actions-row .btn {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .sim-card .sim-input {
@@ -927,6 +939,15 @@ button:focus-visible,
   margin-top: 10px;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
     Menlo, monospace;
+}
+
+.log-page .log-card {
+  margin-bottom: 0;
+}
+
+.log-page .log-preview {
+  max-height: calc(100vh - 240px);
+  min-height: 360px;
 }
 
 .log-actions {
@@ -1115,4 +1136,50 @@ button:focus-visible,
 .preview-value {
   font-weight: 600;
   color: var(--text);
+}
+
+.combo-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.combo-capture-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.combo-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  cursor: text;
+}
+
+.combo-input::placeholder {
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.combo-input:hover {
+  border-color: var(--text-3);
+}
+
+.combo-input:focus,
+.combo-input.listening {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }

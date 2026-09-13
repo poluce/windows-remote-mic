@@ -29,3 +29,7 @@ dist-ssr
 # Optional HID tap gadget (fetched locally, never committed)
 *.dll.xz
 frida-gadget.dll
+
+# WinUHid source/build (cloned locally; user-mode DLL copied to %LOCALAPPDATA%)
+/third_party/WinUHid/
+/third_party/wdk-nupkg/

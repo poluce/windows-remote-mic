@@ -143,6 +143,9 @@ fn parse_trigger(s: &str) -> Option<Trigger> {
 
 fn parse_action(s: &str) -> Option<ActionKind> {
     use ActionKind as A;
+    if let Some(tokens) = core_mapping::parse_combo_action_key(s) {
+        return Some(A::KeyCombo(tokens));
+    }
     Some(match s {
         "disabled" => A::Disabled,
         "escape" => A::Escape,
@@ -185,8 +188,8 @@ fn trigger_key(trigger: &Trigger) -> String {
 /// 前端动作选择器使用的稳定动作标识。
 fn action_key(action: &ActionKind) -> String {
     match action {
+        ActionKind::KeyCombo(keys) => return core_mapping::combo_action_key(keys),
         ActionKind::Disabled => "disabled",
-        ActionKind::KeyCombo(_) => "key_combo",
         ActionKind::Escape => "escape",
         ActionKind::Return => "return",
         ActionKind::ArrowUp => "arrow_up",
@@ -211,7 +214,7 @@ fn action_key(action: &ActionKind) -> String {
 fn action_label(action: &ActionKind) -> String {
     match action {
         ActionKind::Disabled => "禁用".into(),
-        ActionKind::KeyCombo(keys) => keys.join("+"),
+        ActionKind::KeyCombo(keys) => format!("快捷键 {}", core_mapping::combo_display(keys)),
         ActionKind::Escape => "取消（Esc）".into(),
         ActionKind::Return => "回车（Enter）".into(),
         ActionKind::ArrowUp => "↑".into(),
@@ -226,7 +229,7 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::SystemVolumeDown => "音量 −".into(),
         ActionKind::SystemVolumeMute => "静音".into(),
         ActionKind::PlayPause => "播放/暂停".into(),
-        ActionKind::Voice => "语音输入（Win+H）".into(),
+        ActionKind::Voice => "语音输入".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
         ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }
@@ -329,6 +332,8 @@ pub fn run() {
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
                 let dispatcher = KeyDispatcher::new(cfg.mapping, &cfg.key_calibrations);
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
+                // 语音识别目标随配置恢复（旧配置缺省为 Windows 语音）。
+                dispatcher.set_voice_target(cfg.voice_target);
                 // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
                 // 统一交给 commands::quick_menu::handle_app_event 处理。
                 let app_for_events = app.handle().clone();
@@ -409,6 +414,9 @@ pub fn run() {
             commands::connection::get_hid_tap_eat,
             commands::connection::set_hid_tap_eat,
             commands::connection::open_system_settings,
+            commands::connection::get_voice_target,
+            commands::connection::set_voice_target,
+            commands::connection::restart_app,
             commands::log::log_message,
             commands::log::get_log_info,
             commands::log::read_log_tail,

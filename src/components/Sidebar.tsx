@@ -1,7 +1,7 @@
 import { tapStatusLabel, useRuntimeStatus } from "../store/runtimeStatus";
-import { IconActivity, IconBluetooth, IconCompass, IconGrid } from "./icons";
+import { IconActivity, IconBluetooth, IconCompass, IconGrid, IconLog } from "./icons";
 
-export type PageId = "connection" | "mapping" | "diagnostics" | "guidance";
+export type PageId = "connection" | "mapping" | "diagnostics" | "log" | "guidance";
 
 const NAV_ITEMS: {
   id: PageId;
@@ -12,6 +12,7 @@ const NAV_ITEMS: {
   { id: "connection", label: "连接", icon: IconBluetooth, color: "#007aff" },
   { id: "mapping", label: "按键映射", icon: IconGrid, color: "#af52de" },
   { id: "diagnostics", label: "诊断", icon: IconActivity, color: "#5e5ce6" },
+  { id: "log", label: "日志", icon: IconLog, color: "#32ade6" },
   { id: "guidance", label: "引导", icon: IconCompass, color: "#ff9f0a" },
 ];
 

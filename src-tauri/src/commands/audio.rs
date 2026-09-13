@@ -27,6 +27,7 @@ pub fn start_voice_bridge(
             return "语音桥已在运行（请勿重复启动）".to_string();
         }
         BRIDGE_STOP_REQUESTED.store(false, Ordering::SeqCst);
+        core_voice::clear_bridge_stop_request();
         let loop_id = BRIDGE_LOOP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
         core_log::log_info(&format!(
             "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, 设备 ID='{device_id}'，输出='{output_device}'"
@@ -108,10 +109,19 @@ pub fn start_voice_bridge(
 #[tauri::command]
 pub fn stop_voice_bridge() -> String {
     if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
-        return "语音桥未在运行".to_string();
+        core_voice::set_connection_active(false);
+        return "未在连接".to_string();
     }
     BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
-    "已请求停止语音桥（当前会话结束后生效）".to_string()
+    core_voice::request_bridge_stop();
+    core_voice::set_connection_active(false);
+    for _ in 0..30 {
+        if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    "已断开连接".to_string()
 }
 
 /// 在没有真实遥控器的情况下模拟完整语音链路。

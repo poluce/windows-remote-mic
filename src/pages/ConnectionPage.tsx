@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   markConnected,
+  markDisconnected,
   tapStatusLabel,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
-import { IconBluetooth, IconMic } from "../components/icons";
+import { IconBluetooth } from "../components/icons";
 
 type Rc003Device = {
   id: string;
@@ -31,13 +32,6 @@ type VbCableStatus = {
 
 type DriverStatus = "loading" | "ready" | "missing" | "unknown";
 
-const TARGET_OPTIONS = [
-  { value: "windows_voice", label: "Windows 语音键入（Win + H）", status: "ready" },
-  { value: "ime_wechat", label: "微信输入法（预留）", status: "preview" },
-  { value: "ime_doubao", label: "豆包输入法（预留）", status: "preview" },
-  { value: "ime_sogou", label: "搜狗输入法（预留）", status: "preview" },
-] as const;
-
 const DRIVER_OPTIONS = [
   { value: "vb_cable", label: "VB-CABLE", disabled: false },
   { value: "voicemeeter", label: "Voicemeeter（预留）", disabled: true },
@@ -53,24 +47,15 @@ export function ConnectionPage() {
   const { connected, bridgeStatus, tapStatus, tapMessage, endpointsReady } = runtime;
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [feedback, setFeedback] = useState("");
 
-  const [voiceTarget, setVoiceTarget] = useState("windows_voice");
   const [virtualDriver, setVirtualDriver] = useState("vb_cable");
-  const [selected] = useState("CABLE 输入（VB-CABLE）");
-  const [simResult, setSimResult] = useState("");
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("unknown");
   const [driverOpen, setDriverOpen] = useState(false);
-  const [targetOpen, setTargetOpen] = useState(false);
   const driverRef = useRef<HTMLDivElement>(null);
-  const targetRef = useRef<HTMLDivElement>(null);
-  const simInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (voiceTarget !== "windows_voice") {
-      setDriverOpen(false);
-      return;
-    }
     let cancelled = false;
     if (!isTauri()) {
       setDriverStatus("unknown");
@@ -89,13 +74,10 @@ export function ConnectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [voiceTarget]);
+  }, []);
 
   useEffect(() => {
     function onPointerDown(e: MouseEvent) {
-      if (targetRef.current && !targetRef.current.contains(e.target as Node)) {
-        setTargetOpen(false);
-      }
       if (driverRef.current && !driverRef.current.contains(e.target as Node)) {
         setDriverOpen(false);
       }
@@ -132,7 +114,7 @@ export function ConnectionPage() {
       const result = await invoke<Rc003Connection>("connect_rc003");
       const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
       markConnected(endpointsReady);
-      setFeedback("连接成功");
+      setFeedback("");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
       } catch {
@@ -141,13 +123,12 @@ export function ConnectionPage() {
 
       // 连接成功后，自动启动后台语音桥
       try {
-        const bridgeRes = await invoke<string>("start_voice_bridge", {
+        await invoke<string>("start_voice_bridge", {
           deviceId: result.device.id,
           outputDevice: "CABLE Input",
         });
-        setFeedback(bridgeRes);
       } catch (bridgeErr) {
-        setFeedback(`连接成功，但语音桥启动失败：${bridgeErr}`);
+        setFeedback(`语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
       setFeedback(`连接失败：${err}`);
@@ -156,58 +137,22 @@ export function ConnectionPage() {
     }
   }
 
-  async function runVoiceSimulation() {
-    if (voiceTarget !== "windows_voice") {
-      setSimResult("第三方输入法模拟尚未接入");
-      return;
-    }
+  async function disconnect() {
     if (!isTauri()) {
-      setSimResult("浏览器预览：请在桌面应用内模拟");
+      markDisconnected();
       return;
     }
-    simInputRef.current?.focus();
-    setSimResult("正在模拟：Win+H → 合成语音 → CABLE…");
+    setDisconnecting(true);
+    setFeedback("");
     try {
-      const ret = await invoke<{
-        frames: number;
-        pcm_samples: number;
-        output_samples: number;
-        win_h_toast: boolean;
-        test_audio: string;
-        test_audio_ms: number;
-      }>("simulate_voice_chain", { outputDevice: "CABLE Input" });
-      setSimResult(
-        `模拟完成：${ret.frames} 帧，PCM ${ret.pcm_samples}，输出 ${ret.output_samples} 样本，测试音频 ${ret.test_audio}（${ret.test_audio_ms}ms），Win+H=${ret.win_h_toast}`
-      );
-      invoke("log_message", {
-        message: `模拟结束，输入框内容=${JSON.stringify(simInputRef.current?.value ?? "")}`,
-      }).catch(() => {});
+      await invoke<string>("stop_voice_bridge");
+      markDisconnected();
     } catch (err) {
-      setSimResult(`模拟失败：${err}`);
+      setFeedback(`断开失败：${err}`);
+    } finally {
+      setDisconnecting(false);
     }
   }
-
-  async function triggerVoiceTyping() {
-    if (!isTauri()) {
-      setSimResult("浏览器预览：请在桌面应用内操作");
-      return;
-    }
-    try {
-      const res = await invoke<string>("trigger_voice_typing");
-      setSimResult(res);
-    } catch (err) {
-      setSimResult(`唤出失败：${err}`);
-    }
-  }
-
-  const imeName =
-    voiceTarget === "ime_wechat"
-      ? "微信输入法"
-      : voiceTarget === "ime_doubao"
-        ? "豆包输入法"
-        : voiceTarget === "ime_sogou"
-          ? "搜狗输入法"
-          : "第三方输入法";
 
   const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
@@ -248,21 +193,34 @@ export function ConnectionPage() {
               {connected ? "已连接" : "未连接"}
             </span>
             <div className="actions">
-              <button className="btn" onClick={scan} disabled={!isTauri() || scanning}>
+              <button
+                className="btn"
+                onClick={scan}
+                disabled={!isTauri() || scanning || connected}
+              >
                 {scanning ? "扫描中…" : "扫描"}
               </button>
-              <button
-                className="btn primary"
-                onClick={connect}
-                disabled={!isTauri() || connecting}
-              >
-                {connecting ? "连接中…" : "连接"}
-              </button>
+              {connected ? (
+                <button
+                  className="btn"
+                  onClick={disconnect}
+                  disabled={!isTauri() || disconnecting}
+                >
+                  {disconnecting ? "断开中…" : "断开"}
+                </button>
+              ) : (
+                <button
+                  className="btn primary"
+                  onClick={connect}
+                  disabled={!isTauri() || connecting}
+                >
+                  {connecting ? "连接中…" : "连接"}
+                </button>
+              )}
             </div>
           </div>
         </div>
         {feedback && <p className="hint device-feedback">{feedback}</p>}
-        {tapMessage && <p className="hint device-feedback">{tapMessage}</p>}
         <div className="device-status">
           {briefs.map((b) => (
             <span
@@ -282,124 +240,49 @@ export function ConnectionPage() {
       <div className="section-label">语音链路</div>
       <section className="card form-card">
         <div className="form-row">
-          <span className="form-label">语音识别目标</span>
-          <div className="status-select form-control" ref={targetRef}>
+          <span className="form-label">虚拟声卡</span>
+          <div className="status-select form-control" ref={driverRef}>
             <button
               type="button"
-              className={`status-select-trigger${targetOpen ? " open" : ""}`}
-              onClick={() => setTargetOpen((open) => !open)}
+              className={`status-select-trigger${driverOpen ? " open" : ""}`}
+              onClick={() => setDriverOpen((open) => !open)}
             >
-              <span
-                className={`status-dot ${
-                  TARGET_OPTIONS.find((target) => target.value === voiceTarget)?.status ?? "preview"
-                }`}
-              />
+              <span className={`status-dot ${driverStatus}`} />
               <span>
-                {TARGET_OPTIONS.find((target) => target.value === voiceTarget)?.label}
+                {virtualDriver === "vb_cable"
+                  ? "VB-CABLE"
+                  : virtualDriver === "voicemeeter"
+                    ? "Voicemeeter（预留）"
+                    : "ReaRoute（预留）"}
               </span>
               <span className="status-select-caret">▾</span>
             </button>
-            {targetOpen && (
+            {driverOpen && (
               <div className="status-select-menu">
-                {TARGET_OPTIONS.map((target) => (
+                {DRIVER_OPTIONS.map((driver) => (
                   <button
                     type="button"
-                    key={target.value}
+                    key={driver.value}
                     className="status-option"
+                    disabled={driver.disabled}
                     onClick={() => {
-                      setVoiceTarget(target.value);
-                      setTargetOpen(false);
+                      setVirtualDriver(driver.value);
+                      setDriverOpen(false);
                     }}
                   >
-                    <span className={`status-dot ${target.status}`} />
-                    <span>{target.label}</span>
+                    <span
+                      className={`status-dot ${
+                        driver.value === "vb_cable" ? driverStatus : "preview"
+                      }`}
+                    />
+                    <span>{driver.label}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
         </div>
-        {voiceTarget === "windows_voice" && (
-          <>
-            <div className="form-row">
-              <span className="form-label">虚拟声卡</span>
-              <div className="status-select form-control" ref={driverRef}>
-                <button
-                  type="button"
-                  className={`status-select-trigger${driverOpen ? " open" : ""}`}
-                  onClick={() => setDriverOpen((open) => !open)}
-                >
-                  <span className={`status-dot ${driverStatus}`} />
-                  <span>
-                    {virtualDriver === "vb_cable"
-                      ? "VB-CABLE"
-                      : virtualDriver === "voicemeeter"
-                        ? "Voicemeeter（预留）"
-                        : "ReaRoute（预留）"}
-                  </span>
-                  <span className="status-select-caret">▾</span>
-                </button>
-                {driverOpen && (
-                  <div className="status-select-menu">
-                    {DRIVER_OPTIONS.map((driver) => (
-                      <button
-                        type="button"
-                        key={driver.value}
-                        className="status-option"
-                        disabled={driver.disabled}
-                        onClick={() => {
-                          setVirtualDriver(driver.value);
-                          setDriverOpen(false);
-                        }}
-                      >
-                        <span
-                          className={`status-dot ${
-                            driver.value === "vb_cable" ? driverStatus : "preview"
-                          }`}
-                        />
-                        <span>{driver.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <p className="form-foot">当前音频出口：{selected}。首次使用：按 Win+H 唤出语音条，在「设置」中把麦克风选为 CABLE Output（Windows 会记住，无需改系统默认麦克风）。</p>
-          </>
-        )}
       </section>
-
-      {voiceTarget === "windows_voice" && (
-        <>
-        <div className="section-label">测试</div>
-        <section className="card">
-          <textarea
-            ref={simInputRef}
-            className="sim-input sim-input-wide"
-            rows={3}
-            placeholder="点击「模拟完整语音链」后，Windows 语音键入会以此处为输入目标"
-          />
-          <div className="sim-actions-row">
-            <button className="btn" onClick={triggerVoiceTyping} disabled={!isTauri()}>
-              <IconMic size={14} />
-              唤出语音输入条（Win + H）
-            </button>
-            <button className="btn primary" onClick={runVoiceSimulation} disabled={!isTauri()}>
-              {voiceTarget === "windows_voice"
-                ? "模拟完整语音链（无遥控器）"
-                : `模拟 ${imeName}（未接入）`}
-            </button>
-          </div>
-        </section>
-        </>
-      )}
-
-      {simResult && (
-        <section className="card">
-          <div className="card-title">模拟语音链结果</div>
-          <p>{simResult}</p>
-        </section>
-      )}
       </div>
     </div>
   );

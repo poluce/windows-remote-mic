@@ -20,7 +20,18 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-13
+
 ### 新增
+- **按键注入全部改走虚拟 HID 键盘**：
+  - 新增 `crates/core-input/src/vhid.rs` + `hid_kbd.rs`：经 WinUHid（UMDF + 收件箱 `vhf.sys`）创建标准 Boot Keyboard，提交 8 字节 HID 报告；左右修饰键分开编码（右 Ctrl 为修饰位 `0x10`）。按键从此在系统里等同真实键盘——豆包等只认真实 HID 键盘的输入法可以正常响应。
+  - 媒体键单独一台 Consumer Control 虚拟设备（播放/暂停、上/下一曲、停止）。HID 键盘页（`0x07`）没有这些 usage，必须走 Consumer 页（`0x0C`）。
+  - `send_key_combo` / `send_key_down` / `send_key_up` / `press_win_h` / `press_escape` / `open_voice_typing` 全部走虚拟 HID；`hotkey.rs` 里的 SendInput 注入实现已删除，不再存在绕过虚拟 HID 的注入路径。
+  - 驱动构建与安装脚本：`scripts/build-winuhid.ps1`（用 WDK NuGet 编用户态 `WinUHid.dll`）、`build-winuhid-driver.ps1`、`package-winuhid-driver.ps1`（stampinf + Inf2Cat + 测试签名）、`install-winuhid.ps1`（信任证书、`pnputil` 装包、`devcon` 建 `Root\WinUHid` 设备）、`check-winuhid.ps1`。虚拟 HID 目录已加入 `.gitignore`。
+  - 诊断页自检新增「虚拟 HID 键盘」项（`core_input::vhid_probe`：查 `WinUHid.dll` 与 `\\.\WinUHid` 控制设备）。
+- 连接页「断开连接」：已连接时「连接」按钮变为「断开」，扫描按钮禁用；`stop_voice_bridge` 改为立即请求主循环退出并释放 GATT，不再等下一个重连周期。
+- 自定义快捷键（组合键）映射：支持单键与左右 Ctrl / Shift / Alt / Win 区分，映射页聚焦输入框直接按键录制，按 `keyup` 判定完成。
+- 新增独立日志页（`src/pages/LogPage.tsx`）与侧栏入口。
 - 驱动层「拦截 HID 按键信号」模式（默认开启）：
   - 逆向定位 WUDFHost HOGP 驱动真实报告写入点（GATT 通知 → 队列项 → `0x20080` memcpy），Frida 钩住写入点清零源缓冲区，系统看不到遥控器原始按键，由本应用独家注入映射动作，消除「系统原生动作 + 应用映射动作」双重触发。
   - 连接页新增「拦截 HID 按键信号」开关（`get_hid_tap_eat` / `set_hid_tap_eat`），持久化到 `config.json` 的 `hid_tap_eat`（默认 `true`）；切换热生效，无需重新注入 WUDFHost / 不弹 UAC。
@@ -46,6 +57,9 @@
 - 新增 `docs/项目/真机验收.md` 真机验收记录表。
 
 ### 变更
+- 连接页改为单栏布局：设备卡 + 语音链路卡（虚拟声卡选择 + 状态），移除识别目标选项与语音测试区（「唤出语音条」「模拟语音链」及其输入框），过程提示不再占用卡片。
+- 诊断页移除「逐键校准」模式，只保留按键快速测试（单击/双击/长按矩阵）。
+- 移除未使用的 `src/voiceTarget.ts`；`hotkey.rs` 收敛为仅剩 `open_app`。
 - 长按触发简化为只触发一次，移除「按住连发」逻辑；长按阈值与双击窗口改为可配置。
 - HOGP 旁路看门狗超时 150ms → 2000ms，修复长按被提前截断为单击的问题。
 - HOGP 看门狗对麦克风键（`0x3E`）禁用自动释放：长按麦克风期间遥控器不重复发 HID 报告（只推 ATVV 音频），此前 2s 超时会把 Release 提前触发，导致长按中第二次 Win+H 取消语音输入；现在由真实 HID 松开报告或 ATVV AudioStopped 结束长按。

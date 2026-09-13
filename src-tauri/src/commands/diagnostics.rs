@@ -131,5 +131,15 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         detail: "仅限 Windows".into(),
     });
 
+    {
+        let detail = core_input::vhid_probe();
+        let pass = detail.contains("WinUHid 可用") || detail.contains("\\\\.\\WinUHid 可用");
+        items.push(SelfTestItem {
+            name: "虚拟 HID 键盘".into(),
+            status: if pass { "pass" } else { "fail" }.into(),
+            detail,
+        });
+    }
+
     items
 }

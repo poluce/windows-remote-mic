@@ -94,6 +94,11 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     actions: [{ key: "voice", label: "语音输入（Win+H）" }],
   },
   {
+    key: "combo",
+    title: "快捷键",
+    actions: [{ key: "custom_combo", label: "自定义快捷键" }],
+  },
+  {
     key: "other",
     title: "其他",
     actions: [{ key: "disabled", label: "禁用" }],

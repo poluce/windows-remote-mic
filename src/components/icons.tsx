@@ -74,6 +74,17 @@ export function IconMic(props: IconProps) {
   );
 }
 
+export function IconLog(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="3.5" width="14" height="17" rx="2" />
+      <path d="M9 8.5h6" />
+      <path d="M9 12h6" />
+      <path d="M9 15.5h4" />
+    </Svg>
+  );
+}
+
 export function IconSearch(props: IconProps) {
   return (
     <Svg {...props}>

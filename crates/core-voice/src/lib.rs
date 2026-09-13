@@ -18,6 +18,9 @@ static CONNECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// 当前语音桥是否处于运行状态。
 static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// 用户请求停止当前语音桥会话（断开连接）。
+static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+
 /// 最近一次成功发现/缓存的 ATVV 端点是否齐全。
 static ATVV_ENDPOINTS_READY: Mutex<bool> = Mutex::new(false);
 
@@ -39,6 +42,19 @@ pub fn bridge_running() -> bool {
 /// 设置当前语音桥运行状态（内部使用）。
 pub fn set_bridge_running(running: bool) {
     BRIDGE_RUNNING.store(running, Ordering::Relaxed);
+}
+
+/// 请求停止当前语音桥（主循环下一次超时内退出并释放 GATT）。
+pub fn request_bridge_stop() {
+    BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn bridge_stop_requested() -> bool {
+    BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst)
+}
+
+pub fn clear_bridge_stop_request() {
+    BRIDGE_STOP_REQUESTED.store(false, Ordering::SeqCst);
 }
 
 /// 查询 ATVV 端点是否已就绪（audio + control 均存在）。

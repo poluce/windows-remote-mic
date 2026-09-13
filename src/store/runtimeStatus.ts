@@ -122,4 +122,12 @@ export function markConnected(endpointsReady: boolean) {
   });
 }
 
+export function markDisconnected() {
+  setState({
+    connected: false,
+    bridgeStatus: "idle",
+    endpointsReady: false,
+  });
+}
+
 export { tapStatusLabel };

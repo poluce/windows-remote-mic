@@ -1,6 +1,7 @@
 use serde::Serialize;
+use tauri::State;
 
-use crate::config_store;
+use crate::{config_store, AppState};
 
 /// 连接页需要恢复的运行时状态快照。
 #[derive(Serialize)]
@@ -106,6 +107,40 @@ pub fn save_selected_device(device_id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 读取当前语音识别目标（连接页「识别方案」）。
+/// 返回 snake_case 字符串（如 `windows_voice` / `ime_wechat`）。
+#[tauri::command]
+pub fn get_voice_target() -> String {
+    config_store()
+        .and_then(|s| s.load().ok())
+        .unwrap_or_default()
+        .voice_target
+        .key()
+        .to_string()
+}
+
+/// 设置语音识别目标：持久化到 `config.json` 并热更新调度器。
+///
+/// 第三方输入法（微信/豆包/搜狗）目前仅预留：连接页可选并保存，
+/// 但麦克风键触发时会返回「尚未接入（需真机验证）」——见 core-input。
+/// 未知字符串回落 Windows 语音，保证不产生无效配置。
+#[tauri::command]
+pub fn set_voice_target(target: String, state: State<AppState>) -> Result<String, String> {
+    let parsed = core_mapping::VoiceTarget::parse(&target)
+        .unwrap_or(core_mapping::VoiceTarget::WindowsVoice);
+    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
+    let mut cfg = store.load().unwrap_or_default();
+    cfg.voice_target = parsed;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    state.dispatcher.set_voice_target(parsed);
+    core_log::log_info(&format!(
+        "[commands/connection] 语音识别目标已设为 {:?}（'{}'）",
+        parsed,
+        parsed.key()
+    ));
+    Ok(parsed.key().to_string())
+}
+
 #[tauri::command]
 pub fn open_system_settings(setting: String) -> String {
     let uri = match setting.as_str() {
@@ -129,4 +164,14 @@ pub fn open_system_settings(setting: String) -> String {
         let _ = uri;
         "仅限 Windows".to_string()
     }
+}
+
+/// 重启应用：退出当前进程并由 Tauri 内部 helper 重新拉起自身。
+///
+/// `AppHandle::restart` 不返回（`-> !`），因此本命令也不会有返回值；
+/// 命令体内部直接触发重启，旧进程随后退出。
+#[tauri::command]
+pub fn restart_app(app: tauri::AppHandle) {
+    core_log::log_info("[commands/connection] 收到重启请求，正在重启应用…");
+    app.restart();
 }

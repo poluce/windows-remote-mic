@@ -269,6 +269,12 @@ where
     let mut idle_ticks: u32 = 0;
     let exit_reason;
     loop {
+        if crate::bridge_stop_requested() {
+            exit_reason = "user_disconnect";
+            core_log::log_info("[bridge] 用户断开连接，停止语音桥");
+            core_log::log_info(&diag.summary(exit_reason));
+            break;
+        }
         if disconnected.load(Ordering::SeqCst) {
             exit_reason = "ble_disconnected_flag";
             core_log::log_line("[bridge] BLE 已断开，停止语音桥以等待自动重连");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import {
@@ -8,6 +8,16 @@ import {
   TRIGGER_LABEL,
   triggersFor,
 } from "./mapping/constants";
+import {
+  COMBO_CATEGORY,
+  CUSTOM_COMBO_ACTION,
+  canonicalizeCombo,
+  formatComboDisplay,
+  keyEventToCombo,
+  modifierTokenFromCode,
+  parseComboActionKey,
+  toComboActionKey,
+} from "./mapping/combo";
 import type { MappingEntry } from "./mapping/types";
 
 export function MappingPage() {
@@ -16,6 +26,11 @@ export function MappingPage() {
   const [trigger, setTrigger] = useState("single_click");
   const [category, setCategory] = useState("system");
   const [action, setAction] = useState("return");
+  const [comboTokens, setComboTokens] = useState<string[]>([]);
+  const [comboDraft, setComboDraft] = useState("");
+  const [capturing, setCapturing] = useState(false);
+  const pendingComboRef = useRef<string[]>([]);
+  const heldModsRef = useRef<string[]>([]);
   const [saveMsg, setSaveMsg] = useState("");
   const [longPressMs, setLongPressMs] = useState(550);
   const [doubleClickMs, setDoubleClickMs] = useState(300);
@@ -90,12 +105,93 @@ export function MappingPage() {
       (m) => m.button === selected && m.trigger === trigger
     );
     const actionKey = binding?.action_key || "disabled";
+    const combo = parseComboActionKey(actionKey);
+    if (combo) {
+      setCategory(COMBO_CATEGORY);
+      setAction(CUSTOM_COMBO_ACTION);
+      setComboTokens(combo);
+      setComboDraft(combo.join("+"));
+      pendingComboRef.current = [];
+      heldModsRef.current = [];
+      setCapturing(false);
+      return;
+    }
     const cat = ACTION_CATEGORIES.find((c) =>
       c.actions.some((a) => a.key === actionKey)
     );
     setCategory(cat?.key || "other");
     setAction(actionKey);
+    setComboTokens([]);
+    setComboDraft("");
+    pendingComboRef.current = [];
+    heldModsRef.current = [];
+    setCapturing(false);
   }, [mapping, selected, trigger]);
+
+  function commitCombo(tokens: string[]) {
+    pendingComboRef.current = [];
+    heldModsRef.current = [];
+    setComboTokens(tokens);
+    setComboDraft(tokens.join("+"));
+    setSaveMsg("");
+  }
+
+  function onComboFocus() {
+    pendingComboRef.current = [];
+    heldModsRef.current = [];
+    setCapturing(true);
+    setSaveMsg("");
+  }
+
+  function onComboBlur() {
+    if (pendingComboRef.current.length) {
+      const tokens = canonicalizeCombo(pendingComboRef.current);
+      if (tokens?.length) {
+        setComboTokens(tokens);
+        setComboDraft(tokens.join("+"));
+      }
+    }
+    pendingComboRef.current = [];
+    heldModsRef.current = [];
+    setCapturing(false);
+  }
+
+  function onComboKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.currentTarget.blur();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.repeat) return;
+    const captured = keyEventToCombo(e.nativeEvent, heldModsRef.current);
+    if (!captured) {
+      setSaveMsg("该按键暂不支持，请换字母、数字、F1–F12，或左/右 Ctrl、Shift、Alt、Win");
+      return;
+    }
+    const mod = modifierTokenFromCode(e.code);
+    if (mod && !heldModsRef.current.includes(mod)) {
+      heldModsRef.current = [...heldModsRef.current, mod];
+    }
+    pendingComboRef.current = captured.tokens;
+    setComboDraft(captured.tokens.join("+"));
+    if (captured.complete) commitCombo(captured.tokens);
+  }
+
+  function onComboKeyUp(e: KeyboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const mod = modifierTokenFromCode(e.code);
+    if (!mod) return;
+    const remaining = heldModsRef.current.filter((m) => m !== mod);
+    if (remaining.length === 0 && pendingComboRef.current.length) {
+      const tokens = canonicalizeCombo(pendingComboRef.current);
+      if (tokens?.length) commitCombo(tokens);
+      return;
+    }
+    heldModsRef.current = remaining;
+  }
 
   // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
   useEffect(() => {
@@ -108,22 +204,53 @@ export function MappingPage() {
   const availableTriggers = triggersFor(selected);
 
   const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
+  const comboLabel = comboTokens.length
+    ? `快捷键 ${formatComboDisplay(comboTokens)}`
+    : "自定义快捷键";
   const actionLabel =
-    ACTION_CATEGORIES.find((c) => c.key === category)
-      ?.actions.find((a) => a.key === action)?.label || action;
+    category === COMBO_CATEGORY
+      ? comboLabel
+      : ACTION_CATEGORIES.find((c) => c.key === category)
+          ?.actions.find((a) => a.key === action)?.label || action;
 
   async function save() {
     if (!isTauri()) return;
+    let actionToSave = action;
+    let savedLabel = actionLabel;
+    if (category === COMBO_CATEGORY) {
+      let tokens = comboTokens;
+      if (!tokens.length && comboDraft.trim()) {
+        const parsed = canonicalizeCombo(
+          comboDraft
+            .split("+")
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean),
+        );
+        if (!parsed) {
+          setSaveMsg("快捷键格式无效，例如 rctrl、c 或 lctrl+c");
+          return;
+        }
+        tokens = parsed;
+        setComboTokens(parsed);
+        setComboDraft(parsed.join("+"));
+      }
+      if (!tokens.length) {
+        setSaveMsg("请先录制或输入快捷键");
+        return;
+      }
+      actionToSave = toComboActionKey(tokens);
+      savedLabel = `快捷键 ${formatComboDisplay(tokens)}`;
+    }
     try {
       await invoke("save_mapping", {
-        edit: { button: selected, trigger, action },
+        edit: { button: selected, trigger, action: actionToSave },
       });
       const entry: MappingEntry = {
         button: selected,
         name: selectedName,
         trigger,
-        action: actionLabel,
-        action_key: action,
+        action: savedLabel,
+        action_key: actionToSave,
       };
       setMapping((prev) => {
         const idx = prev.findIndex(
@@ -136,7 +263,7 @@ export function MappingPage() {
         }
         return [...prev, entry];
       });
-      setSaveMsg(`已保存：${selectedName} · ${TRIGGER_LABEL[trigger]} → ${actionLabel}`);
+      setSaveMsg(`已保存：${selectedName} · ${TRIGGER_LABEL[trigger]} → ${savedLabel}`);
     } catch (err) {
       setSaveMsg(`保存失败: ${err}`);
     }
@@ -229,23 +356,66 @@ export function MappingPage() {
                   onClick={() => {
                     setCategory(c.key);
                     setAction(c.actions[0]?.key || "disabled");
+                    setCapturing(false);
+                    if (c.key !== COMBO_CATEGORY) {
+                      setComboTokens([]);
+                      setComboDraft("");
+                    }
                   }}
                 >
                   {c.title}
                 </button>
               ))}
             </div>
-            <div className="action-grid">
-              {ACTION_CATEGORIES.find((c) => c.key === category)?.actions.map((a) => (
-                <button
-                  key={a.key}
-                  className={`btn small ${action === a.key ? "primary" : ""}`}
-                  onClick={() => setAction(a.key)}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
+            {category === COMBO_CATEGORY ? (
+              <div className="combo-capture">
+                <div className="combo-capture-row">
+                  <input
+                    className={`combo-input${capturing ? " listening" : ""}`}
+                    readOnly
+                    value={
+                      capturing && comboDraft
+                        ? formatComboDisplay(comboDraft.split("+"))
+                        : comboTokens.length
+                          ? formatComboDisplay(comboTokens)
+                          : ""
+                    }
+                    placeholder={capturing ? "按下快捷键" : "点击此处，然后按下快捷键"}
+                    onFocus={onComboFocus}
+                    onBlur={onComboBlur}
+                    onKeyDown={onComboKeyDown}
+                    onKeyUp={onComboKeyUp}
+                  />
+                  {comboTokens.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        pendingComboRef.current = [];
+                        heldModsRef.current = [];
+                        setComboTokens([]);
+                        setComboDraft("");
+                        setCapturing(false);
+                      }}
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="action-grid">
+                {ACTION_CATEGORIES.find((c) => c.key === category)?.actions.map((a) => (
+                  <button
+                    key={a.key}
+                    className={`btn small ${action === a.key ? "primary" : ""}`}
+                    onClick={() => setAction(a.key)}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="preview-box">
@@ -256,7 +426,11 @@ export function MappingPage() {
           </div>
 
           <div className="actions">
-            <button className="btn primary" onClick={save} disabled={!isTauri()}>
+            <button
+              className="btn primary"
+              onClick={save}
+              disabled={!isTauri()}
+            >
               保存此键
             </button>
           </div>

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use core_mapping::MappingConfig;
+use core_mapping::{MappingConfig, VoiceTarget};
 
 /// 用户校准后的物理按键特征。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +39,10 @@ pub struct Config {
     /// 双击判定窗口（毫秒）。
     #[serde(default = "default_double_click_ms")]
     pub double_click_ms: u64,
+    /// 语音识别目标：麦克风键 Voice 动作唤起哪一家的语音输入。
+    /// 默认 WindowsVoice（Win+H），向后兼容；第三方输入法待真机验证。
+    #[serde(default)]
+    pub voice_target: VoiceTarget,
 }
 
 fn default_hid_tap_eat() -> bool {
@@ -62,6 +66,7 @@ impl Default for Config {
             hid_tap_eat: true,
             long_press_ms: 550,
             double_click_ms: 300,
+            voice_target: VoiceTarget::default(),
         }
     }
 }
@@ -180,6 +185,44 @@ mod tests {
         fs::write(store.config_path(), "{not valid json").unwrap();
         let cfg = store.load_or_default();
         assert!(cfg.hid_tap_eat);
+    }
+
+    #[test]
+    fn legacy_config_without_voice_target_defaults_to_windows_voice() {
+        let (_dir, store) = temp_store();
+        // 旧版本 config.json 没有 voice_target 字段（mapping 等字段真实存在）。
+        fs::write(
+            store.config_path(),
+            r#"{"mapping":{"bindings":[]},"hid_tap_eat":true,"long_press_ms":550,"double_click_ms":300}"#,
+        )
+        .unwrap();
+        let cfg = store.load().unwrap();
+        assert_eq!(cfg.voice_target, VoiceTarget::WindowsVoice);
+    }
+
+    #[test]
+    fn voice_target_roundtrip_and_unknown_falls_back() {
+        let (_dir, store) = temp_store();
+        let cfg = Config {
+            voice_target: VoiceTarget::ImeWechat,
+            ..Config::default()
+        };
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.voice_target, VoiceTarget::ImeWechat);
+    }
+
+    #[test]
+    fn invalid_voice_target_json_falls_back_without_panic() {
+        let (_dir, store) = temp_store();
+        fs::write(
+            store.config_path(),
+            r#"{"mapping":{"bindings":[]},"voice_target":"no_such_target","hid_tap_eat":true}"#,
+        )
+        .unwrap();
+        // 未知枚举值应整体回落默认，而不是 panic。
+        let cfg = store.load_or_default();
+        assert_eq!(cfg.voice_target, VoiceTarget::WindowsVoice);
     }
 
     #[test]

@@ -7,9 +7,11 @@
 //! [`MappingConfig`](core_mapping::MappingConfig)，在独立执行线程上经
 //! `core-input` 注入动作，并写入 `core-stats`。
 //!
-//! 麦克风键也走调度器：默认映射为 Press→Voice、Release→Voice
-//! （`core_input::open_voice_typing`，Win+H）。用户可在映射页把麦克风
-//! 的按下/松开改成任意动作（如第三方语音助手），映射表不是摆设。
+//! 麦克风键也走调度器：默认映射为 Press→Voice、Release→Voice。
+//! Voice 动作按当前「语音识别目标」（默认 Windows 语音 Win+H）与触发
+//! 边沿分发：Press/Release 走 PTT（按住说话/松手收尾），非 PTT 边沿走 Tap。
+//! 用户可在映射页把麦克风的按下/松开改成任意动作（如第三方语音助手），
+//! 映射表不是摆设。
 //!
 //! 重复投递防护分工：
 //! - WM_APPCOMMAND 的合成按下/松开在 core-hid 源头抑制（键盘路径
@@ -33,7 +35,7 @@ use std::time::{Duration, Instant};
 
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
-use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger};
+use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger, VoiceTarget};
 
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
@@ -45,6 +47,8 @@ struct ButtonRuntime {
     down: bool,
     /// 本次按住期间是否已触发过长按。
     long_executed: bool,
+    /// 自定义快捷键已在物理按下时按住，松开时必须配对松开。
+    combo_held: bool,
 }
 
 struct Inner {
@@ -98,6 +102,10 @@ pub struct KeyDispatcher {
     /// 菜单独占模式的按键直转）统一经此回调解出。须在 `spawn_runtime`
     /// 之前设置。
     app_event: Mutex<Option<AppEventHandler>>,
+    /// 语音识别目标：Voice 动作唤起哪一家的语音输入。可热更新
+    /// （连接页切换「识别方案」时调用 [`KeyDispatcher::set_voice_target`]）。
+    /// 执行线程每次执行 Voice 动作时读取当前值。
+    voice_target: Arc<Mutex<VoiceTarget>>,
 }
 
 impl KeyDispatcher {
@@ -119,6 +127,7 @@ impl KeyDispatcher {
             jobs_tx: tx,
             jobs_rx: Mutex::new(Some(rx)),
             app_event: Mutex::new(None),
+            voice_target: Arc::new(Mutex::new(VoiceTarget::default())),
         })
     }
 
@@ -126,6 +135,17 @@ impl KeyDispatcher {
     /// 须在 `spawn_runtime` 之前调用。
     pub fn set_app_event_handler(&self, handler: Option<AppEventHandler>) {
         *self.app_event.lock().unwrap() = handler;
+    }
+
+    /// 热更新语音识别目标（连接页切换「识别方案」后调用）。
+    pub fn set_voice_target(&self, target: VoiceTarget) {
+        *self.voice_target.lock().unwrap() = target;
+        core_log::log_line(&format!("[dispatch] 语音识别目标已更新: {:?}", target));
+    }
+
+    /// 当前语音识别目标。
+    pub fn voice_target(&self) -> VoiceTarget {
+        *self.voice_target.lock().unwrap()
     }
 
     /// 切换输入路由模式：快捷菜单独占模式下所有按键绕过触发检测与映射，
@@ -148,10 +168,11 @@ impl KeyDispatcher {
     /// `stats_dir` 为按键统计存储目录（`core-stats`）。
     pub fn spawn_runtime(self: &Arc<Self>, stats_dir: PathBuf) {
         let app_event = self.app_event.lock().unwrap().clone();
+        let voice_target = self.voice_target.clone();
         if let Some(rx) = self.jobs_rx.lock().unwrap().take() {
             std::thread::Builder::new()
                 .name("rc003-dispatch-exec".into())
-                .spawn(move || execute_loop(rx, stats_dir, app_event))
+                .spawn(move || execute_loop(rx, stats_dir, app_event, voice_target))
                 .ok();
         }
         let weak = Arc::downgrade(self);
@@ -258,9 +279,17 @@ impl KeyDispatcher {
             }
             rt.down = true;
             rt.long_executed = false;
+            rt.combo_held = false;
             rt.detector.press(now);
-            // Press 边沿触发不在这里发：等 tick 识别为长按后才发，
-            // 快速点按（单击/双击）不产生 Press/Release。
+            // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
+            // （豆包等 IME 要的是键盘那种「一按住就生效」）。
+            // Voice（Win+H）仍等 tick 识别长按后再发，避免点按误开语音条。
+            if let Some(job) = build_job(mapping, button, Trigger::Press, rt) {
+                if matches!(job.action, ActionKind::KeyCombo(_)) {
+                    rt.combo_held = true;
+                    jobs.push(job);
+                }
+            }
         } else {
             if !rt.down {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
@@ -269,8 +298,13 @@ impl KeyDispatcher {
             rt.down = false;
             // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
             let outcome = rt.detector.release(now);
-            // Release 边沿触发：只有长按结束才发。
-            if rt.detector.is_long_held() {
+            if rt.combo_held {
+                rt.combo_held = false;
+                if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
+                    jobs.push(job);
+                }
+            } else if rt.detector.is_long_held() {
+                // Release 边沿触发（Voice）：只有长按结束才发。
                 if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
                     jobs.push(job);
                 }
@@ -298,10 +332,12 @@ impl KeyDispatcher {
         for (button, rt) in buttons.iter_mut() {
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);
-            // 长按刚被识别：发 Press 边沿触发（麦克风 PTT 的「按下」）。
+            // 长按刚被识别：发 Press 边沿触发（Win+H 等）。快捷键已在按下时发过。
             if !was_long && rt.detector.is_long_held() {
                 if let Some(job) = build_job(mapping, *button, Trigger::Press, rt) {
-                    jobs.push(job);
+                    if !matches!(job.action, ActionKind::KeyCombo(_)) {
+                        jobs.push(job);
+                    }
                 }
             }
             if let FeedOutcome::Fire(ev) = outcome {
@@ -384,10 +420,11 @@ fn execute_loop(
     rx: mpsc::Receiver<ActionJob>,
     stats_dir: PathBuf,
     app_event: Option<AppEventHandler>,
+    voice_target: Arc<Mutex<VoiceTarget>>,
 ) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
-        let outcome = execute_action(&job.action, app_event.as_ref());
+        let outcome = execute_action(&job, app_event.as_ref(), &voice_target);
         match &outcome {
             Ok(()) => core_log::log_info(&format!(
                 "[dispatch] 已执行: {} {:?} -> {:?}",
@@ -414,13 +451,44 @@ fn send_combo(tokens: &[&str]) -> Result<(), String> {
     core_input::send_key_combo(tokens).map_err(|e| e.to_string())
 }
 
-fn execute_action(action: &ActionKind, app_event: Option<&AppEventHandler>) -> Result<(), String> {
+/// Voice 动作要调用的底层语音原语（由触发边沿决定，与识别目标无关）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VoicePrimitive {
+    /// PTT 按住说话开始（麦克风长按识别后的 Press）。
+    Press,
+    /// PTT 松手收尾（麦克风长按结束的 Release）。
+    Release,
+    /// 单次 Tap：开启/重置一次语音会话（非 PTT 边沿）。
+    Open,
+}
+
+/// 由触发边沿决定 Voice 动作走哪个原语。
+fn voice_primitive(trigger: Trigger) -> VoicePrimitive {
+    match trigger {
+        Trigger::Press => VoicePrimitive::Press,
+        Trigger::Release => VoicePrimitive::Release,
+        _ => VoicePrimitive::Open,
+    }
+}
+
+fn execute_action(
+    job: &ActionJob,
+    app_event: Option<&AppEventHandler>,
+    voice_target: &Arc<Mutex<VoiceTarget>>,
+) -> Result<(), String> {
     use ActionKind as A;
+    let action = &job.action;
     match action {
         A::Disabled => Ok(()),
         A::KeyCombo(tokens) => {
             let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
-            send_combo(&refs)
+            // 麦克风按下/松开要保持按住说话：Press 只按下，Release 只松开。
+            // 单击/双击/长按仍是一次完整点按。
+            match job.trigger {
+                Trigger::Press => core_input::send_key_down(&refs).map_err(|e| e.to_string()),
+                Trigger::Release => core_input::send_key_up(&refs).map_err(|e| e.to_string()),
+                _ => send_combo(&refs),
+            }
         }
         A::Escape => core_input::press_escape().map_err(|e| e.to_string()),
         A::Return => send_combo(&["enter"]),
@@ -436,9 +504,23 @@ fn execute_action(action: &ActionKind, app_event: Option<&AppEventHandler>) -> R
         A::SystemVolumeDown => send_combo(&["volume_down"]),
         A::SystemVolumeMute => send_combo(&["volume_mute"]),
         A::PlayPause => send_combo(&["play_pause"]),
-        A::Voice => core_input::open_voice_typing()
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
+        A::Voice => {
+            // 语音动作按「识别目标 + 触发边沿」分发：
+            // - Press/Release（麦克风 PTT）→ 按住说话/松手收尾；
+            // - 单击/双击/长按等非 PTT 边沿 → Tap（开启/重置一次会话）。
+            let target = *voice_target.lock().unwrap();
+            match voice_primitive(job.trigger) {
+                VoicePrimitive::Press => core_input::voice_press(target)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                VoicePrimitive::Release => core_input::voice_release(target)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+                VoicePrimitive::Open => core_input::voice_open(target)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string()),
+            }
+        }
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
         A::ToggleQuickMenu => match app_event {
             Some(handler) => {
@@ -663,6 +745,34 @@ mod tests {
     }
 
     #[test]
+    fn mic_combo_ptt_holds_from_physical_down() {
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                core_mapping::KeyBinding {
+                    button: ButtonId::Mic,
+                    trigger: Trigger::Press,
+                    action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                },
+                core_mapping::KeyBinding {
+                    button: ButtonId::Mic,
+                    trigger: Trigger::Release,
+                    action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                },
+            ],
+        });
+        let down = jobs_of(&d, 116, true, 0);
+        assert_eq!(down.len(), 1);
+        assert_eq!(down[0].trigger, Trigger::Press);
+        assert_eq!(down[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+        assert!(d.tick_once(600).is_empty(), "快捷键 Press 不应再发一次");
+        let up = jobs_of(&d, 116, false, 700);
+        assert_eq!(up.len(), 1);
+        assert_eq!(up[0].trigger, Trigger::Release);
+        assert_eq!(up[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+    }
+
+    #[test]
     fn mic_quick_tap_fires_nothing() {
         let d = dispatcher();
         assert!(jobs_of(&d, 116, true, 0).is_empty());
@@ -683,8 +793,54 @@ mod tests {
     }
 
     #[test]
+    fn voice_primitive_maps_triggers_to_edges() {
+        assert_eq!(voice_primitive(Trigger::Press), VoicePrimitive::Press);
+        assert_eq!(voice_primitive(Trigger::Release), VoicePrimitive::Release);
+        assert_eq!(voice_primitive(Trigger::SingleClick), VoicePrimitive::Open);
+        assert_eq!(voice_primitive(Trigger::DoubleClick), VoicePrimitive::Open);
+        assert_eq!(voice_primitive(Trigger::LongPress), VoicePrimitive::Open);
+    }
+
+    #[test]
+    fn voice_job_preserves_trigger_for_ptt_dispatch() {
+        // 麦克风默认映射 Press/Release → Voice：任务必须保留触发边沿，
+        // 执行层才能区分「按住说话」与「松手收尾」。
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                core_mapping::KeyBinding {
+                    button: ButtonId::Mic,
+                    trigger: Trigger::Press,
+                    action: ActionKind::Voice,
+                },
+                core_mapping::KeyBinding {
+                    button: ButtonId::Mic,
+                    trigger: Trigger::Release,
+                    action: ActionKind::Voice,
+                },
+            ],
+        });
+        // 模拟长按：按住超过阈值 → tick 产生 Press；松开 → Release。
+        assert!(jobs_of(&d, 116, true, 0).is_empty());
+        let press_jobs = d.tick_once(600);
+        assert_eq!(press_jobs.len(), 1);
+        assert_eq!(press_jobs[0].trigger, Trigger::Press);
+        assert_eq!(press_jobs[0].action, ActionKind::Voice);
+        let release_jobs = jobs_of(&d, 116, false, 700);
+        assert_eq!(release_jobs.len(), 1);
+        assert_eq!(release_jobs[0].trigger, Trigger::Release);
+        assert_eq!(release_jobs[0].action, ActionKind::Voice);
+    }
+
+    #[test]
     fn toggle_quick_menu_without_handler_errors() {
-        let err = execute_action(&ActionKind::ToggleQuickMenu, None).unwrap_err();
+        let dummy_target = Arc::new(Mutex::new(VoiceTarget::default()));
+        let job = ActionJob {
+            button: ButtonId::Menu,
+            trigger: Trigger::SingleClick,
+            action: ActionKind::ToggleQuickMenu,
+        };
+        let err = execute_action(&job, None, &dummy_target).unwrap_err();
         assert!(err.contains("未接线"), "缺少回调时应报错：{err}");
     }
 
@@ -699,7 +855,13 @@ mod tests {
                 calls.fetch_add(1, Ordering::SeqCst);
             }
         });
-        execute_action(&ActionKind::ToggleQuickMenu, Some(&handler)).unwrap();
+        let dummy_target = Arc::new(Mutex::new(VoiceTarget::default()));
+        let job = ActionJob {
+            button: ButtonId::Menu,
+            trigger: Trigger::SingleClick,
+            action: ActionKind::ToggleQuickMenu,
+        };
+        execute_action(&job, Some(&handler), &dummy_target).unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
