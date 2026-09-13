@@ -1,0 +1,31 @@
+/*
+ * WinUHid.tmh - stub for the WPP trace header that the WDK build normally
+ * generates from Trace.h.
+ *
+ * The upstream WinUHid driver sources #include "WinUHid.tmh" and call
+ * TraceEvents()/WPP_INIT_TRACING()/WPP_CLEANUP(). Building with the full WDK
+ * toolset runs the WPP preprocessor to produce that header; we compile the
+ * driver with plain cl.exe against the WDK NuGet headers instead, so the
+ * tracing macros are stubbed out here.
+ *
+ * Effect: WPP/ETW tracing from the driver is disabled. Functional behaviour is
+ * unchanged, and diagnostics still flow through the app's own logging.
+ *
+ * scripts/build-winuhid-driver.ps1 copies this file into the WinUHid checkout
+ * when it is missing, so a fresh clone builds without manual steps.
+ */
+#pragma once
+
+#define TRACE_LEVEL_ERROR 2
+#define TRACE_LEVEL_WARNING 3
+#define TRACE_LEVEL_INFORMATION 4
+#define TRACE_LEVEL_VERBOSE 5
+
+#define TRACE_DRIVER 1
+#define TRACE_DEVICE 2
+#define TRACE_EVENT 3
+#define TRACE_PARSING 4
+
+#define TraceEvents(...) ((void)0)
+#define WPP_INIT_TRACING(...) ((void)0)
+#define WPP_CLEANUP(...) ((void)0)

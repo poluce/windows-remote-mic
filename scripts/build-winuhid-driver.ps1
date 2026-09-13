@@ -26,6 +26,17 @@ foreach ($required in @((Join-Path $incUmdf "wdf.h"), $libVhf, $libWdf, $cfile))
     }
 }
 
+# WinUHid.c includes the WPP-generated WinUHid.tmh, which only exists when the
+# full WDK toolset runs the WPP preprocessor. We compile with plain cl.exe, so
+# install the stubbed header shipped in the repo when a fresh clone lacks it.
+$tmh = Join-Path $srcDir "WinUHid.tmh"
+if (-not (Test-Path $tmh)) {
+    $stub = Join-Path $PSScriptRoot "winuhid-driver\WinUHid.tmh"
+    if (-not (Test-Path $stub)) { throw "Missing WPP stub: $stub" }
+    Copy-Item $stub $tmh
+    Write-Output "Installed WinUHid.tmh stub (WPP/ETW tracing from the driver disabled)."
+}
+
 $cmd = @"
 call `"$vsdev`" -arch=amd64 -host_arch=amd64
 cl /nologo /c /W3 /O2 /MD /utf-8 ^
