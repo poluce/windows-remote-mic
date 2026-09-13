@@ -1,54 +1,82 @@
-# Install test-signed WinUHid UMDF driver + create Root\WinUHid device.
-# Must run elevated. Trusts the RemoteMicWinUHid test certificate.
+# Install the WinUHid UMDF driver package and create the Root\WinUHid device.
+#
+# Called from three places:
+#   - scripts/prepare-vhid-bundle.ps1 : developer flow, driver built locally
+#   - the NSIS installer hook         : end-user flow, driver bundled in $INSTDIR\vhid
+#   - the in-app repair command       : re-runs the bundled copy, elevated
+#
+# Must run elevated. While the package is test-signed the certificate is
+# trusted into Root + TrustedPublisher first; once the package is signed with a
+# real code-signing certificate that step becomes a no-op because the chain
+# already terminates in a publicly trusted root.
+param(
+    [string]$DriverDir = (Join-Path $env:LOCALAPPDATA "RemoteMic\WinUHid\driver"),
+    [switch]$NoRelaunch
+)
+
 $ErrorActionPreference = "Stop"
-$pkg = Join-Path $env:LOCALAPPDATA "RemoteMic\WinUHid\driver"
-$inf = Join-Path $pkg "WinUHidDriver.inf"
-if (-not (Test-Path $inf)) { throw "Driver package missing: $inf. Run package-winuhid-driver.ps1 first." }
+$stateKey = "HKLM:\SOFTWARE\RemoteMic\VirtualHid"
+
+$inf = Join-Path $DriverDir "WinUHidDriver.inf"
+if (-not (Test-Path $inf)) { throw "Driver package missing: $inf" }
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  Write-Output "Relaunching as administrator..."
-  $self = $MyInvocation.MyCommand.Path
-  Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$self`"" -Verb RunAs -Wait
-  exit $LASTEXITCODE
+    if ($NoRelaunch) { throw "Administrator privileges are required." }
+    Write-Output "Relaunching as administrator..."
+    $self = $MyInvocation.MyCommand.Path
+    $argList = @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$self`"",
+        "-DriverDir", "`"$DriverDir`""
+    )
+    Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs -Wait
+    exit $LASTEXITCODE
 }
 
-$cer = Join-Path $pkg "RemoteMicWinUHid.cer"
-if (-not (Test-Path $cer)) {
-  $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=RemoteMicWinUHid" } | Select-Object -First 1
-  if (-not $cert) { throw "Test cert missing. Re-run package-winuhid-driver.ps1 and export-winuhid-cert.ps1." }
-  Export-Certificate -Cert $cert -FilePath $cer | Out-Null
-}
-Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
-Write-Output "Certificate trusted (Root + TrustedPublisher)."
+# Native tools write progress to stderr; keep that from aborting the script.
+$prevEap = $ErrorActionPreference
 
-Write-Output "pnputil add-driver..."
-& pnputil.exe /add-driver $inf /install
-Write-Output ("pnputil add-driver exit=" + $LASTEXITCODE)
-
-$devcon = Join-Path (Split-Path $PSScriptRoot) "third_party\wdk-nupkg\extract\c\tools\10.0.26100.0\x64\devcon.exe"
-if (-not (Test-Path $devcon)) {
-  $devcon = Join-Path $env:LOCALAPPDATA "RemoteMic\WinUHid\devcon.exe"
-}
-if (-not (Test-Path $devcon)) {
-  throw "devcon.exe not found. This Windows pnputil has no /add-device; need WDK devcon."
+# 1) Trust the signing certificate when it is not publicly trusted yet.
+$cer = Join-Path $DriverDir "RemoteMicWinUHid.cer"
+if (Test-Path $cer) {
+    Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+    Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+    Write-Output "Trusted signing certificate (Root + TrustedPublisher)."
 }
 
-Write-Output "Removing existing Root\WinUHid devices..."
-& $devcon remove "Root\WinUHid"
-Write-Output ("devcon remove exit=" + $LASTEXITCODE)
+# 2) Stage the driver package into the DriverStore and remember its published name.
+Write-Output "Adding driver package..."
+$ErrorActionPreference = "Continue"
+$addOutput = (& pnputil.exe /add-driver $inf /install 2>&1 | Out-String)
+$ErrorActionPreference = $prevEap
+Write-Output $addOutput
+$published = ([regex]::Match($addOutput, 'oem\d+\.inf')).Value
+if ($published) { Write-Output "Published name: $published" }
 
-Write-Output "Creating Root\WinUHid device..."
-& $devcon install $inf "Root\WinUHid"
-Write-Output ("devcon install exit=" + $LASTEXITCODE)
+# 3) (Re)create the root-enumerated device node.
+#    Not every Windows build exposes `pnputil /add-device`, so devcon is the
+#    reliable path and ships next to the driver in the bundle.
+$devcon = Join-Path $DriverDir "devcon.exe"
+$ErrorActionPreference = "Continue"
+if (Test-Path $devcon) {
+    & $devcon remove "Root\WinUHid" | Out-Null
+    Write-Output "Creating device node with devcon..."
+    & $devcon install $inf "Root\WinUHid"
+    $createExit = $LASTEXITCODE
+} else {
+    Write-Output "devcon.exe not found, falling back to pnputil /add-device..."
+    & pnputil.exe /add-device "Root\WinUHid"
+    $createExit = $LASTEXITCODE
+}
+$ErrorActionPreference = $prevEap
+Write-Output ("device create exit=" + $createExit)
+if ($createExit -ne 0) { throw "Failed to create the Root\WinUHid device node." }
 
-Write-Output "Querying WinUHid device..."
-Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
-  $_.InstanceId -like "*WinUHid*" -or $_.FriendlyName -like "*WinUHid*"
-} | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
+# 4) Remember what to clean up on uninstall.
+New-Item -Path $stateKey -Force | Out-Null
+Set-ItemProperty -Path $stateKey -Name "DriverDir" -Value $DriverDir
+if ($published) { Set-ItemProperty -Path $stateKey -Name "PublishedInf" -Value $published }
+Set-ItemProperty -Path $stateKey -Name "Installed" -Value 1 -Type DWord
 
-$log = Join-Path $env:LOCALAPPDATA "RemoteMic\WinUHid\install.log"
-"$(Get-Date -Format o) install finished" | Out-File -FilePath $log -Encoding ascii -Append
-Write-Output "Done. Log: $log"
+Write-Output "Virtual HID driver installed."

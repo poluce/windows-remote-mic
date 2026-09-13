@@ -29,6 +29,8 @@ export function DiagnosticsPage() {
   const [installMsg, setInstallMsg] = useState("");
   const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
+  const [vhidBusy, setVhidBusy] = useState(false);
+  const [vhidMsg, setVhidMsg] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -65,6 +67,22 @@ export function DiagnosticsPage() {
       setInstallMsg(`安装失败：${err}`);
     } finally {
       setInstalling(false);
+    }
+  }
+
+  async function installVhidDriver() {
+    if (!isTauri()) {
+      setVhidMsg("请在桌面应用内操作");
+      return;
+    }
+    setVhidBusy(true);
+    setVhidMsg("正在安装虚拟键盘驱动…请在 UAC 弹窗中点「是」");
+    try {
+      setVhidMsg(await invoke<string>("install_vhid_driver"));
+    } catch (err) {
+      setVhidMsg(`安装失败：${err}`);
+    } finally {
+      setVhidBusy(false);
     }
   }
 
@@ -146,6 +164,10 @@ export function DiagnosticsPage() {
         <button className="btn" onClick={toggleQuickMenu}>
           打开/关闭快捷菜单
         </button>
+        <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
+          {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
+        </button>
+        {vhidMsg && <span className="hint diag-actions-msg">{vhidMsg}</span>}
         {status && <span className="hint diag-actions-msg">{status}</span>}
         {selfTests && (
           <div className="check-list diag-actions-list">

@@ -33,3 +33,6 @@ frida-gadget.dll
 # WinUHid source/build (cloned locally; user-mode DLL copied to %LOCALAPPDATA%)
 /third_party/WinUHid/
 /third_party/wdk-nupkg/
+
+# Virtual HID driver bundle assembled by scripts/prepare-vhid-bundle.ps1
+/src-tauri/windows/driver/

@@ -175,3 +175,55 @@ pub fn restart_app(app: tauri::AppHandle) {
     core_log::log_info("[commands/connection] 收到重启请求，正在重启应用…");
     app.restart();
 }
+
+/// 安装 / 修复虚拟 HID 键盘驱动。
+///
+/// 复用安装包随附的 `vhid\install-winuhid.ps1`（安装器已把驱动包放在该目录）。
+/// 脚本自身在非管理员时会以 UAC 提权并等待结束，因此这里会弹出一次 UAC。
+/// 返回安装后的探测结果，便于前端直接判断是否可用。
+#[tauri::command]
+pub fn install_vhid_driver() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let dir = exe
+            .parent()
+            .ok_or_else(|| "无法定位应用安装目录".to_string())?
+            .join("vhid");
+        let script = dir.join("install-winuhid.ps1");
+        if !script.is_file() {
+            return Err(format!(
+                "找不到随应用安装的驱动脚本：{}。请用最新安装包重新安装 Remote Mic。",
+                script.display()
+            ));
+        }
+
+        core_log::log_info("[commands/connection] 开始安装/修复虚拟 HID 驱动");
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script.to_str().unwrap_or_default(),
+                "-DriverDir",
+                dir.to_str().unwrap_or_default(),
+            ])
+            .output()
+            .map_err(|e| format!("无法启动驱动安装脚本：{e}"))?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !output.status.success() && !stderr.is_empty() {
+            core_log::log_error(&format!("[commands/connection] 驱动安装脚本失败：{stderr}"));
+            return Err(stderr);
+        }
+
+        let probe = core_input::vhid_probe();
+        core_log::log_info(&format!("[commands/connection] 驱动安装结束：{probe}"));
+        Ok(probe)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("虚拟 HID 驱动仅在 Windows 上可用".to_string())
+    }
+}

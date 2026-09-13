@@ -20,6 +20,15 @@
 
 ## [Unreleased]
 
+### 新增
+- 安装包内置虚拟 HID 键盘驱动，普通用户不再需要手动跑脚本：
+  - 新增 `scripts/prepare-vhid-bundle.ps1`：一键汇编驱动包（编 UMDF 驱动 → stampinf/Inf2Cat/签名 → 连同 `devcon.exe`、安装/卸载脚本、测试证书输出到 `src-tauri/windows/driver/`，该目录已加入 `.gitignore`）。
+  - 新增 `src-tauri/windows/hooks.nsh`：NSIS 安装钩子在 `POSTINSTALL` 把驱动包释放到 `$INSTDIR\vhid` 并执行安装，`PREUNINSTALL` 移除 `Root\WinUHid` 设备与 DriverStore 条目；驱动缺失时不阻断构建（`File /nonfatal` + 运行时 `IfFileExists` 双重保护）。
+  - 安装模式由 `currentUser` 改为 `perMachine`：安装器以管理员运行，一次 UAC 内完成应用与驱动的安装。
+  - `install-winuhid.ps1` 改为接收 `-DriverDir` 参数并记录驱动已发布名（`oemNN.inf`）；新增 `uninstall-winuhid.ps1` 按记录清理，避免 DriverStore 残留。
+  - 诊断页新增「安装 / 修复虚拟键盘驱动」按钮（`install_vhid_driver` 命令），复用安装包内的同一套脚本，可随时修复。
+  - Release 工作流在构建安装包前汇编驱动包并校验产物完整，避免发布出缺少驱动的安装包。
+
 ## [0.2.0] - 2026-09-13
 
 ### 新增

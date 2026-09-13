@@ -37,6 +37,31 @@ jobs:
         with:
           workspaces: target
 
+      - name: Prepare virtual HID driver bundle
+        shell: pwsh
+        run: ./scripts/prepare-vhid-bundle.ps1
+
+      - name: Verify driver bundle is complete
+        shell: pwsh
+        run: |
+          $required = @(
+            'WinUHid.dll',
+            'WinUHidDriver.dll',
+            'WinUHidDriver.inf',
+            'devcon.exe',
+            'install-winuhid.ps1',
+            'uninstall-winuhid.ps1'
+          )
+          $dir = 'src-tauri/windows/driver'
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $dir $_)) }
+          if ($missing) {
+            throw "Driver bundle incomplete, missing: $($missing -join ', ')"
+          }
+          if (-not (Get-ChildItem $dir -Filter *.cat)) {
+            throw "Driver bundle has no catalog (.cat)"
+          }
+          Get-ChildItem $dir | Select-Object Name, Length
+
       - name: Build installer
         run: npm run tauri build
 

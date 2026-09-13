@@ -417,6 +417,7 @@ pub fn run() {
             commands::connection::get_voice_target,
             commands::connection::set_voice_target,
             commands::connection::restart_app,
+            commands::connection::install_vhid_driver,
             commands::log::log_message,
             commands::log::get_log_info,
             commands::log::read_log_tail,

@@ -80,10 +80,13 @@ fn dll_candidates() -> Vec<PathBuf> {
     if n > 0 {
         let exe = String::from_utf16_lossy(&buf[..n as usize]);
         if let Some(dir) = PathBuf::from(exe).parent() {
+            // 安装器把整个虚拟 HID 包释放到 <安装目录>\vhid（见 windows\hooks.nsh）。
+            out.push(dir.join("vhid").join("WinUHid.dll"));
             out.push(dir.join("WinUHid.dll"));
             out.push(dir.join("winuhid").join("WinUHid.dll"));
         }
     }
+    // 开发期回退：scripts\build-winuhid.ps1 会把 DLL 放到这里。
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         out.push(PathBuf::from(local).join("RemoteMic\\WinUHid\\WinUHid.dll"));
     }
