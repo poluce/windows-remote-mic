@@ -76,3 +76,15 @@ if ($cert) {
 
 Write-Output "Bundle ready: $out"
 Get-ChildItem $out | Select-Object Name, Length
+
+# Also stage the payload next to development builds, so `tauri dev` / `cargo run`
+# can find WinUHid.dll and the in-app repair button works without an installer.
+# (A dev build triggers no installer hook, so nothing is staged automatically.)
+foreach ($profile in @("debug", "release")) {
+    $targetDir = Join-Path $root "target\$profile"
+    if (-not (Test-Path $targetDir)) { continue }
+    $stage = Join-Path $targetDir "vhid"
+    if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+    Copy-Item -Recurse $out $stage
+    Write-Output "Staged for development ($profile): $stage"
+}

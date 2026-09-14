@@ -5,7 +5,7 @@
 //! 这样按键走 HID 类驱动，豆包等输入法会当成真实键盘。
 
 use std::ffi::c_void;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -439,10 +439,14 @@ fn hvci_enabled() -> Option<bool> {
     }
 }
 
+/// 可执行文件所在目录（安装目录或 `target\...`）。
+fn exe_dir() -> Option<PathBuf> {
+    Some(std::env::current_exe().ok()?.parent()?.to_path_buf())
+}
+
 /// 安装包负载目录：`<安装目录>\vhid`。
 fn bundle_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join("vhid"))
+    Some(exe_dir()?.join("vhid"))
 }
 
 /// 虚拟 HID 的就绪情况与运行环境诊断。
@@ -454,6 +458,8 @@ pub struct VhidDiagnostics {
     pub detail: String,
     /// 客户端 DLL 与驱动包是否随安装包一起就位。
     pub bundle_present: bool,
+    /// 是否是 cargo / tauri 开发构建（没有随包负载，也不会触发安装器的自动安装）。
+    pub dev_build: bool,
     /// 安装包负载目录。
     pub bundle_dir: String,
     /// Secure Boot 状态；读不到时为 None。
@@ -472,10 +478,30 @@ fn yes_no(v: bool) -> &'static str {
     }
 }
 
+/// 是否是 cargo / tauri 的开发构建（`<仓库>\target\{debug,release}\`）。
+///
+/// 开发构建旁边没有安装包释放的负载，也不会触发 NSIS 安装钩子，
+/// 因此不能用「请重新安装 Remote Mic」这类面向安装包的提示。
+fn is_dev_build(exe_dir: &Path) -> bool {
+    let leaf = exe_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    if leaf != "debug" && leaf != "release" {
+        return false;
+    }
+    exe_dir
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        == Some("target")
+}
+
 /// 组装失败时的排查建议。纯函数，便于覆盖各种环境组合。
 fn build_hints(
     available: bool,
     bundle_present: bool,
+    dev_build: bool,
     bundle_path: &str,
     secure_boot: Option<bool>,
     hvci: Option<bool>,
@@ -488,6 +514,12 @@ fn build_hints(
     if bundle_present {
         hints.push(
             "驱动负载已随安装包就位：可在本页点「安装 / 修复虚拟键盘驱动」重试（会弹一次 UAC）。"
+                .to_string(),
+        );
+    } else if dev_build {
+        hints.push(
+            "这是开发构建（target\\debug 或 target\\release），既没有随包负载、也不会触发安装器的自动安装。\
+             请先运行 scripts/prepare-vhid-bundle.ps1 生成负载，或直接安装正式安装包。"
                 .to_string(),
         );
     } else {
@@ -560,7 +592,15 @@ pub fn diagnostics() -> VhidDiagnostics {
         )
     };
 
-    let hints = build_hints(available, bundle_present, &bundle_path, secure_boot, hvci);
+    let dev_build = exe_dir().as_ref().is_some_and(|d| is_dev_build(d));
+    let hints = build_hints(
+        available,
+        bundle_present,
+        dev_build,
+        &bundle_path,
+        secure_boot,
+        hvci,
+    );
 
     if !available {
         core_log::log_warn(&format!(
@@ -573,6 +613,7 @@ pub fn diagnostics() -> VhidDiagnostics {
         available,
         detail,
         bundle_present,
+        dev_build,
         bundle_dir: bundle_path,
         secure_boot,
         hvci,
@@ -598,6 +639,7 @@ mod tests {
         eprintln!("detail        = {}", d.detail);
         eprintln!("bundle_dir    = {}", d.bundle_dir);
         eprintln!("bundle_present= {}", d.bundle_present);
+        eprintln!("dev_build     = {}", d.dev_build);
         eprintln!("secure_boot   = {:?}", d.secure_boot);
         eprintln!("hvci          = {:?}", d.hvci);
         for h in &d.hints {
@@ -632,22 +674,77 @@ mod tests {
 
     #[test]
     fn available_needs_no_hints() {
-        let h = build_hints(true, true, r"C:\App\vhid", Some(true), Some(true));
+        let h = build_hints(true, true, false, r"C:\App\vhid", Some(true), Some(true));
         assert!(h.is_empty(), "可用时不该给建议：{h:?}");
     }
 
     #[test]
     fn missing_bundle_points_at_reinstall() {
-        let h = joined(&build_hints(false, false, r"C:\App\vhid", None, None));
+        let h = joined(&build_hints(
+            false,
+            false,
+            false,
+            r"C:\App\vhid",
+            None,
+            None,
+        ));
         assert!(h.contains("没有驱动负载"), "{h}");
         assert!(h.contains(r"C:\App\vhid"), "建议里应带上实际路径：{h}");
     }
 
     #[test]
     fn present_bundle_points_at_repair_button() {
-        let h = joined(&build_hints(false, true, r"C:\App\vhid", None, None));
+        let h = joined(&build_hints(false, true, false, r"C:\App\vhid", None, None));
         assert!(h.contains("安装 / 修复虚拟键盘驱动"), "{h}");
         assert!(!h.contains("没有驱动负载"), "{h}");
+    }
+
+    /// 开发构建没有随包负载，提示必须指向「跑汇编脚本 / 装正式包」，
+    /// 而不是误导性地让人「重新安装 Remote Mic」。
+    #[test]
+    fn dev_build_is_told_apart_from_a_broken_install() {
+        let dev = joined(&build_hints(
+            false,
+            false,
+            true,
+            r"F:\repo\target\debug\vhid",
+            None,
+            None,
+        ));
+        assert!(dev.contains("开发构建"), "{dev}");
+        assert!(dev.contains("prepare-vhid-bundle.ps1"), "{dev}");
+        assert!(
+            !dev.contains("请用最新安装包重新安装"),
+            "开发构建不该提示重装：{dev}"
+        );
+
+        // 负载就位时即便是开发构建也走「点修复按钮」那条。
+        let dev_with_bundle = joined(&build_hints(
+            false,
+            true,
+            true,
+            r"F:\repo\target\debug\vhid",
+            None,
+            None,
+        ));
+        assert!(
+            dev_with_bundle.contains("安装 / 修复虚拟键盘驱动"),
+            "{dev_with_bundle}"
+        );
+    }
+
+    #[test]
+    fn dev_build_detection_matches_cargo_layout_only() {
+        assert!(is_dev_build(Path::new(r"D:\repo\target\debug")));
+        assert!(is_dev_build(Path::new(r"D:\repo\target\release")));
+        assert!(is_dev_build(Path::new(
+            r"F:\B_My_Document\GitHub\windows-remote-mic\target\debug"
+        )));
+        // 安装目录不能误判。
+        assert!(!is_dev_build(Path::new(r"C:\Program Files\Remote Mic")));
+        assert!(!is_dev_build(Path::new(r"D:\repo\target")));
+        assert!(!is_dev_build(Path::new(r"D:\repo\debug")));
+        assert!(!is_dev_build(Path::new(r"D:\repo\target\debug\inner")));
     }
 
     /// Secure Boot / HVCI 是这次加诊断的核心：开启时必须点名，关闭时不能误报。
@@ -656,6 +753,7 @@ mod tests {
         let on = joined(&build_hints(
             false,
             true,
+            false,
             r"C:\App\vhid",
             Some(true),
             Some(true),
@@ -666,6 +764,7 @@ mod tests {
         let off = joined(&build_hints(
             false,
             true,
+            false,
             r"C:\App\vhid",
             Some(false),
             Some(false),
@@ -674,7 +773,7 @@ mod tests {
         assert!(!off.contains("内存完整性"), "关闭时不应误报：{off}");
 
         // 读不到状态时也不应瞎猜。
-        let unknown = joined(&build_hints(false, true, r"C:\App\vhid", None, None));
+        let unknown = joined(&build_hints(false, true, false, r"C:\App\vhid", None, None));
         assert!(!unknown.contains("Secure Boot 已开启"), "{unknown}");
         assert!(!unknown.contains("内存完整性"), "{unknown}");
     }
@@ -682,12 +781,13 @@ mod tests {
     /// 不管什么组合，都要给出可执行的下一步（日志指引）。
     #[test]
     fn unavailable_always_suggests_next_step() {
-        for (sb, hvci, bundle) in [
-            (Some(true), Some(true), true),
-            (Some(false), Some(false), false),
-            (None, None, true),
+        for (sb, hvci, bundle, dev) in [
+            (Some(true), Some(true), true, false),
+            (Some(false), Some(false), false, false),
+            (None, None, true, true),
+            (Some(true), Some(false), false, true),
         ] {
-            let h = build_hints(false, bundle, r"C:\App\vhid", sb, hvci);
+            let h = build_hints(false, bundle, dev, r"C:\App\vhid", sb, hvci);
             assert!(
                 joined(&h).contains("setupapi.dev.log"),
                 "缺少日志指引：{h:?}"

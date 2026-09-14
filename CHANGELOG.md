@@ -20,6 +20,16 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-13
+
+### 修复
+- 开发构建（`npm run tauri dev` / `cargo run`）下虚拟 HID 自检会误报「请用最新安装包重新安装 Remote Mic」，让人以为安装坏了。
+  - 新增开发构建识别 `is_dev_build`（`<仓库>\target\{debug,release}\`）：这类构建既没有随包负载、也不会触发安装器的自动安装，现在提示改为「先运行 scripts/prepare-vhid-bundle.ps1 生成负载，或直接安装正式安装包」。
+  - `VhidDiagnostics` 新增 `dev_build` 字段。
+
+### 变更
+- `scripts/prepare-vhid-bundle.ps1` 现在会顺带把负载铺到 `target\debug\vhid` 与 `target\release\vhid`（若存在），使开发构建也能找到 `WinUHid.dll` 并让「安装 / 修复虚拟键盘驱动」按钮可用。
+
 ## [0.4.1] - 2026-09-13
 
 ### 新增
