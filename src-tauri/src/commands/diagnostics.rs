@@ -131,15 +131,28 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         detail: "仅限 Windows".into(),
     });
 
+    // 虚拟 HID：给出结论，并在不可用时附上 Secure Boot / 内存完整性等环境信息与建议。
+    // 建议用换行分隔，前端按 pre-line 渲染成多行。
+    #[cfg(target_os = "windows")]
     {
-        let detail = core_input::vhid_probe();
-        let pass = detail.contains("WinUHid 可用") || detail.contains("\\\\.\\WinUHid 可用");
+        let d = core_input::vhid_diagnostics();
+        let mut detail = d.detail;
+        if !d.hints.is_empty() {
+            detail.push('\n');
+            detail.push_str(&d.hints.join("\n"));
+        }
         items.push(SelfTestItem {
             name: "虚拟 HID 键盘".into(),
-            status: if pass { "pass" } else { "fail" }.into(),
+            status: if d.available { "pass" } else { "fail" }.into(),
             detail,
         });
     }
+    #[cfg(not(target_os = "windows"))]
+    items.push(SelfTestItem {
+        name: "虚拟 HID 键盘".into(),
+        status: "skip".into(),
+        detail: "仅限 Windows".into(),
+    });
 
     items
 }

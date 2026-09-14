@@ -527,6 +527,11 @@ button:focus-visible,
   margin-top: 8px;
 }
 
+/* 自检结论里的排查建议用 \n 分行给，这里按原样换行显示。 */
+.multiline {
+  white-space: pre-line;
+}
+
 .device-info {
   display: flex;
   align-items: center;

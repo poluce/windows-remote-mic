@@ -20,6 +20,18 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-13
+
+### 新增
+- 虚拟 HID 自检升级为**环境诊断**：结论直接带出 Secure Boot 与内存完整性（HVCI）状态，失败时按具体情况给出可执行的下一步。
+  - 新增 `core_input::vhid_diagnostics()`（`VhidDiagnostics`）：可用性、安装包负载目录及是否就位、Secure Boot / HVCI 状态、排查建议。
+  - 建议由纯函数 `build_hints` 生成：负载缺失 → 用最新安装包重装；负载就位 → 点「安装 / 修复虚拟键盘驱动」；Secure Boot 或 HVCI 开启 → 点名说明测试签名可能被拒；任何失败都附 `setupapi.dev.log` 定位指引。
+  - 新增 6 个单元测试，覆盖「开启才点名、关闭/未知不误报」等组合。
+
+### 变更
+- 诊断页自检结论按 `pre-line` 分行显示建议，不再挤成一行。
+- 面向用户的错误文案不再提示手工运行 `build-winuhid.ps1` / `install-winuhid.ps1`（安装包已自动处理），并去掉 `Windows error:` 包装前缀。
+
 ## [0.4.0] - 2026-09-13
 
 ### 新增

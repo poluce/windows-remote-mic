@@ -167,7 +167,7 @@ export function DiagnosticsPage() {
         <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
           {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
         </button>
-        {vhidMsg && <span className="hint diag-actions-msg">{vhidMsg}</span>}
+        {vhidMsg && <span className="hint diag-actions-msg multiline">{vhidMsg}</span>}
         {status && <span className="hint diag-actions-msg">{status}</span>}
         {selfTests && (
           <div className="check-list diag-actions-list">
@@ -178,7 +178,7 @@ export function DiagnosticsPage() {
                   <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
                     {t.status.toUpperCase()}
                   </span>
-                  {t.detail && <span className="hint"> {t.detail}</span>}
+                  {t.detail && <span className="hint multiline"> {t.detail}</span>}
                 </div>
               </div>
             ))}

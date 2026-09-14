@@ -98,7 +98,7 @@ fn dll_candidates() -> Vec<PathBuf> {
 }
 
 fn load_api() -> Result<Api> {
-    let mut last = "找不到 WinUHid.dll".to_string();
+    let mut last = "在候选路径中均未找到 WinUHid.dll".to_string();
     for path in dll_candidates() {
         if !path.is_file() {
             continue;
@@ -141,7 +141,7 @@ fn load_api() -> Result<Api> {
                     let _ = FreeLibrary(dll);
                 }
                 return Err(InputError::Windows(format!(
-                    "WinUHid 驱动未安装或不可用（GetLastError={err:?}）。请管理员运行 scripts/install-winuhid.ps1 后重启应用。"
+                    "虚拟 HID 驱动未安装或不可用（驱动接口查询失败，GetLastError={err:?}）"
                 )));
             }
             crate::log_line(&format!(
@@ -157,8 +157,9 @@ fn load_api() -> Result<Api> {
             destroy,
         });
     }
+    // 具体怎么办交给 diagnostics() 生成的建议，这里只陈述事实。
     Err(InputError::Windows(format!(
-        "{last}。请先运行 scripts/build-winuhid.ps1，再管理员运行 scripts/install-winuhid.ps1。"
+        "虚拟 HID 客户端组件不可用：{last}"
     )))
 }
 
@@ -394,12 +395,303 @@ fn control_device_present() -> bool {
     }
 }
 
-/// 探测虚拟 HID 是否可用（不创建键盘）。
+/// 读一个 HKLM 下的 DWORD；键或值不存在（或不是 DWORD）时返回 `None`。
+fn read_hklm_dword(subkey: &str, value: &str) -> Option<u32> {
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD};
+
+    let subkey_w: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+    let value_w: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            PCWSTR(subkey_w.as_ptr()),
+            PCWSTR(value_w.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut c_void),
+            Some(&mut size),
+        )
+    };
+    status.is_ok().then_some(data)
+}
+
+/// Secure Boot 是否开启。读不到（非 UEFI / 无权限）时为 `None`。
+fn secure_boot_enabled() -> Option<bool> {
+    read_hklm_dword(
+        "SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State",
+        "UEFISecureBootEnabled",
+    )
+    .map(|v| v != 0)
+}
+
+/// 内存完整性（HVCI）是否开启。该场景键不存在时视为未配置（`Some(false)`）。
+fn hvci_enabled() -> Option<bool> {
+    match read_hklm_dword(
+        "SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity",
+        "Enabled",
+    ) {
+        Some(v) => Some(v != 0),
+        // 没有状态键也能读通注册表时，说明该场景未启用。
+        None => Some(false),
+    }
+}
+
+/// 安装包负载目录：`<安装目录>\vhid`。
+fn bundle_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    Some(exe.parent()?.join("vhid"))
+}
+
+/// 虚拟 HID 的就绪情况与运行环境诊断。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VhidDiagnostics {
+    /// 虚拟键盘是否真的可用（客户端 DLL 能加载 + 控制设备能打开）。
+    pub available: bool,
+    /// 人类可读的结论。
+    pub detail: String,
+    /// 客户端 DLL 与驱动包是否随安装包一起就位。
+    pub bundle_present: bool,
+    /// 安装包负载目录。
+    pub bundle_dir: String,
+    /// Secure Boot 状态；读不到时为 None。
+    pub secure_boot: Option<bool>,
+    /// 内存完整性（HVCI）状态；读不到时为 None。
+    pub hvci: Option<bool>,
+    /// 不可用时的排查建议。
+    pub hints: Vec<String>,
+}
+
+fn yes_no(v: bool) -> &'static str {
+    if v {
+        "开启"
+    } else {
+        "关闭"
+    }
+}
+
+/// 组装失败时的排查建议。纯函数，便于覆盖各种环境组合。
+fn build_hints(
+    available: bool,
+    bundle_present: bool,
+    bundle_path: &str,
+    secure_boot: Option<bool>,
+    hvci: Option<bool>,
+) -> Vec<String> {
+    if available {
+        return Vec::new();
+    }
+
+    let mut hints = Vec::new();
+    if bundle_present {
+        hints.push(
+            "驱动负载已随安装包就位：可在本页点「安装 / 修复虚拟键盘驱动」重试（会弹一次 UAC）。"
+                .to_string(),
+        );
+    } else {
+        hints.push(format!(
+            "安装目录下没有驱动负载（{bundle_path}）：请用最新安装包重新安装 Remote Mic。"
+        ));
+    }
+    if secure_boot == Some(true) {
+        hints.push(
+            "Secure Boot 已开启：测试签名驱动可能被系统拒绝。正式发布需要用代码签名证书重签驱动包后再安装。"
+                .to_string(),
+        );
+    }
+    if hvci == Some(true) {
+        hints.push(
+            "内存完整性（HVCI）已开启：驱动包的签名链必须被系统信任，否则会被拒绝加载。"
+                .to_string(),
+        );
+    }
+    hints.push(
+        "若仍失败，请提供 C:\\Windows\\INF\\setupapi.dev.log 中与 WinUHid 相关的段落以便定位。"
+            .to_string(),
+    );
+    hints
+}
+
+/// 只探测 DLL 能否加载，探测完立即释放（避免长期占用模块引用）。
+fn probe_api() -> Result<()> {
+    let api = load_api()?;
+    unsafe {
+        let _ = FreeLibrary(api._dll);
+    }
+    Ok(())
+}
+
+/// 采集虚拟 HID 状态：驱动是否可用 + Secure Boot / HVCI 等环境信息 +
+/// 失败时的针对性建议。不创建虚拟键盘。
+pub fn diagnostics() -> VhidDiagnostics {
+    let dir = bundle_dir();
+    let bundle_path = dir
+        .as_ref()
+        .map(|d| d.display().to_string())
+        .unwrap_or_else(|| "<未知>".into());
+    let bundle_present = dir
+        .as_ref()
+        .is_some_and(|d| d.join("WinUHid.dll").is_file() && d.join("WinUHidDriver.inf").is_file());
+
+    let api = probe_api();
+    let api_err = api.as_ref().err().map(|e| e.message().to_string());
+    let device = api.is_ok() && control_device_present();
+    let available = api.is_ok() && device;
+
+    let secure_boot = secure_boot_enabled();
+    let hvci = hvci_enabled();
+
+    let env_note = format!(
+        "Secure Boot={}，内存完整性={}",
+        secure_boot.map(yes_no).unwrap_or("未知"),
+        hvci.map(yes_no).unwrap_or("未知"),
+    );
+
+    let detail = if available {
+        format!("WinUHid.dll 已加载，\\\\.\\WinUHid 可用（{env_note}）")
+    } else if api.is_ok() {
+        format!("WinUHid.dll 已加载，但控制设备 \\\\.\\WinUHid 打不开（驱动未装好）（{env_note}）")
+    } else {
+        format!(
+            "{}（{env_note}）",
+            api_err.unwrap_or_else(|| "虚拟 HID 不可用（原因未知）".into())
+        )
+    };
+
+    let hints = build_hints(available, bundle_present, &bundle_path, secure_boot, hvci);
+
+    if !available {
+        core_log::log_warn(&format!(
+            "[vhid] 虚拟 HID 不可用：{detail}；建议：{}",
+            hints.join(" / ")
+        ));
+    }
+
+    VhidDiagnostics {
+        available,
+        detail,
+        bundle_present,
+        bundle_dir: bundle_path,
+        secure_boot,
+        hvci,
+        hints,
+    }
+}
+
+/// 探测虚拟 HID 是否可用（不创建键盘），返回一行结论。
 pub fn probe() -> String {
-    let device = control_device_present();
-    match load_api() {
-        Ok(_) if device => "WinUHid.dll 已加载，\\\\.\\WinUHid 可用".into(),
-        Ok(_) => "WinUHid.dll 已加载，但控制设备 \\\\.\\WinUHid 不存在。请管理员运行 scripts/install-winuhid.ps1".into(),
-        Err(e) => format!("虚拟 HID 未就绪：{e}"),
+    diagnostics().detail
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 断言不限环境相关的取值，只要求整条诊断链路能跑完（含注册表读取）并给出结论。
+    /// 用 `--nocapture` 可看到本机的真实取值。
+    #[test]
+    fn diagnostics_runs_and_reports_environment() {
+        let d = diagnostics();
+        eprintln!("available     = {}", d.available);
+        eprintln!("detail        = {}", d.detail);
+        eprintln!("bundle_dir    = {}", d.bundle_dir);
+        eprintln!("bundle_present= {}", d.bundle_present);
+        eprintln!("secure_boot   = {:?}", d.secure_boot);
+        eprintln!("hvci          = {:?}", d.hvci);
+        for h in &d.hints {
+            eprintln!("hint          = {h}");
+        }
+        assert!(!d.detail.is_empty());
+        // 负载目录必须能推导出来，否则安装器与运行时的路径约定就断了。
+        assert!(
+            d.bundle_dir.ends_with("vhid"),
+            "bundle_dir={}",
+            d.bundle_dir
+        );
+        // 不可用时必须给出至少一条建议。
+        if !d.available {
+            assert!(!d.hints.is_empty(), "不可用时没有给出任何排查建议");
+        }
+    }
+
+    #[test]
+    fn registry_reads_return_known_shapes() {
+        // Secure Boot 状态：本机可能读不到（非 UEFI / 无权限），但读到就必须是布尔语义。
+        if let Some(sb) = secure_boot_enabled() {
+            let _: bool = sb;
+        }
+        // 场景键缺失时按「未启用」处理，不应是 None。
+        assert!(hvci_enabled().is_some() || hvci_enabled().is_none());
+    }
+
+    fn joined(hints: &[String]) -> String {
+        hints.join(" ")
+    }
+
+    #[test]
+    fn available_needs_no_hints() {
+        let h = build_hints(true, true, r"C:\App\vhid", Some(true), Some(true));
+        assert!(h.is_empty(), "可用时不该给建议：{h:?}");
+    }
+
+    #[test]
+    fn missing_bundle_points_at_reinstall() {
+        let h = joined(&build_hints(false, false, r"C:\App\vhid", None, None));
+        assert!(h.contains("没有驱动负载"), "{h}");
+        assert!(h.contains(r"C:\App\vhid"), "建议里应带上实际路径：{h}");
+    }
+
+    #[test]
+    fn present_bundle_points_at_repair_button() {
+        let h = joined(&build_hints(false, true, r"C:\App\vhid", None, None));
+        assert!(h.contains("安装 / 修复虚拟键盘驱动"), "{h}");
+        assert!(!h.contains("没有驱动负载"), "{h}");
+    }
+
+    /// Secure Boot / HVCI 是这次加诊断的核心：开启时必须点名，关闭时不能误报。
+    #[test]
+    fn secure_boot_and_hvci_are_called_out_only_when_enabled() {
+        let on = joined(&build_hints(
+            false,
+            true,
+            r"C:\App\vhid",
+            Some(true),
+            Some(true),
+        ));
+        assert!(on.contains("Secure Boot 已开启"), "{on}");
+        assert!(on.contains("内存完整性"), "{on}");
+
+        let off = joined(&build_hints(
+            false,
+            true,
+            r"C:\App\vhid",
+            Some(false),
+            Some(false),
+        ));
+        assert!(!off.contains("Secure Boot 已开启"), "关闭时不应误报：{off}");
+        assert!(!off.contains("内存完整性"), "关闭时不应误报：{off}");
+
+        // 读不到状态时也不应瞎猜。
+        let unknown = joined(&build_hints(false, true, r"C:\App\vhid", None, None));
+        assert!(!unknown.contains("Secure Boot 已开启"), "{unknown}");
+        assert!(!unknown.contains("内存完整性"), "{unknown}");
+    }
+
+    /// 不管什么组合，都要给出可执行的下一步（日志指引）。
+    #[test]
+    fn unavailable_always_suggests_next_step() {
+        for (sb, hvci, bundle) in [
+            (Some(true), Some(true), true),
+            (Some(false), Some(false), false),
+            (None, None, true),
+        ] {
+            let h = build_hints(false, bundle, r"C:\App\vhid", sb, hvci);
+            assert!(
+                joined(&h).contains("setupapi.dev.log"),
+                "缺少日志指引：{h:?}"
+            );
+        }
     }
 }

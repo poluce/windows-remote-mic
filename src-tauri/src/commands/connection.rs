@@ -218,9 +218,18 @@ pub fn install_vhid_driver() -> Result<String, String> {
             return Err(stderr);
         }
 
-        let probe = core_input::vhid_probe();
-        core_log::log_info(&format!("[commands/connection] 驱动安装结束：{probe}"));
-        Ok(probe)
+        // 用同一套诊断返回结论，失败时把环境信息与建议一并带给前端。
+        let d = core_input::vhid_diagnostics();
+        let mut msg = d.detail.clone();
+        if !d.hints.is_empty() {
+            msg.push('\n');
+            msg.push_str(&d.hints.join("\n"));
+        }
+        core_log::log_info(&format!(
+            "[commands/connection] 驱动安装结束：available={} {msg}",
+            d.available
+        ));
+        Ok(msg)
     }
     #[cfg(not(target_os = "windows"))]
     {

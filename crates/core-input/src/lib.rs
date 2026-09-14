@@ -191,6 +191,12 @@ pub fn vhid_probe() -> String {
     crate::vhid::probe()
 }
 
+/// 虚拟 HID 状态 + 运行环境诊断（Secure Boot / 内存完整性 / 负载是否就位）。
+#[cfg(target_os = "windows")]
+pub fn vhid_diagnostics() -> crate::vhid::VhidDiagnostics {
+    crate::vhid::diagnostics()
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn vhid_probe() -> String {
     "虚拟 HID 仅 Windows 可用".into()
