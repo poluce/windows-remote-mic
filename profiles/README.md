@@ -142,6 +142,12 @@
 
 调试用：应用内诊断页会显示**当前前台进程名 / 窗口标题**与**命中的 profile**，用它来核对第 1 步。
 
+> **改完 JSON 要重新构建。** 内置配置是编进二进制的（`build.rs` + `include_str!`），
+> 运行中改 `profiles/*.json` 不会生效。`npm run tauri dev` 的文件监视只盯着
+> `crates/` 与 `src-tauri/`，**看不到仓库根的 `profiles/`**，所以改完要么重启 dev，
+> 要么碰一下 `crates/core-app-profile/` 下的文件来触发重建。
+> 用户目录里的配置不受此限——放好后点诊断页的「重载配置文件」即可。
+
 ---
 
 ## 约定
