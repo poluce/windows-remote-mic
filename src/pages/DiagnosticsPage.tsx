@@ -21,6 +21,14 @@ type SelfTestItem = {
   detail: string;
 };
 
+/// 前台应用与命中的应用配置（对应后端 core_dispatch::ForegroundStatus）。
+type ForegroundStatus = {
+  process: string | null;
+  profile: string | null;
+  profile_count: number;
+  overridden_buttons: string[];
+};
+
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
@@ -31,6 +39,8 @@ export function DiagnosticsPage() {
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
   const [vhidBusy, setVhidBusy] = useState(false);
   const [vhidMsg, setVhidMsg] = useState("");
+  const [foreground, setForeground] = useState<ForegroundStatus | null>(null);
+  const [profileMsg, setProfileMsg] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -50,7 +60,31 @@ export function DiagnosticsPage() {
 
   useEffect(() => {
     runCheck();
+    refreshForeground();
   }, []);
+
+  async function refreshForeground() {
+    if (!isTauri()) return;
+    try {
+      setForeground(await invoke<ForegroundStatus>("app_profile_status"));
+    } catch {
+      // 后端暂不可用时保持上一次结果
+    }
+  }
+
+  async function reloadProfiles() {
+    if (!isTauri()) {
+      setProfileMsg("请在桌面应用内操作");
+      return;
+    }
+    try {
+      const count = await invoke<number>("reload_app_profiles");
+      await refreshForeground();
+      setProfileMsg(`已重载 ${count} 份应用配置`);
+    } catch (err) {
+      setProfileMsg(`重载失败：${err}`);
+    }
+  }
 
   async function installVbCable() {
     if (!isTauri()) {
@@ -186,6 +220,50 @@ export function DiagnosticsPage() {
         )}
       </section>
       </div>
+
+      <div className="section-label">应用专属映射</div>
+      <section className="card">
+        <div className="check-list">
+          <div className="check-row">
+            <span>当前前台进程</span>
+            <span className="hint">
+              {foreground?.process ?? "（读不到前台窗口）"}
+            </span>
+          </div>
+          <div className="check-row">
+            <span>命中的应用配置</span>
+            <span className="hint">
+              {foreground?.profile ?? "未命中，沿用全局映射"}
+            </span>
+          </div>
+          <div className="check-row">
+            <span>覆盖的按键</span>
+            <span className="hint">
+              {foreground?.overridden_buttons.length
+                ? foreground.overridden_buttons.join("、")
+                : "—"}
+            </span>
+          </div>
+          <div className="check-row">
+            <span>已加载配置</span>
+            <span className="hint">{foreground?.profile_count ?? 0} 份</span>
+          </div>
+        </div>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="btn" onClick={refreshForeground}>
+            刷新
+          </button>
+          <button className="btn" onClick={reloadProfiles}>
+            重载配置文件
+          </button>
+        </div>
+        {profileMsg && <p className="hint multiline">{profileMsg}</p>}
+        <p className="hint">
+          切到目标应用后点「刷新」，这里显示的进程名就是写进
+          <code> profiles/*.json </code>的 <code>process</code> 值。
+          用户自定义配置放在 <code>&lt;配置目录&gt;/app-profiles/</code>。
+        </p>
+      </section>
 
       <div className="section-label">按键测试</div>
       <RemoteKeyTester />

@@ -103,6 +103,14 @@ fn config_store() -> Option<core_config::ConfigStore> {
     core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
 }
 
+/// 加载应用专属按键配置：内置（`profiles/*.json`，编译进二进制）+ 用户目录覆盖。
+///
+/// 用户目录是 `<配置目录>/app-profiles/`；与内置配置有进程名重叠时整份替换。
+fn load_app_profiles() -> core_app_profile::ProfileRegistry {
+    let user_dir = config_store().map(|store| store.dir.join(core_app_profile::USER_PROFILE_DIR));
+    core_app_profile::ProfileRegistry::load(user_dir.as_deref())
+}
+
 /// 来自设置界面的映射编辑数据。
 #[derive(serde::Deserialize)]
 struct MappingEdit {
@@ -334,6 +342,8 @@ pub fn run() {
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
                 // 语音识别目标随配置恢复（旧配置缺省为 Windows 语音）。
                 dispatcher.set_voice_target(cfg.voice_target);
+                // 应用专属配置：命中前台进程时覆盖对应按键，未覆盖的沿用全局映射。
+                dispatcher.set_profiles(load_app_profiles());
                 // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
                 // 统一交给 commands::quick_menu::handle_app_event 处理。
                 let app_for_events = app.handle().clone();
@@ -440,6 +450,8 @@ pub fn run() {
             commands::audio::play_test_tone_loop,
             commands::audio::trigger_voice_typing,
             commands::diagnostics::run_self_test,
+            commands::app_profile::app_profile_status,
+            commands::app_profile::reload_app_profiles,
             commands::quick_menu::toggle_quick_menu,
         ])
         .run(tauri::generate_context!())

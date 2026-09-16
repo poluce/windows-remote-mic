@@ -33,6 +33,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use core_app_profile::{AppProfile, ProfileRegistry};
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
 use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger, VoiceTarget};
@@ -53,6 +54,9 @@ struct ButtonRuntime {
 
 struct Inner {
     mapping: MappingConfig,
+    /// 应用专属配置（一个应用一个文件）。命中前台进程时覆盖 `mapping`
+    /// 中对应的 (按键, 触发)；未覆盖的项继续沿用全局映射。
+    profiles: ProfileRegistry,
     /// 虚拟键 -> 物理按键（默认表 + 校准表覆盖）。
     vkey_map: HashMap<u16, ButtonId>,
     buttons: HashMap<ButtonId, ButtonRuntime>,
@@ -90,6 +94,19 @@ pub struct ActionJob {
     pub action: ActionKind,
 }
 
+/// 前台应用与其命中的应用配置（诊断页用来核对进程名）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ForegroundStatus {
+    /// 当前前台窗口的可执行文件名，例如 `Codex.exe`；读不到时为 None。
+    pub process: Option<String>,
+    /// 命中的应用配置展示名；没命中时为 None。
+    pub profile: Option<String>,
+    /// 已加载的应用配置总数。
+    pub profile_count: usize,
+    /// 命中的配置覆盖了哪些按键（稳定小写标识，已排序去重）。
+    pub overridden_buttons: Vec<String>,
+}
+
 /// 按键调度器。构造后通过 [`KeyDispatcher::spawn_runtime`] 启动
 /// 执行线程与 tick 线程；测试可直接调用 [`KeyDispatcher::feed`]
 /// 注入合成时间戳，不触碰真实输入。
@@ -121,6 +138,7 @@ impl KeyDispatcher {
                 vkey_map: build_vkey_map(calibrations),
                 buttons: default_button_runtimes(),
                 mapping,
+                profiles: ProfileRegistry::default(),
                 enabled: true,
                 mode: InputMode::Normal,
             }),
@@ -141,6 +159,39 @@ impl KeyDispatcher {
     pub fn set_voice_target(&self, target: VoiceTarget) {
         *self.voice_target.lock().unwrap() = target;
         core_log::log_line(&format!("[dispatch] 语音识别目标已更新: {:?}", target));
+    }
+
+    /// 替换应用专属配置集合（启动时加载，或用户改过文件后重载）。
+    pub fn set_profiles(&self, profiles: ProfileRegistry) {
+        let count = profiles.profiles().len();
+        self.inner.lock().unwrap().profiles = profiles;
+        core_log::log_line(&format!("[dispatch] 已加载 {count} 份应用专属配置"));
+    }
+
+    /// 当前前台应用与命中的配置，供诊断页显示 / 核对进程名。
+    pub fn foreground_status(&self) -> ForegroundStatus {
+        let inner = self.inner.lock().unwrap();
+        let process = core_app_profile::foreground_process_name();
+        let profile = process
+            .as_deref()
+            .and_then(|exe| inner.profiles.match_process(exe));
+        ForegroundStatus {
+            profile_count: inner.profiles.profiles().len(),
+            profile: profile.map(|p| p.display_name()),
+            overridden_buttons: profile
+                .map(|p| {
+                    let mut keys: Vec<String> = p
+                        .bindings
+                        .iter()
+                        .map(|b| b.button.key().to_string())
+                        .collect();
+                    keys.sort();
+                    keys.dedup();
+                    keys
+                })
+                .unwrap_or_default(),
+            process,
+        }
     }
 
     /// 当前语音识别目标。
@@ -264,6 +315,7 @@ impl KeyDispatcher {
         }
         let Inner {
             mapping,
+            profiles,
             vkey_map,
             buttons,
             ..
@@ -271,6 +323,7 @@ impl KeyDispatcher {
         let Some(&button) = vkey_map.get(&vkey) else {
             return jobs;
         };
+        let profile = foreground_profile(profiles);
         let rt = buttons.entry(button).or_default();
         if pressed {
             if rt.down {
@@ -284,7 +337,7 @@ impl KeyDispatcher {
             // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
             // （豆包等 IME 要的是键盘那种「一按住就生效」）。
             // Voice（Win+H）仍等 tick 识别长按后再发，避免点按误开语音条。
-            if let Some(job) = build_job(mapping, button, Trigger::Press, rt) {
+            if let Some(job) = build_job(mapping, profile, button, Trigger::Press, rt) {
                 if matches!(job.action, ActionKind::KeyCombo(_)) {
                     rt.combo_held = true;
                     jobs.push(job);
@@ -300,18 +353,18 @@ impl KeyDispatcher {
             let outcome = rt.detector.release(now);
             if rt.combo_held {
                 rt.combo_held = false;
-                if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
+                if let Some(job) = build_job(mapping, profile, button, Trigger::Release, rt) {
                     jobs.push(job);
                 }
             } else if rt.detector.is_long_held() {
                 // Release 边沿触发（Voice）：只有长按结束才发。
-                if let Some(job) = build_job(mapping, button, Trigger::Release, rt) {
+                if let Some(job) = build_job(mapping, profile, button, Trigger::Release, rt) {
                     jobs.push(job);
                 }
             }
             // 单击/双击/长按等手势确认。
             if let FeedOutcome::Fire(ev) = outcome {
-                if let Some(job) = build_job(mapping, button, ev.trigger, rt) {
+                if let Some(job) = build_job(mapping, profile, button, ev.trigger, rt) {
                     jobs.push(job);
                 }
             }
@@ -327,21 +380,25 @@ impl KeyDispatcher {
             return jobs;
         }
         let Inner {
-            mapping, buttons, ..
+            mapping,
+            profiles,
+            buttons,
+            ..
         } = &mut *inner;
+        let profile = foreground_profile(profiles);
         for (button, rt) in buttons.iter_mut() {
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);
             // 长按刚被识别：发 Press 边沿触发（Win+H 等）。快捷键已在按下时发过。
             if !was_long && rt.detector.is_long_held() {
-                if let Some(job) = build_job(mapping, *button, Trigger::Press, rt) {
+                if let Some(job) = build_job(mapping, profile, *button, Trigger::Press, rt) {
                     if !matches!(job.action, ActionKind::KeyCombo(_)) {
                         jobs.push(job);
                     }
                 }
             }
             if let FeedOutcome::Fire(ev) = outcome {
-                if let Some(job) = build_job(mapping, *button, ev.trigger, rt) {
+                if let Some(job) = build_job(mapping, profile, *button, ev.trigger, rt) {
                     jobs.push(job);
                 }
             }
@@ -353,13 +410,17 @@ impl KeyDispatcher {
 /// 由触发事件构建动作任务；无绑定或禁用的按键返回 `None`。
 ///
 /// 长按只执行一次：tick 已触发过则松开时的兜底确认直接跳过。
+///
+/// `profile` 是本次事件发生时的前台应用配置（无前台应用 / 未命中时为 `None`）；
+/// 由调用方在每次 `feed` / `tick_once` 时解析一次，避免每个按键都去查前台窗口。
 fn build_job(
     mapping: &MappingConfig,
+    profile: Option<&AppProfile>,
     button: ButtonId,
     trigger: Trigger,
     rt: &mut ButtonRuntime,
 ) -> Option<ActionJob> {
-    let action = mapping.resolve(button, trigger)?.clone();
+    let action = resolve_action(mapping, profile, button, trigger)?;
     if matches!(action, ActionKind::Disabled) {
         return None;
     }
@@ -374,6 +435,47 @@ fn build_job(
         trigger,
         action,
     })
+}
+
+/// 解析 (按键, 触发) 对应的动作：**应用配置优先，未覆盖时回落到全局映射**。
+fn resolve_action(
+    mapping: &MappingConfig,
+    profile: Option<&AppProfile>,
+    button: ButtonId,
+    trigger: Trigger,
+) -> Option<ActionKind> {
+    if let Some(action) = profile_override(profile, button, trigger) {
+        return Some(action);
+    }
+    mapping.resolve(button, trigger).cloned()
+}
+
+/// 应用配置里对该 (按键, 触发) 的覆盖项。
+///
+/// 约定：**不覆盖 `Mic`**。语音 / 按住说话是全局长按语义、与具体应用无关，
+/// 让某份配置改掉它只会让该应用里的语音静默失效。
+fn profile_override(
+    profile: Option<&AppProfile>,
+    button: ButtonId,
+    trigger: Trigger,
+) -> Option<ActionKind> {
+    if button == ButtonId::Mic {
+        return None;
+    }
+    profile?
+        .bindings
+        .iter()
+        .find(|b| b.button == button && b.trigger == trigger)
+        .map(|b| b.action.clone())
+}
+
+/// 取当前前台应用命中的配置；没有加载任何配置时不查前台窗口。
+fn foreground_profile(profiles: &ProfileRegistry) -> Option<&AppProfile> {
+    if profiles.profiles().is_empty() {
+        return None;
+    }
+    let exe = core_app_profile::foreground_process_name()?;
+    profiles.match_process(&exe)
 }
 
 /// 构建虚拟键 -> 物理按键反查表。
@@ -539,6 +641,24 @@ mod tests {
 
     fn dispatcher() -> Arc<KeyDispatcher> {
         KeyDispatcher::new(MappingConfig::default(), &HashMap::new())
+    }
+
+    /// 构造一份只覆盖指定绑定的应用配置。
+    fn profile_with(bindings: Vec<core_mapping::KeyBinding>) -> AppProfile {
+        AppProfile {
+            process: core_app_profile::ProcessSpec::One("Codex.exe".into()),
+            name: "测试应用".into(),
+            note: String::new(),
+            bindings,
+        }
+    }
+
+    fn binding(button: ButtonId, trigger: Trigger, action: ActionKind) -> core_mapping::KeyBinding {
+        core_mapping::KeyBinding {
+            button,
+            trigger,
+            action,
+        }
     }
 
     fn jobs_of(dispatcher: &KeyDispatcher, vkey: u16, pressed: bool, now: u64) -> Vec<ActionJob> {
@@ -894,5 +1014,143 @@ mod tests {
         let jobs = d.tick_once(400);
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+    }
+
+    // ---- 应用专属配置（profile）覆盖语义 ----
+
+    #[test]
+    fn profile_overrides_global_mapping() {
+        let mapping = MappingConfig::default();
+        let profile = profile_with(vec![binding(
+            ButtonId::Ok,
+            Trigger::SingleClick,
+            ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]),
+        )]);
+
+        // 全局映射里 Ok 是 Return；命中应用配置时应改为 Ctrl+K。
+        assert_eq!(
+            resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::SingleClick),
+            Some(ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]))
+        );
+    }
+
+    #[test]
+    fn profile_falls_back_to_global_when_not_covered() {
+        let mapping = MappingConfig::default();
+        let profile = profile_with(vec![binding(
+            ButtonId::Ok,
+            Trigger::SingleClick,
+            ActionKind::Escape,
+        )]);
+
+        // 配置只覆盖了 Ok 的单击；其它按键与其它手势都沿用全局映射。
+        assert_eq!(
+            resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::SingleClick),
+            Some(ActionKind::Escape)
+        );
+        assert_eq!(
+            resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::DoubleClick),
+            mapping.resolve(ButtonId::Ok, Trigger::DoubleClick).cloned()
+        );
+        assert_eq!(
+            resolve_action(&mapping, Some(&profile), ButtonId::Up, Trigger::SingleClick),
+            mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        );
+    }
+
+    #[test]
+    fn no_profile_uses_global_mapping() {
+        let mapping = MappingConfig::default();
+        assert_eq!(
+            resolve_action(&mapping, None, ButtonId::Ok, Trigger::SingleClick),
+            mapping.resolve(ButtonId::Ok, Trigger::SingleClick).cloned()
+        );
+    }
+
+    /// 约定：语音/按住说话是全局长按语义，profile 不得覆盖 Mic。
+    #[test]
+    fn profile_never_overrides_mic() {
+        let mapping = MappingConfig::default();
+        let profile = profile_with(vec![
+            binding(
+                ButtonId::Mic,
+                Trigger::Press,
+                ActionKind::KeyCombo(vec!["ralt".into()]),
+            ),
+            binding(ButtonId::Mic, Trigger::Release, ActionKind::Disabled),
+        ]);
+
+        for trigger in [Trigger::Press, Trigger::Release, Trigger::SingleClick] {
+            assert_eq!(
+                resolve_action(&mapping, Some(&profile), ButtonId::Mic, trigger),
+                mapping.resolve(ButtonId::Mic, trigger).cloned(),
+                "Mic 的 {trigger:?} 不应被应用配置改写"
+            );
+        }
+    }
+
+    /// 配置可以把某个按键在某个应用里禁用掉。
+    #[test]
+    fn profile_can_disable_a_button() {
+        let mapping = MappingConfig::default();
+        let profile = profile_with(vec![binding(
+            ButtonId::Home,
+            Trigger::SingleClick,
+            ActionKind::Disabled,
+        )]);
+        assert_eq!(
+            resolve_action(
+                &mapping,
+                Some(&profile),
+                ButtonId::Home,
+                Trigger::SingleClick
+            ),
+            Some(ActionKind::Disabled)
+        );
+    }
+
+    /// 未加载任何配置时不去查前台窗口，且行为与从前一致。
+    #[test]
+    fn empty_registry_has_no_foreground_lookup() {
+        let registry = ProfileRegistry::default();
+        assert!(foreground_profile(&registry).is_none());
+    }
+
+    /// 真机端到端：按「当前真实前台进程名」造一份配置，确认能被匹配到。
+    /// 无人值守环境读不到前台窗口时跳过，避免 CI 抖动。
+    #[test]
+    fn foreground_profile_matches_real_foreground_process() {
+        let Some(exe) = core_app_profile::foreground_process_name() else {
+            eprintln!("skip: 当前环境读不到前台窗口");
+            return;
+        };
+        eprintln!("foreground = {exe}");
+
+        let mut registry = ProfileRegistry::default();
+        registry.upsert(AppProfile {
+            process: core_app_profile::ProcessSpec::One(exe),
+            name: "前台测试".into(),
+            note: String::new(),
+            bindings: vec![binding(
+                ButtonId::Menu,
+                Trigger::SingleClick,
+                ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]),
+            )],
+        });
+
+        let hit = foreground_profile(&registry).expect("应命中当前前台进程");
+        assert_eq!(hit.display_name(), "前台测试");
+
+        // 命中后，被覆盖的按键确实改走应用配置。
+        let mapping = MappingConfig::default();
+        assert_eq!(
+            resolve_action(&mapping, Some(hit), ButtonId::Menu, Trigger::SingleClick),
+            Some(ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]))
+        );
+        // 未覆盖的按键仍走全局映射。
+        assert_eq!(
+            resolve_action(&mapping, Some(hit), ButtonId::Up, Trigger::SingleClick),
+            mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        );
     }
 }

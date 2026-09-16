@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde.workspace = true
+core-app-profile = { path = "../core-app-profile" }
 core-config = { path = "../core-config" }
 core-hid = { path = "../core-hid" }
 core-input = { path = "../core-input" }
