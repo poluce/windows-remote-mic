@@ -48,6 +48,10 @@ pub enum OpenOutcome {
 /// 一次「点击图标」的完整动作：先找已开的窗口，找不到再启动。
 ///
 /// 注意顺序不能倒过来：先启动会开出第二个实例。
+///
+/// Tauri 层没有直接用这个便利函数，而是把它拆成两半分别丢进阻塞线程池——
+/// `focus` 必须趁快捷菜单还在前台时做（否则没有前台权限），`launch` 则要先
+/// 收起菜单再慢慢等。这里保留完整流程供测试与其它调用方使用。
 pub fn open_profile(profile: &AppProfile) -> Result<OpenOutcome, WindowError> {
     if let Some(window) = find_window(profile) {
         focus(&window)?;
@@ -283,6 +287,10 @@ pub fn launch(spec: &LaunchSpec) -> Result<(), WindowError> {
     let op = to_wide("open");
     let file = to_wide(&target);
 
+    // 这一步可能阻塞很久（MSIX 的进程外激活尤其慢），所以**不要**在 Tauri
+    // 主线程上调用。前后各记一条日志，万一卡住一眼能看出卡在哪一步。
+    core_log::log_line(&format!("[app-profile] 正在启动：{target}"));
+
     unsafe {
         let result = ShellExecuteW(
             None,
@@ -295,8 +303,12 @@ pub fn launch(spec: &LaunchSpec) -> Result<(), WindowError> {
         // 文档规定返回值 ≤ 32 即错误码，> 32 才是成功。
         let code = result.0 as isize;
         if code > 32 {
+            core_log::log_line(&format!("[app-profile] 启动调用已返回：{target}"));
             Ok(())
         } else {
+            core_log::log_warn(&format!(
+                "[app-profile] 启动失败（ShellExecuteW 返回 {code}）：{target}"
+            ));
             Err(WindowError::LaunchFailed(code))
         }
     }
