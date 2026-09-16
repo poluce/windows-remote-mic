@@ -171,6 +171,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
         "system_volume_mute" => A::SystemVolumeMute,
         "play_pause" => A::PlayPause,
         "voice" => A::Voice,
+        "focus_input" => A::FocusInput,
         "toggle_quick_menu" => A::ToggleQuickMenu,
         _ => return None,
     })
@@ -213,6 +214,7 @@ fn action_key(action: &ActionKind) -> String {
         ActionKind::SystemVolumeMute => "system_volume_mute",
         ActionKind::PlayPause => "play_pause",
         ActionKind::Voice => "voice",
+        ActionKind::FocusInput => "focus_input",
         ActionKind::OpenApp(_) => "open_app",
         ActionKind::ToggleQuickMenu => "toggle_quick_menu",
     }
@@ -238,6 +240,7 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::SystemVolumeMute => "静音".into(),
         ActionKind::PlayPause => "播放/暂停".into(),
         ActionKind::Voice => "语音输入".into(),
+        ActionKind::FocusInput => "聚焦输入框".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
         ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }
@@ -359,6 +362,69 @@ pub fn run() {
                 });
                 dispatcher
             };
+
+            // ---- 主线程看门狗（临时诊断，定位 AppHang）----
+            //
+            // 应用被 Windows 判成「无响应」时，从外面只能看到进程还活着、窗口
+            // 不再泵消息，看不出卡在哪一步。这个线程每 2 秒请主线程打个卡，
+            // 打不上就记一条 WARN——把「什么时候开始卡的」钉在日志里，
+            // 和上一条业务日志一对，就知道当时正卡在哪个操作上。
+            //
+            // 定位到问题后应当删掉这段。
+            {
+                let beat_handle = app.handle().clone();
+                let spawned = std::thread::Builder::new()
+                    .name("main-watchdog".into())
+                    .spawn(move || {
+                        use std::sync::mpsc;
+                        use std::time::{Duration, Instant};
+
+                        let start = Instant::now();
+                        let mut stalled_since: Option<u128> = None;
+                        let mut last_notice = 0u128;
+
+                        loop {
+                            std::thread::sleep(Duration::from_secs(2));
+
+                            let (tx, rx) = mpsc::channel();
+                            let posted = beat_handle
+                                .run_on_main_thread(move || {
+                                    let _ = tx.send(());
+                                })
+                                .is_ok();
+                            let alive = posted && rx.recv_timeout(Duration::from_secs(3)).is_ok();
+
+                            let now = start.elapsed().as_millis();
+                            if alive {
+                                if let Some(since) = stalled_since.take() {
+                                    core_log::log_warn(&format!(
+                                        "[watchdog] 主线程恢复响应（曾卡住约 {} 秒）",
+                                        (now - since) / 1000
+                                    ));
+                                }
+                                continue;
+                            }
+
+                            match stalled_since {
+                                None => {
+                                    stalled_since = Some(now);
+                                    last_notice = now;
+                                    core_log::log_warn(
+                                        "[watchdog] 主线程已超过 3 秒未响应，开始记录",
+                                    );
+                                }
+                                Some(_) if now - last_notice >= 10_000 => {
+                                    last_notice = now;
+                                    core_log::log_warn("[watchdog] 主线程仍无响应");
+                                }
+                                Some(_) => {}
+                            }
+                        }
+                    });
+                if let Err(e) = spawned {
+                    core_log::log_warn(&format!("[watchdog] 启动失败: {e}"));
+                }
+            }
 
             // 钩子与 Raw Input 可能对同一物理按键各投递一次；短窗口去重后
             // 只向前端发一条。调度器只吃 Raw Input（能辨设备），避免注入

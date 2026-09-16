@@ -13,9 +13,18 @@ pub fn app_profile_status(state: State<AppState>) -> core_dispatch::ForegroundSt
 }
 
 /// 快捷菜单内圈要显示的应用图标（只含配了 `icon` 的配置）。
+///
+/// 同步命令：跑在 Tauri 的主线程上（这是定位 AppHang 的现场，暂不改成
+/// async——它要遍历本机所有顶层窗口，如果卡住，日志里的进入/退出会直接指认）。
 #[tauri::command]
 pub fn app_menu_apps(state: State<AppState>) -> Vec<core_dispatch::MenuAppEntry> {
-    state.dispatcher.menu_apps()
+    core_log::log_line("[app-profile] 开始收集菜单应用");
+    let apps = state.dispatcher.menu_apps();
+    core_log::log_line(&format!(
+        "[app-profile] 菜单应用收集完成：{} 个",
+        apps.len()
+    ));
+    apps
 }
 
 /// 「点图标」：已打开就切到前台，没打开就按配置启动。
@@ -43,6 +52,8 @@ pub async fn open_app_profile(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<String, String> {
+    core_log::log_line(&format!("[app-profile] 收到打开请求：{name}"));
+
     let Some(profile) = state.dispatcher.profile_named(&name) else {
         return Err(format!("找不到名为「{name}」的应用配置"));
     };

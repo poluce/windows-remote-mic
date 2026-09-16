@@ -110,6 +110,12 @@ pub enum ActionKind {
     SystemVolumeMute,
     PlayPause,
     Voice,
+    /// 用 UI Automation 把键盘焦点送进前台窗口的输入框。
+    ///
+    /// 与 [`ActionKind::OpenApp`] 不是一回事：把窗口切到前台只抬升顶层窗口，
+    /// 光标不会自己进输入框。适合绑在确定键上——选中应用、窗口到前台之后，
+    /// 再按一次确定就能直接开始输入。
+    FocusInput,
     OpenApp(String),
     /// 打开/关闭应用自带的右下角快捷菜单（由 Tauri 层执行）。
     ToggleQuickMenu,

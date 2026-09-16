@@ -687,6 +687,17 @@ fn execute_action(
                     .map_err(|e| e.to_string()),
             }
         }
+        A::FocusInput => match core_input::focus_foreground_input() {
+            Ok(core_input::FocusOutcome::Focused { name }) => {
+                core_log::log_line(&format!("[dispatch] 已把焦点送进输入框：{name}"));
+                Ok(())
+            }
+            Ok(core_input::FocusOutcome::NoInputFound) => {
+                core_log::log_line("[dispatch] 前台窗口里没有可聚焦的输入框");
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        },
         A::OpenApp(name) => core_input::open_app(name).map_err(|e| e.to_string()),
         A::ToggleQuickMenu => match app_event {
             Some(handler) => {

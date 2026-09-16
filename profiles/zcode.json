@@ -3,11 +3,11 @@
   "name": "ZCode",
   "icon": { "label": "Z", "color": "#F59E0B" },
   "launch": { "kind": "appid", "value": "dev.zcode.app" },
-  "note": "Electron 应用，实测进程名 ZCode.exe、主窗口标题 ZCode，启动走 shell:AppsFolder\\dev.zcode.app（该 AppID 由安装程序注册到开始菜单，与本机安装路径无关，换机器也能用）。若某台机器上查不到这个 AppID，可改用 { \"kind\": \"path\", \"value\": \"<安装目录>\\ZCode.exe\" }。这里只放通用键（翻页/Enter/Esc）——应用专属快捷键待实测后补充，不要凭猜测填写。",
+  "note": "Electron 应用，实测进程名 ZCode.exe、主窗口标题 ZCode，启动走 shell:AppsFolder\\dev.zcode.app（该 AppID 由安装程序注册到开始菜单，与本机安装路径无关，换机器也能用）。若某台机器上查不到这个 AppID，可改用 { \"kind\": \"path\", \"value\": \"<安装目录>\\ZCode.exe\" }。确定键改成「聚焦输入框」：从快捷菜单切到 ZCode 后再按一次确定，光标会直接进输入框，接着就能语音输入。实测该应用暴露 UIA 控件树且其中恰好一个可聚焦 Edit，故可用。「聚焦输入框」走 UI Automation，找不到输入框时静默跳过。注意：这样一来确定键不再发送回车，需要发送请另配（例如把确定的双击设成 { \"action\": \"Return\" }）。",
   "bindings": [
     { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
     { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
-    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Ok", "trigger": "SingleClick", "action": "FocusInput" },
     { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
   ]
 }
