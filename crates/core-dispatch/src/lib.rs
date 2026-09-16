@@ -1175,6 +1175,53 @@ mod tests {
         assert!(foreground_profile(&registry).is_none());
     }
 
+    /// 快捷菜单内圈：只列配了 icon 的配置，顺序与声明一致。
+    #[test]
+    fn menu_apps_lists_only_profiles_with_icon() {
+        let dispatcher = KeyDispatcher::new(MappingConfig::default(), &HashMap::new());
+        let mut registry = ProfileRegistry::default();
+
+        registry.upsert(AppProfile {
+            process: core_app_profile::ProcessSpec::One("__no_icon__.exe".into()),
+            name: "没有图标".into(),
+            ..Default::default()
+        });
+        registry.upsert(AppProfile {
+            process: core_app_profile::ProcessSpec::One("__first__.exe".into()),
+            name: "第一个".into(),
+            icon: Some(core_app_profile::IconSpec {
+                label: "1st".into(),
+                color: "#111111".into(),
+            }),
+            ..Default::default()
+        });
+        registry.upsert(AppProfile {
+            process: core_app_profile::ProcessSpec::One("__second__.exe".into()),
+            name: "第二个".into(),
+            icon: Some(core_app_profile::IconSpec {
+                label: "2nd".into(),
+                color: "#222222".into(),
+            }),
+            ..Default::default()
+        });
+
+        dispatcher.set_profiles(registry);
+        let apps = dispatcher.menu_apps();
+
+        assert_eq!(apps.len(), 2, "没有 icon 的配置不该出现在菜单里");
+        assert_eq!(apps[0].name, "第一个");
+        assert_eq!(apps[0].label, "1st");
+        assert_eq!(apps[0].color, "#111111");
+        assert_eq!(apps[1].name, "第二个");
+        // 这两个进程都不存在，所以都是「点了会启动」。
+        assert!(!apps[0].open && !apps[1].open);
+
+        // 按展示名能取回配置副本，供 open_app_profile 使用。
+        assert!(dispatcher.profile_named("第二个").is_some());
+        assert!(dispatcher.profile_named("没有图标").is_some());
+        assert!(dispatcher.profile_named("不存在").is_none());
+    }
+
     /// 真机端到端：按「当前真实前台进程名」造一份配置，确认能被匹配到。
     /// 无人值守环境读不到前台窗口时跳过，避免 CI 抖动。
     #[test]
