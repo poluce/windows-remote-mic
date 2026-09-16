@@ -713,9 +713,30 @@ fn execute_action(
                 core_log::log_line(&format!("[dispatch] 已把焦点送进输入框：{name}"));
                 Ok(())
             }
+            Ok(core_input::FocusOutcome::AlreadyFocused { name }) => {
+                core_log::log_line(&format!("[dispatch] 输入框已有焦点，不重复聚焦：{name}"));
+                Ok(())
+            }
             Ok(core_input::FocusOutcome::NoInputFound) => {
                 core_log::log_line("[dispatch] 前台窗口里没有可聚焦的输入框");
                 Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        },
+        // 确定键的顺手版本：光标不在输入框就送进去（接下来用户要说话），
+        // 已经在里面、或压根找不到输入框，就按原来的行为发回车。
+        A::FocusInputOrSubmit => match core_input::focus_foreground_input() {
+            Ok(core_input::FocusOutcome::Focused { name }) => {
+                core_log::log_line(&format!("[dispatch] 已把焦点送进输入框：{name}"));
+                Ok(())
+            }
+            Ok(core_input::FocusOutcome::AlreadyFocused { name }) => {
+                core_log::log_line(&format!("[dispatch] 输入框已有焦点，回车发送：{name}"));
+                send_combo(&["enter"])
+            }
+            Ok(core_input::FocusOutcome::NoInputFound) => {
+                core_log::log_line("[dispatch] 没有可聚焦的输入框，按回车处理");
+                send_combo(&["enter"])
             }
             Err(e) => Err(e.to_string()),
         },

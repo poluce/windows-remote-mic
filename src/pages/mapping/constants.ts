@@ -74,6 +74,7 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "escape", label: "Esc" },
       { key: "show_desktop", label: "显示桌面" },
       { key: "focus_input", label: "聚焦输入框" },
+      { key: "focus_input_or_submit", label: "聚焦输入框 / 回车" },
       { key: "context_menu", label: "右键菜单" },
       { key: "app_switcher", label: "切换应用" },
       { key: "toggle_quick_menu", label: "快捷菜单（开/关）" },

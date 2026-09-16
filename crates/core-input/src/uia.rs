@@ -19,8 +19,13 @@ use crate::error::Result;
 /// 聚焦输入框的结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FocusOutcome {
-    /// 已把焦点交给某个输入框，附带它的名称（通常是占位符文本）。
+    /// 这次把焦点送进去了，附带输入框的名称（通常是占位符文本）。
     Focused { name: String },
+    /// 焦点本来就在输入框上，这次没有动它。
+    ///
+    /// 调用方靠这个区分「刚送进去」和「本来就在里面」——后者通常意味着
+    /// 该把这一次按键当成回车发送了。
+    AlreadyFocused { name: String },
     /// 前台窗口里没有找到可聚焦的输入框。
     NoInputFound,
 }
@@ -132,7 +137,7 @@ mod imp {
             };
 
             if kind == UIA_EditControlTypeId {
-                return apply_focus(&element);
+                return apply_focus(&automation, &element);
             }
             // 有些编辑器（含部分编辑器组件的网页应用）把输入区暴露成
             // Document。先记下，等整棵树扫完确实没有 Edit 再用它。
@@ -142,7 +147,7 @@ mod imp {
         }
 
         match document_fallback {
-            Some(element) => apply_focus(&element),
+            Some(element) => apply_focus(&automation, &element),
             None => Ok(FocusOutcome::NoInputFound),
         }
     }
@@ -162,15 +167,32 @@ mod imp {
         rect.is_ok_and(|r| r.right > r.left && r.bottom > r.top)
     }
 
-    fn apply_focus(element: &IUIAutomationElement) -> Result<FocusOutcome> {
+    fn apply_focus(
+        automation: &IUIAutomation,
+        element: &IUIAutomationElement,
+    ) -> Result<FocusOutcome> {
         let name = unsafe { element.CurrentName() }
             .map(|b| b.to_string())
             .unwrap_or_default();
+
+        // 已经在里面就不再 SetFocus 一遍——调用方要靠这个区分「刚送进去」
+        // 和「本来就在里面」。
+        if is_element_focused(automation, element) {
+            return Ok(FocusOutcome::AlreadyFocused { name });
+        }
 
         unsafe { element.SetFocus() }
             .map_err(|e| InputError::Windows(format!("设置输入框焦点失败：{e}")))?;
 
         Ok(FocusOutcome::Focused { name })
+    }
+
+    /// 该元素是否正是当前获得键盘焦点的元素。
+    fn is_element_focused(automation: &IUIAutomation, element: &IUIAutomationElement) -> bool {
+        let Ok(focused) = (unsafe { automation.GetFocusedElement() }) else {
+            return false;
+        };
+        unsafe { automation.CompareElements(element, &focused) }.is_ok_and(|same| same.as_bool())
     }
 }
 
@@ -178,15 +200,28 @@ mod imp {
 mod tests {
     use super::*;
 
-    /// 真机冒烟：把焦点送进当前前台窗口的输入框。
+    /// 真机冒烟：把焦点送进当前前台窗口的输入框，并确认第二次调用能认出
+    /// 「焦点已经在里面」——确定键正是靠这个区分「对准」与「发送」。
     ///
     /// 结果强依赖当时桌面上开着什么，所以默认不跑。需要时先把目标应用切到
     /// 前台，再执行 `cargo test -p core-input -- --ignored --nocapture`。
     #[test]
     #[ignore = "需要桌面上有一个带输入框的前台窗口"]
     fn focus_foreground_input_smoke() {
-        let outcome = focus_foreground_input();
-        eprintln!("前台窗口的输入框：{outcome:?}");
-        assert!(outcome.is_ok(), "UIA 调用本身不应失败：{outcome:?}");
+        let first = focus_foreground_input();
+        eprintln!("第一次：{first:?}");
+        assert!(first.is_ok(), "UIA 调用本身不应失败：{first:?}");
+
+        if matches!(first, Ok(FocusOutcome::NoInputFound)) {
+            eprintln!("skip: 当前前台窗口没有可聚焦的输入框");
+            return;
+        }
+
+        let second = focus_foreground_input();
+        eprintln!("第二次：{second:?}");
+        assert!(
+            matches!(second, Ok(FocusOutcome::AlreadyFocused { .. })),
+            "焦点送进去之后再问一次应报告 AlreadyFocused，实际：{second:?}"
+        );
     }
 }

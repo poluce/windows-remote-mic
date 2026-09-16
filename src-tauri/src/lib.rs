@@ -172,6 +172,7 @@ fn parse_action(s: &str) -> Option<ActionKind> {
         "play_pause" => A::PlayPause,
         "voice" => A::Voice,
         "focus_input" => A::FocusInput,
+        "focus_input_or_submit" => A::FocusInputOrSubmit,
         "toggle_quick_menu" => A::ToggleQuickMenu,
         _ => return None,
     })
@@ -215,6 +216,7 @@ fn action_key(action: &ActionKind) -> String {
         ActionKind::PlayPause => "play_pause",
         ActionKind::Voice => "voice",
         ActionKind::FocusInput => "focus_input",
+        ActionKind::FocusInputOrSubmit => "focus_input_or_submit",
         ActionKind::OpenApp(_) => "open_app",
         ActionKind::ToggleQuickMenu => "toggle_quick_menu",
     }
@@ -241,6 +243,7 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::PlayPause => "播放/暂停".into(),
         ActionKind::Voice => "语音输入".into(),
         ActionKind::FocusInput => "聚焦输入框".into(),
+        ActionKind::FocusInputOrSubmit => "聚焦输入框 / 回车".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
         ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }

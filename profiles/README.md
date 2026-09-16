@@ -122,14 +122,21 @@
 `Disabled` `Escape` `Return` `ArrowUp` `ArrowDown` `ArrowLeft` `ArrowRight`
 `DeleteBackward` `ShowDesktop` `ContextMenu` `AppSwitcher`
 `SystemVolumeUp` `SystemVolumeDown` `SystemVolumeMute` `PlayPause` `Voice`
-`FocusInput` `ToggleQuickMenu` `OpenApp("<名字>")`
+`FocusInput` `FocusInputOrSubmit` `ToggleQuickMenu` `OpenApp("<名字>")`
 
 > **`FocusInput`（聚焦输入框）**：用 UI Automation 把键盘焦点送进**前台窗口**的
 > 输入框。切窗口只抬升顶层窗口，光标不会自己进输入框——想要「切到某个应用后
 > 直接说话/打字」，就把它的确定键绑成这个动作。
 > 只对向 UIA 暴露控件树的应用有效（Chromium / Electron 系可以），找不到输入框
-> 时静默跳过。**注意**：浏览器里第一个 `Edit` 往往是地址栏，给网页应用配这个
-> 动作前先在诊断页确认前台窗口，不要想当然。
+> 时静默跳过。
+>
+> **`FocusInputOrSubmit`（聚焦输入框 / 回车）**：确定键的顺手版本——
+> 光标不在输入框就送进去（接下来用户要说话），**已经在里面就发回车**；
+> 连找不到输入框也退回普通回车。所以它是 `Return` 的**超集**，
+> 绑它不会弄丢确定键原本的回车能力。推荐绑在确定键的单击上。
+>
+> **注意**：浏览器里第一个 `Edit` 往往是地址栏，给网页应用配这两个动作前先在
+> 诊断页确认前台窗口，不要想当然。
 
 快捷键 token 支持：`lctrl` `rctrl` `lshift` `rshift` `lalt` `ralt` `lwin` `rwin`、
 `a`–`z`、`0`–`9`、`f1`–`f12`、`enter` `esc` `space` `tab` `backspace` `delete`
