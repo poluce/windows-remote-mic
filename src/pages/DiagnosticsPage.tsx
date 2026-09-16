@@ -24,6 +24,7 @@ type SelfTestItem = {
 /// 前台应用与命中的应用配置（对应后端 core_dispatch::ForegroundStatus）。
 type ForegroundStatus = {
   process: string | null;
+  title: string | null;
   profile: string | null;
   profile_count: number;
   overridden_buttons: string[];
@@ -231,6 +232,10 @@ export function DiagnosticsPage() {
             </span>
           </div>
           <div className="check-row">
+            <span>当前窗口标题</span>
+            <span className="hint">{foreground?.title ?? "—"}</span>
+          </div>
+          <div className="check-row">
             <span>命中的应用配置</span>
             <span className="hint">
               {foreground?.profile ?? "未命中，沿用全局映射"}
@@ -261,6 +266,8 @@ export function DiagnosticsPage() {
         <p className="hint">
           切到目标应用后点「刷新」，这里显示的进程名就是写进
           <code> profiles/*.json </code>的 <code>process</code> 值。
+          进程名认不出来的目标（Chrome 里的网页应用、跑在 WSL 里的服务）改用
+          <code> window_title_contains </code>匹配窗口标题。
           用户自定义配置放在 <code>&lt;配置目录&gt;/app-profiles/</code>。
         </p>
       </section>

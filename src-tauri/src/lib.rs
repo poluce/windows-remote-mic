@@ -451,7 +451,10 @@ pub fn run() {
             commands::audio::trigger_voice_typing,
             commands::diagnostics::run_self_test,
             commands::app_profile::app_profile_status,
+            commands::app_profile::app_menu_apps,
+            commands::app_profile::open_app_profile,
             commands::app_profile::reload_app_profiles,
+            commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
         ])
         .run(tauri::generate_context!())

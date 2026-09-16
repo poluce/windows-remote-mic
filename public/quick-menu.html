@@ -29,6 +29,9 @@
     display: block;
     width: 420px;
     height: 420px;
+    /* 父级整块是点击穿透的，只让画布自己接收鼠标——这样点图标能用鼠标，
+       点到空白处则可以关掉菜单。 */
+    pointer-events: auto;
   }
 
   .close-hint {
@@ -63,6 +66,12 @@
 
     const ALL_ITEMS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
+    // 外环：占位条目（动作待后续版本接入）。
+    const OUTER_ITEMS = ALL_ITEMS;
+    // 内环：应用图标。由后端 app_menu_apps 提供，只含配了 icon 的应用配置；
+    // Tauri 不可用（例如直接用浏览器打开本页）时保持为空，内环就是空的。
+    let innerItems = [];
+
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { alpha: true });
 
@@ -79,9 +88,11 @@
     const SPRING_C = 18;  // 阻尼（全程 400ms 舒展滑行，60Hz 保证 25 帧，144Hz 保证 60 帧）
 
     class VSyncPhysicsWheel {
-      constructor(radius, slotAngle) {
+      constructor(radius, slotAngle, count) {
         this.radius = radius;
         this.slotAngle = slotAngle;
+        // 条目数由外部决定（内环的应用列表是运行时拉到的），滚动边界按它算。
+        this.count = count;
         this.targetIndex = 0;
         this.currentAngle = 0;
         this.vel = 0;
@@ -89,7 +100,7 @@
 
       scroll(dir) {
         const next = this.targetIndex + dir;
-        if (next >= 0 && next < ALL_ITEMS.length) {
+        if (next >= 0 && next < this.count) {
           this.targetIndex = next;
         } else {
           // 触底微弹性冲击
@@ -123,8 +134,8 @@
       }
     }
 
-    const outerWheel = new VSyncPhysicsWheel(OUTER_R, OUTER_SLOT_ANGLE);
-    const innerWheel = new VSyncPhysicsWheel(INNER_R, INNER_SLOT_ANGLE);
+    const outerWheel = new VSyncPhysicsWheel(OUTER_R, OUTER_SLOT_ANGLE, OUTER_ITEMS.length);
+    const innerWheel = new VSyncPhysicsWheel(INNER_R, INNER_SLOT_ANGLE, 0);
 
     // 硬件加速渲染管线（纯浮点亚像素精度直通，单帧耗时 < 0.03ms）
     function renderFrame() {
@@ -156,9 +167,9 @@
       ctx.arc(420, 420, 200, Math.PI, 1.5 * Math.PI, false);
       ctx.stroke();
 
-      // 3. 渲染内外环（微刻度导轨 + 实体数字槽位）
-      renderWheel(outerWheel, OUTER_R, ring === 'outer');
-      renderWheel(innerWheel, INNER_R, ring === 'inner');
+      // 3. 渲染内外环（微刻度导轨 + 实体槽位；外环是数字，内环是应用图标）
+      renderWheel(outerWheel, OUTER_R, ring === 'outer', OUTER_ITEMS, 'text');
+      renderWheel(innerWheel, INNER_R, ring === 'inner', innerItems, 'icon');
 
       ctx.restore();
 
@@ -170,13 +181,13 @@
       drawCenterArea();
     }
 
-    function renderWheel(wheel, radius, isActive) {
+    function renderWheel(wheel, radius, isActive, items, kind) {
       ctx.save();
       const baseAlpha = isActive ? 1.0 : 0.38;
       ctx.globalAlpha = baseAlpha;
 
-      // 3.2 实体数字刻度槽位
-      ALL_ITEMS.forEach((item, index) => {
+      // 3.2 实体刻度槽位：外环画数字，内环画应用图标
+      items.forEach((item, index) => {
         const itemAngle = CENTER_ANGLE + index * wheel.slotAngle + wheel.currentAngle;
         const rad = (itemAngle * Math.PI) / 180;
         const cx = CX + radius * Math.cos(rad);
@@ -197,6 +208,35 @@
         // 绘制槽位圆圈（纯亚像素抗锯齿）
         ctx.beginPath();
         ctx.arc(cx, cy, BUTTON_R, 0, 2 * Math.PI);
+
+        if (kind === 'icon') {
+          // 应用图标：品牌色实心圆 + 白色描边，保证在浅底和暗色下都清晰。
+          ctx.fillStyle = item.color || '#64748b';
+          ctx.strokeStyle = isActive && intensity > 0.6 ? '#ffffff' : 'rgba(255, 255, 255, 0.92)';
+          ctx.lineWidth = isActive && intensity > 0.6 ? 3 : 1.5;
+          ctx.fill();
+          ctx.stroke();
+
+          // 正立水平文字（零旋转），按字数自适应字号
+          const label = String(item.label || '?');
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.font =
+            '700 ' +
+            (label.length > 2 ? 12 : label.length > 1 ? 15 : 19) +
+            'px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
+          ctx.fillText(label, cx, cy);
+
+          // 已打开的应用点一个小白点，和「点了会启动」区分开。
+          if (item.open) {
+            ctx.beginPath();
+            ctx.arc(cx, cy + BUTTON_R - 7, 3.2, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fill();
+          }
+          return;
+        }
 
         if (isActive && intensity > 0) {
           const fillR = Math.round(255 + (240 - 255) * intensity);
@@ -276,10 +316,13 @@
       ctx.fillText('控制中心', 320, 323);
 
       const activeWheel = ring === 'outer' ? outerWheel : innerWheel;
-      const currentIdx = Math.max(0, Math.min(ALL_ITEMS.length - 1, Math.round(-activeWheel.currentAngle / activeWheel.slotAngle)));
+      const activeItems = ring === 'outer' ? OUTER_ITEMS : innerItems;
+      const currentIdx = Math.max(0, Math.min(activeWheel.count - 1, Math.round(-activeWheel.currentAngle / activeWheel.slotAngle)));
+      const current = activeItems[currentIdx];
+      const currentName = current === undefined ? '（空）' : typeof current === 'string' ? current : current.name;
       ctx.fillStyle = '#64748b';
       ctx.font = '500 11px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
-      ctx.fillText(`${ring === 'outer' ? '外环' : '内环'} · ${ALL_ITEMS[currentIdx]}`, 320, 345);
+      ctx.fillText(`${ring === 'outer' ? '外环' : '内环'} · ${currentName}`, 320, 345);
 
       ctx.restore();
     }
@@ -318,6 +361,9 @@
     // ---- 菜单状态持久化：记住上次停留的环与选择位置，下次打开恢复 ----
     const MENU_STATE_KEY = 'remote-mic-quick-menu-state';
 
+    // 内环的应用列表是异步拉到的，恢复位置时先把它记下来，等列表到位再落定。
+    let savedInnerIndex = 0;
+
     function saveMenuState() {
       try {
         localStorage.setItem(
@@ -340,8 +386,8 @@
         const s = JSON.parse(raw);
         const clamp = (v, max) => Math.max(0, Math.min(max, Number(v) || 0));
         if (s.ring === 'outer' || s.ring === 'inner') ring = s.ring;
-        outerWheel.targetIndex = clamp(s.outer, ALL_ITEMS.length - 1);
-        innerWheel.targetIndex = clamp(s.inner, ALL_ITEMS.length - 1);
+        outerWheel.targetIndex = clamp(s.outer, OUTER_ITEMS.length - 1);
+        savedInnerIndex = Math.max(0, Number(s.inner) || 0);
         // 位置直接落定，不做开场滚动动画
         outerWheel.currentAngle = -outerWheel.targetIndex * outerWheel.slotAngle;
         innerWheel.currentAngle = -innerWheel.targetIndex * innerWheel.slotAngle;
@@ -351,8 +397,9 @@
     }
 
     function scrollCurrent(dir) {
-      if (ring === 'outer') outerWheel.scroll(dir);
-      else innerWheel.scroll(dir);
+      const wheel = ring === 'outer' ? outerWheel : innerWheel;
+      if (wheel.count <= 0) return;
+      wheel.scroll(dir);
       wakeVsync();
       saveMenuState();
     }
@@ -363,6 +410,100 @@
       wakeVsync();
       saveMenuState();
     }
+
+    // ---- 内环的应用图标：拉列表、点击命中、执行 ----
+
+    function invoke(cmd, args) {
+      if (!(window.__TAURI__ && window.__TAURI__.core)) {
+        return Promise.reject(new Error('Tauri 不可用'));
+      }
+      return window.__TAURI__.core.invoke(cmd, args);
+    }
+
+    function log(message) {
+      invoke('log_message', { message: '快捷菜单: ' + message }).catch(() => {});
+    }
+
+    /** 拉取内环应用列表。失败就退化成空内环，不影响外环与其它功能。 */
+    function loadApps() {
+      return invoke('app_menu_apps')
+        .then((apps) => {
+          innerItems = Array.isArray(apps) ? apps : [];
+        })
+        .catch((err) => {
+          innerItems = [];
+          log('拉取应用列表失败: ' + String(err));
+        })
+        .then(() => {
+          innerWheel.count = innerItems.length;
+          innerWheel.targetIndex = innerItems.length
+            ? Math.max(0, Math.min(innerItems.length - 1, savedInnerIndex))
+            : 0;
+          innerWheel.currentAngle = -innerWheel.targetIndex * innerWheel.slotAngle;
+          innerWheel.vel = 0;
+          renderFrame();
+        });
+    }
+
+    /**
+     * 执行当前选中项。
+     * 外环仍是占位条目，没有动作；内环选中哪个就打开哪个应用。
+     */
+    function activateCurrent() {
+      if (ring !== 'inner') return;
+      const item = innerItems[innerWheel.targetIndex];
+      if (!item) return;
+      log('打开应用：' + item.name);
+      invoke('open_app_profile', { name: item.name })
+        .then((msg) => log(String(msg)))
+        .catch((err) => log('打开失败: ' + String(err)));
+    }
+
+    /** 鼠标坐标 -> 命中的槽位。先测内环再测外环。 */
+    function hitTest(px, py) {
+      const rings = [
+        { name: 'inner', wheel: innerWheel, items: innerItems },
+        { name: 'outer', wheel: outerWheel, items: OUTER_ITEMS },
+      ];
+      for (const r of rings) {
+        for (let i = 0; i < r.items.length; i++) {
+          const angle = CENTER_ANGLE + i * r.wheel.slotAngle + r.wheel.currentAngle;
+          const rad = (angle * Math.PI) / 180;
+          const cx = CX + r.wheel.radius * Math.cos(rad);
+          const cy = CY + r.wheel.radius * Math.sin(rad);
+          if (Math.hypot(px - cx, py - cy) <= BUTTON_R) return { ring: r.name, index: i };
+        }
+      }
+      return null;
+    }
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const px = ((e.clientX - rect.left) / rect.width) * 420;
+      const py = ((e.clientY - rect.top) / rect.height) * 420;
+
+      const hit = hitTest(px, py);
+      if (!hit) {
+        // 点空白处 = 关掉菜单（和普通菜单的「点外面收起」一致）。
+        invoke('close_quick_menu').catch(() => {});
+        return;
+      }
+
+      const wheel = hit.ring === 'inner' ? innerWheel : outerWheel;
+      wheel.targetIndex = hit.index;
+      wakeVsync();
+      saveMenuState();
+
+      if (hit.ring !== ring) {
+        // 点的是另一个环：先切过去，本次不执行，避免误触发。
+        ring = hit.ring;
+        renderFrame();
+        return;
+      }
+
+      renderFrame();
+      activateCurrent();
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -420,8 +561,9 @@
             return;
           }
           if (key === 'ok') {
-            // 选择当前项：菜单条目动作待后续版本接入。
             stopMenuRepeat();
+            if (pressed) activateCurrent();
+            return;
           }
         })
         .catch((err) =>
@@ -431,9 +573,10 @@
         );
     }
 
-    // 恢复上次打开时的停留位置，再渲染首帧。
+    // 恢复上次打开时的停留位置，再渲染首帧；应用列表异步到位后重绘内环。
     restoreMenuState();
     renderFrame();
+    loadApps();
     document.body.tabIndex = 0;
     document.body.focus();
   </script>

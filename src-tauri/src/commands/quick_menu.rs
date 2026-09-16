@@ -20,11 +20,7 @@ pub struct QuickMenuKeyEvent {
 pub fn toggle_quick_menu(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("quick-menu") {
         if win.is_visible().map_err(|e| e.to_string())? {
-            win.hide().map_err(|e| e.to_string())?;
-            state
-                .dispatcher
-                .set_input_mode(core_dispatch::InputMode::Normal);
-            core_log::log_info("[quick-menu] 已关闭，恢复普通按键映射");
+            hide_quick_menu(&app, &state)?;
         } else {
             win.show().map_err(|e| e.to_string())?;
             win.set_focus().map_err(|e| e.to_string())?;
@@ -37,6 +33,34 @@ pub fn toggle_quick_menu(app: tauri::AppHandle, state: State<AppState>) -> Resul
         }
     }
     Ok(())
+}
+
+/// 收起快捷菜单并恢复普通按键映射；窗口本来就不可见时是空操作。
+///
+/// 独立成一个函数是因为「打开某个应用」也要用它——那条路径不能走
+/// `toggle_quick_menu`，否则菜单没开时反而会把它打开。
+pub fn hide_quick_menu(app: &tauri::AppHandle, state: &State<AppState>) -> Result<(), String> {
+    let Some(win) = app.get_webview_window("quick-menu") else {
+        return Ok(());
+    };
+    if !win.is_visible().map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    win.hide().map_err(|e| e.to_string())?;
+    state
+        .dispatcher
+        .set_input_mode(core_dispatch::InputMode::Normal);
+    core_log::log_info("[quick-menu] 已关闭，恢复普通按键映射");
+    Ok(())
+}
+
+/// 只收起、不切换——供菜单页面在「点到空白处」时自己关闭。
+///
+/// 页面不能用 `toggle_quick_menu`：那是切换语义，一旦页面与后端对当前可见性
+/// 的判断不一致，就会变成「关闭→立刻又打开」。
+#[tauri::command]
+pub fn close_quick_menu(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+    hide_quick_menu(&app, &state)
 }
 
 /// 调度器应用事件出口：处理所有需要 Tauri 层执行的事件。

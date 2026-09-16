@@ -1,0 +1,13 @@
+{
+  "process": ["ZCode.exe"],
+  "name": "ZCode",
+  "icon": { "label": "Z", "color": "#F59E0B" },
+  "launch": { "kind": "appid", "value": "dev.zcode.app" },
+  "note": "Electron 应用，实测进程名 ZCode.exe、主窗口标题 ZCode，启动走 shell:AppsFolder\\dev.zcode.app（该 AppID 由安装程序注册到开始菜单，与本机安装路径无关，换机器也能用）。若某台机器上查不到这个 AppID，可改用 { \"kind\": \"path\", \"value\": \"<安装目录>\\ZCode.exe\" }。这里只放通用键（翻页/Enter/Esc）——应用专属快捷键待实测后补充，不要凭猜测填写。",
+  "bindings": [
+    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
+    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
+    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
+  ]
+}

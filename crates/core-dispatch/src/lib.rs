@@ -99,12 +99,27 @@ pub struct ActionJob {
 pub struct ForegroundStatus {
     /// 当前前台窗口的可执行文件名，例如 `Codex.exe`；读不到时为 None。
     pub process: Option<String>,
+    /// 当前前台窗口的标题；只按标题匹配的配置（Chrome PWA、WSL 里的服务）靠它命中。
+    pub title: Option<String>,
     /// 命中的应用配置展示名；没命中时为 None。
     pub profile: Option<String>,
     /// 已加载的应用配置总数。
     pub profile_count: usize,
     /// 命中的配置覆盖了哪些按键（稳定小写标识，已排序去重）。
     pub overridden_buttons: Vec<String>,
+}
+
+/// 快捷菜单内圈的一个应用图标。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MenuAppEntry {
+    /// 稳定标识：回传 `open_app_profile` 时用它定位配置（当前即展示名）。
+    pub name: String,
+    /// 图标上的 1–2 个字符。
+    pub label: String,
+    /// 品牌色，形如 `#4D6BFE`。
+    pub color: String,
+    /// 当前是否已有可聚焦的窗口（前端据此区分「已打开」与「将启动」）。
+    pub open: bool,
 }
 
 /// 按键调度器。构造后通过 [`KeyDispatcher::spawn_runtime`] 启动
@@ -172,9 +187,12 @@ impl KeyDispatcher {
     pub fn foreground_status(&self) -> ForegroundStatus {
         let inner = self.inner.lock().unwrap();
         let process = core_app_profile::foreground_process_name();
-        let profile = process
-            .as_deref()
-            .and_then(|exe| inner.profiles.match_process(exe));
+        let title = core_app_profile::foreground_window_title();
+        let profile = process.as_deref().and_then(|exe| {
+            inner
+                .profiles
+                .match_context(exe, title.as_deref().unwrap_or_default())
+        });
         ForegroundStatus {
             profile_count: inner.profiles.profiles().len(),
             profile: profile.map(|p| p.display_name()),
@@ -191,7 +209,44 @@ impl KeyDispatcher {
                 })
                 .unwrap_or_default(),
             process,
+            title,
         }
+    }
+
+    /// 快捷菜单内圈要显示的应用图标。
+    ///
+    /// 只返回配了 `icon` 的配置——**图标即入菜单的开关**，不在菜单里露脸的应用
+    /// 仍然可以正常享受前台自动切换映射，只是没有入口。
+    pub fn menu_apps(&self) -> Vec<MenuAppEntry> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .profiles
+            .menu_entries()
+            .into_iter()
+            .filter_map(|p| {
+                let icon = p.icon.as_ref()?;
+                Some(MenuAppEntry {
+                    name: p.display_name(),
+                    label: icon.label.clone(),
+                    color: icon.color.clone(),
+                    open: core_app_profile::find_window(p).is_some(),
+                })
+            })
+            .collect()
+    }
+
+    /// 按展示名取一份应用配置的副本（供「点图标」时启动/聚焦用）。
+    ///
+    /// 返回副本而不是引用：调用方要去做启动窗口这类可能阻塞的事，
+    /// 不该一直占着调度器的锁。
+    pub fn profile_named(&self, name: &str) -> Option<AppProfile> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .profiles
+            .profiles()
+            .iter()
+            .find(|p| p.display_name() == name)
+            .cloned()
     }
 
     /// 当前语音识别目标。
@@ -470,12 +525,16 @@ fn profile_override(
 }
 
 /// 取当前前台应用命中的配置；没有加载任何配置时不查前台窗口。
+///
+/// 匹配用「进程名 + 窗口标题」：进程名优先，标题兜底是为了 Chrome PWA、
+/// 以及跑在 WSL 里的服务（DSH 只有浏览器窗口是 Windows 进程）。
 fn foreground_profile(profiles: &ProfileRegistry) -> Option<&AppProfile> {
     if profiles.profiles().is_empty() {
         return None;
     }
     let exe = core_app_profile::foreground_process_name()?;
-    profiles.match_process(&exe)
+    let title = core_app_profile::foreground_window_title().unwrap_or_default();
+    profiles.match_context(&exe, &title)
 }
 
 /// 构建虚拟键 -> 物理按键反查表。
@@ -648,8 +707,8 @@ mod tests {
         AppProfile {
             process: core_app_profile::ProcessSpec::One("Codex.exe".into()),
             name: "测试应用".into(),
-            note: String::new(),
             bindings,
+            ..Default::default()
         }
     }
 
@@ -1130,12 +1189,12 @@ mod tests {
         registry.upsert(AppProfile {
             process: core_app_profile::ProcessSpec::One(exe),
             name: "前台测试".into(),
-            note: String::new(),
             bindings: vec![binding(
                 ButtonId::Menu,
                 Trigger::SingleClick,
                 ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]),
             )],
+            ..Default::default()
         });
 
         let hit = foreground_profile(&registry).expect("应命中当前前台进程");
@@ -1152,5 +1211,29 @@ mod tests {
             resolve_action(&mapping, Some(hit), ButtonId::Up, Trigger::SingleClick),
             mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
         );
+    }
+
+    /// 真机端到端：只给**窗口标题**（不给进程名）也要能命中。
+    ///
+    /// 这条路径服务于 Chrome PWA 和跑在 WSL 里的服务——它们在 Windows 侧
+    /// 只能靠标题认出来。
+    #[test]
+    fn foreground_profile_matches_real_foreground_title() {
+        let Some(title) = core_app_profile::foreground_window_title() else {
+            eprintln!("skip: 当前环境读不到前台窗口标题");
+            return;
+        };
+        eprintln!("foreground title = {title}");
+
+        let mut registry = ProfileRegistry::default();
+        registry.upsert(AppProfile {
+            // 进程名故意留空：这条测试要证明标题自己就够用。
+            name: "标题测试".into(),
+            window_title_contains: vec![title.clone()],
+            ..Default::default()
+        });
+
+        let hit = foreground_profile(&registry).expect("应能只靠标题命中");
+        assert_eq!(hit.display_name(), "标题测试");
     }
 }

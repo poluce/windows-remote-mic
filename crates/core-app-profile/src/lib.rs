@@ -36,9 +36,13 @@
 
 mod foreground;
 mod model;
+mod window;
 
-pub use foreground::foreground_process_name;
-pub use model::{AppProfile, ProcessSpec};
+pub use foreground::{file_name, foreground_process_name, foreground_window_title};
+pub use model::{AppProfile, IconSpec, LaunchSpec, ProcessSpec};
+pub use window::{
+    find_window, focus, launch, list_windows, open_profile, AppWindow, OpenOutcome, WindowError,
+};
 
 use std::path::Path;
 
@@ -108,6 +112,30 @@ impl ProfileRegistry {
             .trim();
         self.profiles.iter().find(|p| p.process.matches(name))
     }
+
+    /// 按「进程名 + 窗口标题」匹配配置，进程名优先。
+    ///
+    /// 标题兜底是为进程名认不出来的目标准备的：Chrome PWA、以及跑在 WSL 里
+    /// 的服务（DSH 只有浏览器窗口是 Windows 进程）。
+    pub fn match_context(&self, exe_name: &str, window_title: &str) -> Option<&AppProfile> {
+        let name = exe_name
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or(exe_name)
+            .trim();
+        self.profiles
+            .iter()
+            .find(|p| p.process.matches(name))
+            .or_else(|| self.profiles.iter().find(|p| p.matches_title(window_title)))
+    }
+
+    /// 配了图标的配置，用于快捷菜单内圈；顺序即文件里的声明顺序。
+    pub fn menu_entries(&self) -> Vec<&AppProfile> {
+        self.profiles
+            .iter()
+            .filter(|p| p.icon.as_ref().is_some_and(|i| !i.label.trim().is_empty()))
+            .collect()
+    }
 }
 
 /// 读取一个目录下的所有 `*.json`；坏文件只记日志、不中断。
@@ -149,12 +177,12 @@ mod tests {
         AppProfile {
             process: ProcessSpec::One(process.into()),
             name: name.into(),
-            note: String::new(),
             bindings: vec![KeyBinding {
                 button: ButtonId::Ok,
                 trigger: Trigger::SingleClick,
                 action: ActionKind::Return,
             }],
+            ..Default::default()
         }
     }
 
@@ -168,8 +196,8 @@ mod tests {
         );
         for p in registry.profiles() {
             assert!(
-                !p.process.names().is_empty(),
-                "内置配置缺少 process：{}",
+                !p.process.is_empty() || !p.window_title_contains.is_empty(),
+                "内置配置既没有 process 也没有 window_title_contains，永远匹配不上：{}",
                 p.display_name()
             );
             assert!(
@@ -253,5 +281,66 @@ mod tests {
             registry.profiles().len(),
             ProfileRegistry::builtin().profiles().len()
         );
+    }
+
+    #[test]
+    fn match_context_falls_back_to_window_title() {
+        let mut registry = ProfileRegistry::default();
+        let mut dsh = profile("__not_a_real_process__.exe", "DeepSeek Harness");
+        dsh.window_title_contains = vec!["DeepSeek Harness".into()];
+        registry.upsert(dsh);
+
+        // 进程名认不出来，靠标题命中（WSL 里的服务就是这个情形）。
+        assert_eq!(
+            registry
+                .match_context("chrome.exe", "打招呼 · DeepSeek Harness")
+                .map(|p| p.display_name()),
+            Some("DeepSeek Harness".to_string())
+        );
+        // 标题不匹配就不该命中。
+        assert!(registry.match_context("chrome.exe", "别的标签页").is_none());
+        // 空标题不能命中任何配置。
+        assert!(registry.match_context("chrome.exe", "  ").is_none());
+    }
+
+    #[test]
+    fn match_context_prefers_process_over_title() {
+        let mut registry = ProfileRegistry::default();
+        let mut by_process = profile("Editor.exe", "编辑器");
+        by_process.window_title_contains = vec!["不该赢".into()];
+        registry.upsert(by_process);
+        let mut by_title = profile("__not_a_real_process__.exe", "标题命中");
+        by_title.window_title_contains = vec!["编辑器窗口".into()];
+        registry.upsert(by_title);
+
+        // 进程名和标题同时命中不同配置时，进程名优先。
+        assert_eq!(
+            registry
+                .match_context("Editor.exe", "编辑器窗口")
+                .map(|p| p.display_name()),
+            Some("编辑器".to_string())
+        );
+    }
+
+    #[test]
+    fn menu_entries_skip_profiles_without_icon() {
+        let mut registry = ProfileRegistry::default();
+        registry.upsert(profile("A.exe", "无图标"));
+        let mut with_icon = profile("B.exe", "有图标");
+        with_icon.icon = Some(IconSpec {
+            label: "B".into(),
+            color: "#3B82F6".into(),
+        });
+        registry.upsert(with_icon);
+        let mut blank = profile("C.exe", "空图标");
+        blank.icon = Some(IconSpec {
+            label: "   ".into(),
+            color: "#000".into(),
+        });
+        registry.upsert(blank);
+
+        let entries = registry.menu_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].display_name(), "有图标");
     }
 }
