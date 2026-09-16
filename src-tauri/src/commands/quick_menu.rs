@@ -58,8 +58,19 @@ pub fn hide_quick_menu(app: &tauri::AppHandle, state: &State<AppState>) -> Resul
 ///
 /// 页面不能用 `toggle_quick_menu`：那是切换语义，一旦页面与后端对当前可见性
 /// 的判断不一致，就会变成「关闭→立刻又打开」。
+///
+/// # 为什么必须是 async
+///
+/// 调用方**就是被隐藏的那个窗口**。同步命令跑在主线程上，主线程一边执行
+/// `hide()`、一边又要把 IPC 回执交给同一个 webview，重入后双方互等——实测
+/// 主线程就此卡死，应用被 Windows 判定 AppHang 关掉（16:59:41 那次）。
+/// 声明成 `async` 后 `hide()` 在异步线程上执行，主线程空出来投递回执。
 #[tauri::command]
-pub fn close_quick_menu(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
+pub async fn close_quick_menu(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    core_log::log_line("[quick-menu] 收到页面关闭请求");
     hide_quick_menu(&app, &state)
 }
 

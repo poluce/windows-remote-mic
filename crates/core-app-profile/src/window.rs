@@ -214,8 +214,12 @@ pub fn focus(window: &AppWindow) -> Result<(), WindowError> {
             return Ok(());
         }
 
-        // 第一步：把自己的输入队列挂到前台线程上，借用它的前台权限。
-        // 调用完必须摘掉，否则两个线程的输入状态会一直被绑在一起。
+        // 第一步：借用前台线程的权限。
+        //
+        // 但**只在前台窗口属于别的进程时才借**：属于自己进程时，本进程已经是
+        // 「前台进程」，SetForegroundWindow 本来就放行，用不着附加。点快捷菜单
+        // 时前台窗口就是快捷菜单（自己的窗口），所以这一步通常直接跳过——
+        // 附加自己的主线程既是多余的，又可能把输入队列绑在一起。
         let foreground = GetForegroundWindow();
         let foreground_thread = if foreground.is_invalid() {
             0
@@ -223,13 +227,20 @@ pub fn focus(window: &AppWindow) -> Result<(), WindowError> {
             GetWindowThreadProcessId(foreground, None)
         };
         let current_thread = GetCurrentThreadId();
-        let attach = foreground_thread != 0 && foreground_thread != current_thread;
+        let attach = foreground_thread != 0
+            && foreground_thread != current_thread
+            && !belongs_to_current_process(foreground);
 
         let attached =
             attach && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
         let _ = SetForegroundWindow(hwnd);
         if attached {
-            let _ = AttachThreadInput(current_thread, foreground_thread, false);
+            // 摘不掉就会让两个线程的输入状态一直绑在一起，失败必须留痕。
+            if !AttachThreadInput(current_thread, foreground_thread, false).as_bool() {
+                core_log::log_warn(
+                    "[app-profile] AttachThreadInput 未能解除，输入队列可能仍被绑定",
+                );
+            }
         }
 
         // 第二步：前台锁不认上面的借用时，走 Alt+Tab 同款路径。
@@ -248,6 +259,22 @@ pub fn focus(window: &AppWindow) -> Result<(), WindowError> {
         } else {
             Err(WindowError::FocusDenied)
         }
+    }
+}
+
+/// 该窗口是否属于当前进程。
+#[cfg(target_os = "windows")]
+fn belongs_to_current_process(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    unsafe {
+        if hwnd.is_invalid() {
+            return false;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid != 0 && pid == GetCurrentProcessId()
     }
 }
 

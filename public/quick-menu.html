@@ -485,6 +485,7 @@
       const hit = hitTest(px, py);
       if (!hit) {
         // 点空白处 = 关掉菜单（和普通菜单的「点外面收起」一致）。
+        log('点到空白处，收起菜单');
         invoke('close_quick_menu').catch(() => {});
         return;
       }

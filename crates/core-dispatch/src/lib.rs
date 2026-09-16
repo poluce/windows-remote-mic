@@ -218,11 +218,16 @@ impl KeyDispatcher {
     /// 只返回配了 `icon` 的配置——**图标即入菜单的开关**，不在菜单里露脸的应用
     /// 仍然可以正常享受前台自动切换映射，只是没有入口。
     pub fn menu_apps(&self) -> Vec<MenuAppEntry> {
-        let inner = self.inner.lock().unwrap();
-        inner
-            .profiles
-            .menu_entries()
-            .into_iter()
+        // 先把要展示的配置拷出来、放掉调度器的锁，再去枚举窗口。
+        // `find_window` 要遍历本机所有顶层窗口，不该让按键线程陪着一起等，
+        // 更不该在持锁期间做系统调用。
+        let profiles: Vec<AppProfile> = {
+            let inner = self.inner.lock().unwrap();
+            inner.profiles.menu_entries().into_iter().cloned().collect()
+        };
+
+        profiles
+            .iter()
             .filter_map(|p| {
                 let icon = p.icon.as_ref()?;
                 Some(MenuAppEntry {
