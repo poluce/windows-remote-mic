@@ -559,6 +559,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-app-profile"
+version = "0.4.2"
+dependencies = [
+ "core-log",
+ "core-mapping",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "core-atvv"
 version = "0.4.2"
 dependencies = [

@@ -1,0 +1,11 @@
+{
+  "process": ["Claude.exe"],
+  "name": "Claude Code 桌面版",
+  "note": "Electron 应用（官方开发者确认）。这里只放通用键（翻页/Enter/Esc）——应用专属快捷键待实测后补充，不要凭猜测填写。process 名请在任务管理器里核对后修正。",
+  "bindings": [
+    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
+    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
+    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
+  ]
+}

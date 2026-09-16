@@ -1,0 +1,12 @@
+{
+  "process": ["Codex.exe", "ChatGPT.exe"],
+  "name": "Codex 桌面版",
+  "note": "OpenAI Codex 桌面应用（Electron，2026-03 上 Windows；也已并入 ChatGPT 桌面应用，故同时匹配 ChatGPT.exe）。命令菜单快捷键取自官方文档，但文档以 ⌘ 描述，Windows 版需实测确认。process 名请在任务管理器里核对后修正。",
+  "bindings": [
+    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
+    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
+    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Back", "trigger": "SingleClick", "action": "Escape" },
+    { "button": "Menu", "trigger": "SingleClick", "action": { "KeyCombo": ["lctrl", "k"] } }
+  ]
+}
