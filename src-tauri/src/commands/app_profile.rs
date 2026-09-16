@@ -14,17 +14,23 @@ pub fn app_profile_status(state: State<AppState>) -> core_dispatch::ForegroundSt
 
 /// 快捷菜单内圈要显示的应用图标（只含配了 `icon` 的配置）。
 ///
-/// 同步命令：跑在 Tauri 的主线程上（这是定位 AppHang 的现场，暂不改成
-/// async——它要遍历本机所有顶层窗口，如果卡住，日志里的进入/退出会直接指认）。
+/// 声明成 `async` 是纵深防御：它会遍历本机所有顶层窗口，虽然实测每次只要
+/// 约 2 毫秒，但没有理由让 UI 线程替它站岗——真撞上某个窗口出问题时，至少
+/// 界面还能动，日志里的「开始收集 / 完成」也能指出卡在哪。
+///
+/// 返回 `Result` 只是 Tauri 对「带引用的 async 命令」的硬性要求，这里不会失败；
+/// 成功时前端拿到的仍是数组本身。
 #[tauri::command]
-pub fn app_menu_apps(state: State<AppState>) -> Vec<core_dispatch::MenuAppEntry> {
+pub async fn app_menu_apps(
+    state: State<'_, AppState>,
+) -> Result<Vec<core_dispatch::MenuAppEntry>, String> {
     core_log::log_line("[app-profile] 开始收集菜单应用");
     let apps = state.dispatcher.menu_apps();
     core_log::log_line(&format!(
         "[app-profile] 菜单应用收集完成：{} 个",
         apps.len()
     ));
-    apps
+    Ok(apps)
 }
 
 /// 「点图标」：已打开就切到前台，没打开就按配置启动。

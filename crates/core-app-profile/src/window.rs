@@ -229,7 +229,7 @@ pub fn focus(window: &AppWindow) -> Result<(), WindowError> {
         let current_thread = GetCurrentThreadId();
         let attach = foreground_thread != 0
             && foreground_thread != current_thread
-            && !belongs_to_current_process(foreground);
+            && !crate::foreground::belongs_to_current_process(foreground);
 
         let attached =
             attach && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
@@ -259,22 +259,6 @@ pub fn focus(window: &AppWindow) -> Result<(), WindowError> {
         } else {
             Err(WindowError::FocusDenied)
         }
-    }
-}
-
-/// 该窗口是否属于当前进程。
-#[cfg(target_os = "windows")]
-fn belongs_to_current_process(hwnd: windows::Win32::Foundation::HWND) -> bool {
-    use windows::Win32::System::Threading::GetCurrentProcessId;
-    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    unsafe {
-        if hwnd.is_invalid() {
-            return false;
-        }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        pid != 0 && pid == GetCurrentProcessId()
     }
 }
 

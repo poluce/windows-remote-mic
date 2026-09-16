@@ -56,7 +56,12 @@ struct Inner {
     mapping: MappingConfig,
     /// 应用专属配置（一个应用一个文件）。命中前台进程时覆盖 `mapping`
     /// 中对应的 (按键, 触发)；未覆盖的项继续沿用全局映射。
-    profiles: ProfileRegistry,
+    ///
+    /// 用 `Arc` 是为了能在**不持锁**的情况下取一份快照去查前台窗口——
+    /// 查询要走 Win32，而 `GetWindowText` 对自己进程的窗口是 `SendMessage`，
+    /// 持锁调用会和正等着取锁的线程互等成死锁（见
+    /// [`KeyDispatcher::foreground_profile_snapshot`]）。
+    profiles: Arc<ProfileRegistry>,
     /// 虚拟键 -> 物理按键（默认表 + 校准表覆盖）。
     vkey_map: HashMap<u16, ButtonId>,
     buttons: HashMap<ButtonId, ButtonRuntime>,
@@ -153,7 +158,7 @@ impl KeyDispatcher {
                 vkey_map: build_vkey_map(calibrations),
                 buttons: default_button_runtimes(),
                 mapping,
-                profiles: ProfileRegistry::default(),
+                profiles: Arc::new(ProfileRegistry::default()),
                 enabled: true,
                 mode: InputMode::Normal,
             }),
@@ -179,22 +184,36 @@ impl KeyDispatcher {
     /// 替换应用专属配置集合（启动时加载，或用户改过文件后重载）。
     pub fn set_profiles(&self, profiles: ProfileRegistry) {
         let count = profiles.profiles().len();
-        self.inner.lock().unwrap().profiles = profiles;
+        self.inner.lock().unwrap().profiles = Arc::new(profiles);
         core_log::log_line(&format!("[dispatch] 已加载 {count} 份应用专属配置"));
+    }
+
+    /// 取一份「当前前台应用命中的配置」，**全程不持调度器锁**。
+    ///
+    /// [`feed`](Self::feed) / [`tick_once`](Self::tick_once) 都要在临界区里
+    /// 知道「现在该用哪份配置」，但**不能**在持锁时去查前台窗口：
+    /// `foreground_process_name` / `foreground_window_title` 走的是 Win32，
+    /// 其中 `GetWindowText` 对属于本进程的窗口会 `SendMessage` 一次跨线程同步。
+    /// 快捷菜单打开时前台窗口正是我们自己的窗口，于是「持锁 + 等主线程处理消息」
+    /// 和「主线程正等着取这把锁」互等，直接把整个应用锁死（实测 AppHang）。
+    ///
+    /// 所以先短暂取锁把 `Arc` 快照拿出来，放掉锁之后再查。
+    fn foreground_profile_snapshot(&self) -> Option<AppProfile> {
+        let profiles = { self.inner.lock().unwrap().profiles.clone() };
+        foreground_profile(&profiles).cloned()
     }
 
     /// 当前前台应用与命中的配置，供诊断页显示 / 核对进程名。
     pub fn foreground_status(&self) -> ForegroundStatus {
-        let inner = self.inner.lock().unwrap();
+        // 同样先取快照再查前台窗口，不在持锁期间碰 Win32。
+        let profiles = { self.inner.lock().unwrap().profiles.clone() };
         let process = core_app_profile::foreground_process_name();
         let title = core_app_profile::foreground_window_title();
-        let profile = process.as_deref().and_then(|exe| {
-            inner
-                .profiles
-                .match_context(exe, title.as_deref().unwrap_or_default())
-        });
+        let profile = process
+            .as_deref()
+            .and_then(|exe| profiles.match_context(exe, title.as_deref().unwrap_or_default()));
         ForegroundStatus {
-            profile_count: inner.profiles.profiles().len(),
+            profile_count: profiles.profiles().len(),
             profile: profile.map(|p| p.display_name()),
             overridden_buttons: profile
                 .map(|p| {
@@ -369,13 +388,15 @@ impl KeyDispatcher {
     /// 注入一个虚拟键事件，返回产生的任务（不发往执行线程）。
     fn feed(&self, vkey: u16, pressed: bool, now: u64) -> Vec<ActionJob> {
         let mut jobs = Vec::new();
+        // 先在临界区之外解析前台配置——这一步会调 Win32，持锁调用会死锁。
+        let profile = self.foreground_profile_snapshot();
+
         let mut inner = self.inner.lock().unwrap();
         if !inner.enabled {
             return jobs;
         }
         let Inner {
             mapping,
-            profiles,
             vkey_map,
             buttons,
             ..
@@ -383,7 +404,7 @@ impl KeyDispatcher {
         let Some(&button) = vkey_map.get(&vkey) else {
             return jobs;
         };
-        let profile = foreground_profile(profiles);
+        let profile = profile.as_ref();
         let rt = buttons.entry(button).or_default();
         if pressed {
             if rt.down {
@@ -435,17 +456,17 @@ impl KeyDispatcher {
     /// 驱动一次触发检测（确认延迟的单击与长按）。
     fn tick_once(&self, now: u64) -> Vec<ActionJob> {
         let mut jobs = Vec::new();
+        // 同 feed：前台配置在临界区之外解析。
+        let profile = self.foreground_profile_snapshot();
+
         let mut inner = self.inner.lock().unwrap();
         if !inner.enabled {
             return jobs;
         }
         let Inner {
-            mapping,
-            profiles,
-            buttons,
-            ..
+            mapping, buttons, ..
         } = &mut *inner;
-        let profile = foreground_profile(profiles);
+        let profile = profile.as_ref();
         for (button, rt) in buttons.iter_mut() {
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);

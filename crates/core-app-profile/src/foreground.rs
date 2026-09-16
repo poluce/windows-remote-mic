@@ -22,6 +22,14 @@ pub fn foreground_process_name() -> Option<String> {
 /// 取当前前台窗口的标题。
 ///
 /// 用于进程名认不出来的目标（Chrome PWA、跑在 WSL 里的服务）。
+///
+/// # 为什么自家窗口直接返回 None
+///
+/// `GetWindowText` 对**属于本进程**的窗口是走 `SendMessage(WM_GETTEXT)` 的，
+/// 也就是一次跨线程同步——对方线程不泵消息就永远等下去。快捷菜单打开时前台
+/// 窗口正是我们自己的窗口，调用方又常在持锁状态下取标题，于是：
+/// tick 线程持锁等主线程处理消息、主线程正等着取同一把锁——死锁。
+/// 自家窗口本来也没有匹配应用配置的必要，索性直接不看。
 #[cfg(target_os = "windows")]
 pub fn foreground_window_title() -> Option<String> {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -30,7 +38,7 @@ pub fn foreground_window_title() -> Option<String> {
 
     unsafe {
         let hwnd = GetForegroundWindow();
-        if hwnd.is_invalid() {
+        if hwnd.is_invalid() || belongs_to_current_process(hwnd) {
             return None;
         }
         let len = GetWindowTextLengthW(hwnd);
@@ -44,6 +52,21 @@ pub fn foreground_window_title() -> Option<String> {
         }
         let title = String::from_utf16_lossy(&buf[..written as usize]);
         (!title.trim().is_empty()).then_some(title)
+    }
+}
+
+/// 该窗口是否属于当前进程。
+///
+/// 判断「能不能对它用会发消息的窗口 API」时的依据。
+#[cfg(target_os = "windows")]
+pub(crate) fn belongs_to_current_process(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid != 0 && pid == GetCurrentProcessId()
     }
 }
 
