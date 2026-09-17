@@ -1004,10 +1004,13 @@ button:focus-visible,
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  /* 左列只放遥控器图形，收窄一点把宽度让给右边的矩阵。
-     右边同样写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话
-     窗口一窄就会被里面两张卡的最小宽度顶出去。 */
-  grid-template-columns: minmax(190px, 215px) minmax(0, 1fr);
+  /* 左列只放遥控器图形。170px + 左右各 6px 内边距 → 内容宽 156px，而遥控器
+     最宽时（zoom 顶到 1.3）是 137px，两边各余 10px。
+     再窄就得抠内边距：150px 那档只剩 2px 余量，140px 直接放不下（内容 134 <
+     遥控器 137）。遥控器是定尺寸像素图，宽度不跟着卡片走，这条是硬下限。
+     右边写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话窗口一窄
+     就会被里面两张卡的最小宽度顶出去。 */
+  grid-template-columns: minmax(0, 170px) minmax(0, 1fr);
   gap: 16px;
   /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
      各占各的内容高度，遥控器卡明显比右边的向导 + 矩阵卡高出一截。 */
@@ -1015,7 +1018,9 @@ button:focus-visible,
 }
 
 .remote-card {
-  padding: 20px 14px;
+  /* 卡片宽度由上面 .mapping-wizard 的列宽决定，内边距是留给遥控器图形的余量。
+     收窄卡片时从这里抠：竖直方向 20 → 10 还顺带把「选择按键」标题压低一点。 */
+  padding: 10px 6px;
   display: flex;
   flex-direction: column;
   align-items: center;
