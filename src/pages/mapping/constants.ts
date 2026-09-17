@@ -56,16 +56,12 @@ export function triggersFor(button: string): TriggerOption[] {
 
 export const ACTION_CATEGORIES: ActionCategory[] = [
   {
-    key: "dir",
-    title: "方向",
-    actions: [
-      { key: "arrow_up", label: "上" },
-      { key: "arrow_down", label: "下" },
-      { key: "arrow_left", label: "左" },
-      { key: "arrow_right", label: "右" },
-    ],
-  },
-  {
+    // 方向键、音量 / 播放都并进了这里：它们本来就是「按一个键让系统做件事」，
+    // 分成三个分类只是多两次点击。
+    //
+    // **顺序有讲究**：原来「系统」那几项排在最前不改动。界面上点一个分类会
+    // 把动作默认选中该分类的第一项，把方向键挪到前面的话，点「系统」默认就
+    // 从「回车」变成「上」了。
     key: "system",
     title: "系统",
     actions: [
@@ -78,12 +74,10 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "context_menu", label: "右键菜单" },
       { key: "app_switcher", label: "切换应用" },
       { key: "toggle_quick_menu", label: "快捷菜单（开/关）" },
-    ],
-  },
-  {
-    key: "media",
-    title: "音量 / 播放",
-    actions: [
+      { key: "arrow_up", label: "上" },
+      { key: "arrow_down", label: "下" },
+      { key: "arrow_left", label: "左" },
+      { key: "arrow_right", label: "右" },
       { key: "system_volume_up", label: "音量 +" },
       { key: "system_volume_down", label: "音量 −" },
       { key: "system_volume_mute", label: "静音" },
