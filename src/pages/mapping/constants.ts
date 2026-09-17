@@ -56,12 +56,13 @@ export function triggersFor(button: string): TriggerOption[] {
 
 export const ACTION_CATEGORIES: ActionCategory[] = [
   {
-    // 方向键、音量 / 播放都并进了这里：它们本来就是「按一个键让系统做件事」，
-    // 分成三个分类只是多两次点击。
+    // 方向、音量 / 播放、语音都并进了这里：它们本来就是「按一个键让系统做件事」，
+    // 分成四个分类只是多三次点击。
     //
     // **顺序有讲究**：原来「系统」那几项排在最前不改动。界面上点一个分类会
     // 把动作默认选中该分类的第一项，把方向键挪到前面的话，点「系统」默认就
-    // 从「回车」变成「上」了。
+    // 从「回车」变成「上」了。其余各组按原来分类的先后接在后面，每一组内部
+    // 的顺序也照旧——合并前后相对次序不变，肌肉记忆才不会白费。
     key: "system",
     title: "系统",
     actions: [
@@ -82,12 +83,8 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "system_volume_down", label: "音量 −" },
       { key: "system_volume_mute", label: "静音" },
       { key: "play_pause", label: "播放 / 暂停" },
+      { key: "voice", label: "语音输入（Win+H）" },
     ],
-  },
-  {
-    key: "voice",
-    title: "语音",
-    actions: [{ key: "voice", label: "语音输入（Win+H）" }],
   },
   {
     key: "combo",
