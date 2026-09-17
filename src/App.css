@@ -1522,6 +1522,14 @@ button:focus-visible,
 
 .page-fill .remote-art .x2pro-remote {
   zoom: var(--remote-zoom, 1.3);
+  /* 遥控器自带一圈外阴影（Xiaomi2ProRemote.css 里 box-shadow 的第三项
+     `0 10px 20px`）。在白卡片上它读作「立体」，可这一列的卡片外壳已经去掉、
+     改落在灰色页面上，同一层影子就变成一道像没擦干净的边。
+     只去掉外面那层，两条 inset 留着——机身还是圆润的，只是不再「浮起来」。
+     只作用于映射页：诊断页的按键测试里遥控器仍在 .card 内，影子在那里成立。 */
+  box-shadow:
+    inset 2px 2px 5px rgba(255, 255, 255, 0.9),
+    inset -2px -2px 5px rgba(0, 0, 0, 0.2);
 }
 
 /* ---------- 对话框 ---------- */
