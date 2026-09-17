@@ -220,7 +220,7 @@ export function MappingPage() {
   const isGlobalScope = scope === GLOBAL_SCOPE;
 
   const scopeItems: ScopeItem[] = [
-    { id: GLOBAL_SCOPE, label: "全局（所有应用）", removable: false },
+    { id: GLOBAL_SCOPE, label: "全局", removable: false },
     ...profiles.map((p) => ({
       id: p.id,
       label: p.name,
@@ -340,7 +340,6 @@ export function MappingPage() {
       <div className="section-label">按键配置</div>
 
       <section className="card">
-        <div className="card-title">作用范围</div>
         <ScopeBar
           items={scopeItems}
           active={scope}
