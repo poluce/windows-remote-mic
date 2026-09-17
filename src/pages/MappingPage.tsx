@@ -366,7 +366,7 @@ export function MappingPage() {
               {/* 上半：按钮墙，窄了就在这里自己滚 */}
               <div className="wizard-scroll">
               <div className="wizard-group">
-                <div className="wizard-label">② 触发方式</div>
+                <div className="wizard-label">触发方式</div>
                 <div className="trigger-options">
                   {availableTriggers.map((t) => (
                     <button
@@ -382,7 +382,7 @@ export function MappingPage() {
               </div>
 
               <div className="wizard-group">
-                <div className="wizard-label">③ 动作分类</div>
+                <div className="wizard-label">动作分类</div>
                 <div className="category-tabs">
                   {ACTION_CATEGORIES.map((c) => (
                     <button

@@ -6,7 +6,7 @@ import { useRuntimeStatus } from "../store/runtimeStatus";
  * 通用设置：按键相关的全局参数。
  *
  * 这些设置和「哪个应用在前台」无关，所以从按键映射页搬了出来——它们原先挤在
- * 映射向导的「② 触发方式」下面，看起来像是逐键设置，其实改一次对所有键生效。
+ * 映射向导的「触发方式」下面，看起来像是逐键设置，其实改一次对所有键生效。
  */
 export function SettingsPage() {
   const [eatEnabled, setEatEnabled] = useState<boolean | null>(null);
