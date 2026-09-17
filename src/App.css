@@ -1004,9 +1004,12 @@ button:focus-visible,
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  grid-template-columns: minmax(230px, 250px) 1fr;
+  /* 左列只放遥控器图形，收窄一点把宽度让给右边的矩阵 */
+  grid-template-columns: minmax(190px, 215px) 1fr;
   gap: 16px;
-  align-items: start;
+  /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
+     各占各的内容高度，遥控器卡明显比右边的向导 + 矩阵卡高出一截。 */
+  align-items: stretch;
 }
 
 .remote-card {
@@ -1364,10 +1367,6 @@ button:focus-visible,
 }
 
 /* ---------- 映射卡：向导与矩阵左右并排 ---------- */
-.mapping-wizard {
-  grid-template-columns: minmax(190px, 215px) 1fr;
-}
-
 .merged-cols {
   display: grid;
   grid-template-columns: minmax(270px, 0.78fr) minmax(400px, 1.22fr);
