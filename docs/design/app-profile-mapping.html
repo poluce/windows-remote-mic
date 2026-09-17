@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>按键映射 · 应用专属配置（设计稿 v2）</title>
+<!-- 直接复用应用真实样式表，看到的即最终观感 -->
+<link rel="stylesheet" href="../../src/App.css">
+<style>
+  /* 以下样式只服务于设计稿本身（批注、新增徽标、对话框、侧栏图标），不属于产品界面 */
+  body { margin: 0; background: var(--bg); }
+  [hidden] { display: none !important; }
+
+  /* 设计说明放在文档最末尾，不覆盖界面；打开文件只看到界面，往下滚才看到说明 */
+  html, body { height: auto; overflow: auto; }
+  .notes-section {
+    max-width: 1060px; margin: 0 auto; padding: 28px 32px 64px;
+    border-top: 1px dashed var(--border-strong);
+    font-size: 13px; color: var(--text-2); line-height: 1.85;
+  }
+  .notes-section h2 {
+    margin: 0; font-size: 15px; color: var(--text);
+  }
+  .notes-section .notes-sub {
+    margin: 4px 0 14px; font-size: 12px; color: var(--text-3);
+  }
+  .notes-section ul { margin: 0; padding-left: 20px; }
+  .notes-section li { margin: 6px 0; }
+  .notes-section b { color: var(--text); }
+  .notes-section code {
+    background: var(--surface-2); border-radius: 4px;
+    padding: 1px 5px; font-size: 12px;
+  }
+
+  /* 作用范围选择器 */
+  .scope-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .scope-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer;
+  }
+  .scope-pill:hover { border-color: var(--border-strong); }
+  .scope-pill.active {
+    background: var(--accent-soft); border-color: var(--accent);
+    color: var(--accent-strong); font-weight: 600;
+  }
+  .scope-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
+  .scope-pill.active .scope-dot { background: var(--accent); }
+
+  /* 胶囊右上角的删除叉（用户自建的配置才有） */
+  .scope-item { position: relative; display: inline-flex; }
+  .scope-remove {
+    position: absolute; top: -6px; right: -6px;
+    width: 17px; height: 17px; border-radius: 50%;
+    border: 1px solid var(--surface);
+    background: var(--text-3); color: #fff;
+    font-size: 11px; line-height: 1; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .scope-remove:hover { background: var(--err); }
+  .scope-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* 二次确认弹窗里的危险按钮 */
+  .dialog .btn.danger {
+    background: var(--err); border-color: var(--err); color: #fff;
+  }
+  .dialog .btn.danger:hover:not(:disabled) { background: #b80012; }
+
+  /* 合并卡：左边向导、右边映射表 —— 左右水平排布，中间一条分隔线 */
+  .mapping-wizard { grid-template-columns: minmax(190px, 215px) 1fr; }
+  .merged-cols {
+    display: grid;
+    grid-template-columns: minmax(270px, 0.78fr) minmax(400px, 1.22fr);
+    align-items: start;
+  }
+  .merged-col + .merged-col {
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+    margin-left: 20px;
+  }
+  .merged-card .actions { margin-top: 12px; }
+  .merged-card .matrix-cell { padding: 4px 6px; }
+
+  /* 矩阵：行 = 按键，列 = 触发方式 */
+  .matrix { border-top: 1px solid var(--border); }
+  .matrix-row {
+    display: grid;
+    grid-template-columns: 56px 1fr 1fr 1fr;
+    align-items: stretch;
+    border-bottom: 1px solid var(--border);
+    min-height: 31px;
+  }
+  .matrix-row.head { min-height: 26px; }
+  .matrix-row.head .matrix-cell { font-size: 11px; color: var(--text-3); }
+  .matrix-row.head .matrix-key { font-size: 11px; color: var(--text-3); font-weight: 500; }
+  .matrix-key {
+    display: flex; align-items: center;
+    font-size: 12px; font-weight: 500; color: var(--text);
+    padding-right: 6px;
+  }
+  .matrix-cell {
+    display: flex; align-items: center;
+    border-left: 1px solid var(--border);
+    padding: 4px 8px;
+    font-size: 11.5px; color: var(--text-3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .matrix-cell.on { color: var(--text); }
+  .matrix-cell.own {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-weight: 600;
+  }
+  .matrix-cell.sel {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    border-radius: 3px;
+  }
+  .matrix-cell.span { grid-column: 2 / 5; color: var(--warn); }
+  .matrix-cell[data-cell] { cursor: pointer; }
+  .matrix-cell[data-cell]:hover { background: var(--surface-2); }
+  .matrix-row.mic .matrix-key { color: var(--text-2); }
+
+  .matrix-legend {
+    display: flex; align-items: center; gap: 6px;
+    margin: 10px 0 0; font-size: 11.5px; color: var(--text-3);
+  }
+  .matrix-legend .sw {
+    width: 10px; height: 10px; border-radius: 3px;
+    display: inline-block; margin-left: 8px;
+  }
+  .matrix-legend .sw:first-child { margin-left: 0; }
+  .matrix-legend .sw.own { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .matrix-legend .sw.inherit { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border-strong); }
+  .matrix-legend .sw.none { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); }
+
+  /* 对话框 */
+  .dialog-mask {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.28);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .dialog-mask.open { display: flex; }
+  .dialog {
+    width: 520px; background: var(--surface); border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18); padding: 22px 24px;
+  }
+  .dialog h3 { margin: 0 0 4px; font-size: 15px; }
+  .field { margin-top: 16px; }
+  .field label { display: block; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; }
+  .field input {
+    width: 100%; padding: 7px 10px; font-size: 13px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--text); font-family: inherit;
+  }
+  .field .row { display: flex; gap: 8px; }
+  .field .tip { margin-top: 6px; font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
+  .field.disabled { opacity: 0.45; }
+  .stage2 {
+    display: inline-block; margin-left: 6px; font-size: 11px;
+    color: var(--text-3); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
+  }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+  .remote-sketch {
+    width: 92px; margin: 4px auto 2px; padding: 12px 10px;
+    border: 1px solid var(--border-strong); border-radius: 22px;
+    background: var(--surface-2);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .rs-ring {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 2px solid var(--border-strong); background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rs-ok {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+  }
+  .rs-keys { display: flex; gap: 6px; }
+  .rs-keys span { width: 16px; height: 8px; border-radius: 4px; background: var(--border-strong); }
+
+  .placeholder-box {
+    border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+    background: var(--surface-2); color: var(--text-3);
+    padding: 26px 12px; text-align: center; font-size: 12px;
+  }
+
+  /* 设置页：设置项列表 */
+  .setting-row {
+    display: flex; align-items: flex-start; gap: 16px;
+    padding: 14px 0;
+  }
+  .setting-row + .setting-row { border-top: 1px solid var(--border); }
+  .setting-main { flex: 1; min-width: 0; }
+  .setting-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .setting-desc { margin: 4px 0 0; font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
+  .setting-state {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 8px; font-size: 12px; color: var(--text-2);
+  }
+  .kv { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12px; }
+  .kv div { color: var(--text-3); }
+  .kv b { color: var(--text); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ============ 侧边导航（新增「通用设置」） ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--accent);flex:none"></div>
+      <div>
+        <div class="brand-name">Remote Mic</div>
+        <div class="brand-sub">Windows 无线麦</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item" data-page="none"><span class="nav-ico" style="background:#007aff"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l10 8-5 4V4l5 4L7 16"></path></svg></span><span>连接</span></button>
+      <button class="nav-item active" data-page="mapping"><span class="nav-ico" style="background:#af52de"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></svg></span><span>按键映射</span></button>
+      <button class="nav-item" data-page="settings"><span class="nav-ico" style="background:#8e8e93"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h8"></path><path d="M18 7h2"></path><path d="M4 17h4"></path><path d="M14 17h6"></path><circle cx="15" cy="7" r="2.5"></circle><circle cx="11" cy="17" r="2.5"></circle></svg></span><span>通用设置</span></button>
+      <button class="nav-item" data-page="none"><span class="nav-ico" style="background:#5e5ce6"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"></path></svg></span><span>诊断</span></button>
+      <button class="nav-item" data-page="none"><span class="nav-ico" style="background:#32ade6"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2"></rect><path d="M9 8.5h6"></path><path d="M9 12h6"></path><path d="M9 15.5h4"></path></svg></span><span>日志</span></button>
+      <button class="nav-item" data-page="none"><span class="nav-ico" style="background:#ff9f0a"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5z"></path></svg></span><span>引导</span></button>
+    </nav>
+
+    <div class="sidebar-status">
+      <div class="sidebar-status-row"><span class="status-dot ok"></span><span>遥控器已连接</span></div>
+      <div class="sidebar-status-row"><span class="status-dot ok"></span><span>语音桥运行中</span></div>
+      <div class="sidebar-status-row"><span class="status-dot ok"></span><span>HID 拦截已开启</span></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="content">
+
+      <!-- ==================== 页面：按键映射 ==================== -->
+      <div class="page" id="page-mapping">
+        <div class="section-label">按键配置</div>
+
+        <section class="card">
+          <div class="card-title">作用范围</div>
+          <div class="scope-bar" id="scopeBar">
+            <button class="scope-pill active" data-scope="global"><span class="scope-dot"></span>全局（所有应用）</button>
+            <button class="scope-pill" data-scope="zcode"><span class="scope-dot" style="background:#F59E0B"></span>ZCode</button>
+            <button class="scope-pill" data-scope="dsh"><span class="scope-dot" style="background:#4D6BFE"></span>DeepSeek Harness</button>
+            <button class="scope-pill" data-scope="claude"><span class="scope-dot" style="background:#D97757"></span>Claude Code</button>
+            <button class="scope-pill" id="btnNew" style="border-style:dashed;color:var(--text-2)">+ 新建应用</button>
+          </div>
+        </section>
+
+        <div class="mapping-wizard">
+          <section class="card remote-card">
+            <div class="card-title">① 选择按键</div>
+            <div class="remote-sketch">
+              <div class="rs-ring"><div class="rs-ok"></div></div>
+              <div class="rs-keys"><span></span><span></span><span></span></div>
+            </div>
+            <p class="hint current-key">确定</p>
+          </section>
+
+          <!-- 向导与映射表合并成一张卡，左右水平排布 -->
+          <section class="card wizard-card merged-card">
+            <div class="merged-cols">
+              <div class="merged-col">
+                <div class="wizard-group">
+                  <div class="wizard-label">② 触发方式</div>
+                  <div class="trigger-options">
+                    <button class="trigger-btn active"><span class="trigger-name">单击</span></button>
+                    <button class="trigger-btn"><span class="trigger-name">双击</span></button>
+                    <button class="trigger-btn"><span class="trigger-name">长按</span></button>
+                  </div>
+                </div>
+
+                <div class="wizard-group">
+                  <div class="wizard-label">③ 动作分类</div>
+                  <div class="category-tabs">
+                    <button class="btn small">方向</button>
+                    <button class="btn small primary">系统</button>
+                    <button class="btn small">音量 / 播放</button>
+                    <button class="btn small">语音</button>
+                    <button class="btn small">快捷键</button>
+                    <button class="btn small">其他</button>
+                  </div>
+                  <div class="action-grid">
+                    <button class="btn small">回车</button>
+                    <button class="btn small">退格</button>
+                    <button class="btn small">Esc</button>
+                    <button class="btn small">显示桌面</button>
+                    <button class="btn small primary">聚焦输入框 / 回车</button>
+                    <button class="btn small">聚焦输入框</button>
+                    <button class="btn small">右键菜单</button>
+                    <button class="btn small">切换应用</button>
+                  </div>
+                </div>
+
+                <div class="preview-box">
+                  <span class="preview-label">即将保存</span>
+                  <span class="preview-value">确定 · 单击 → 聚焦输入框 / 回车</span>
+                </div>
+
+                <div class="actions">
+                  <button class="btn primary" id="saveBtn">保存此键</button>
+                  <button class="btn" id="useGlobalBtn" hidden>改用全局</button>
+                </div>
+                <p class="hint" id="saveHint"></p>
+              </div>
+
+              <div class="merged-col">
+                <div class="wizard-label" id="tableLabel">映射表</div>
+                <p class="hint" id="tableTitle" style="margin:0 0 10px"></p>
+                <div class="matrix" id="mappingMatrix"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+
+      <!-- ==================== 页面：通用设置 ==================== -->
+      <div class="page" id="page-settings" hidden>
+        <div class="section-label">按键信号</div>
+        <section class="card">
+          <div class="setting-row">
+            <div class="setting-main">
+              <div class="setting-title">拦截 HID 按键信号</div>
+              <p class="setting-desc">
+                开启后按键由本应用独占，系统不再响应；关闭则两边同时响应。
+              </p>
+            </div>
+            <button type="button" role="switch" aria-checked="true" class="switch on" style="flex:none;margin-top:2px">
+              <span class="switch-thumb"></span>
+            </button>
+          </div>
+        </section>
+
+        <div class="section-label">按键判定</div>
+        <section class="card">
+          <div class="setting-row">
+            <div class="setting-main">
+              <div class="setting-title">长按判定</div>
+              <p class="setting-desc">麦克风的按住说话也用它。</p>
+            </div>
+            <select style="flex:none;margin-top:2px">
+              <option>0.4 秒</option><option selected>0.55 秒</option>
+              <option>0.7 秒</option><option>1.0 秒</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-main">
+              <div class="setting-title">双击间隔</div>
+            </div>
+            <select style="flex:none;margin-top:2px">
+              <option>0.2 秒</option><option selected>0.3 秒</option>
+              <option>0.4 秒</option><option>0.5 秒</option>
+            </select>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==================== 其它页面占位 ==================== -->
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 新建应用对话框 ==================== -->
+<div class="dialog-mask" id="dlgMask">
+  <div class="dialog">
+    <h3>新建应用配置</h3>
+    <p class="hint" style="margin:2px 0 0">
+      只为这一个应用覆盖需要改的按键，其余自动沿用全局。
+    </p>
+
+    <div class="field">
+      <label>展示名</label>
+      <input id="fName" value="ZCode" placeholder="例如：ZCode">
+    </div>
+
+    <div class="field">
+      <label>进程名</label>
+      <div class="row">
+        <input id="fProc" value="ZCode.exe" placeholder="例如：ZCode.exe">
+        <button class="btn" id="btnFromFg" style="flex:none">用当前前台填入</button>
+      </div>
+      <div class="tip">
+        在任务管理器「详细信息」里查到的名称。写错了这份配置不会生效。
+        当前前台：<code>ZCode.exe</code>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>窗口标题关键字 <span class="stage2">可选</span></label>
+      <input id="fTitle" placeholder="例如：DeepSeek Harness">
+      <div class="tip">
+        用于<b>进程名认不出来</b>的目标：Chrome 里的网页应用、跑在 WSL 里的服务。
+        进程名命中时不会走它。
+      </div>
+    </div>
+
+    <div class="dialog-actions">
+      <button class="btn" id="btnCancel">取消</button>
+      <button class="btn primary" id="btnCreate">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 删除确认 ==================== -->
+<div class="dialog-mask" id="delMask">
+  <div class="dialog">
+    <h3>删除这份配置？</h3>
+    <p class="hint" style="margin:2px 0 0" id="delDesc"></p>
+    <div class="dialog-actions">
+      <button class="btn" id="delCancel">取消</button>
+      <button class="btn danger" id="delConfirm">删除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 侧栏导航 ----------
+// 本稿只画了「按键映射」与「通用设置」两页，其余导航项保持不可点。
+document.querySelectorAll('.nav-item').forEach((b) => {
+  const target = b.dataset.page;
+  if (target !== 'mapping' && target !== 'settings') {
+    b.style.cursor = 'default';
+    return;
+  }
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('page-mapping').hidden = target !== 'mapping';
+    document.getElementById('page-settings').hidden = target !== 'settings';
+  });
+});
+
+// ---------- 按键映射页：作用范围 ----------
+// ---- 数据：行 = 按键，列 = 触发方式（单击 / 双击 / 长按）----
+// 每行：[按键, 单击, 双击, 长按]，null 表示未绑定。
+// 麦克风是 PTT 键，只有按下/松开，单独用第 5 项描述。
+const KEYS = [
+  ['电源', '取消（Esc）', null, null],
+  ['麦克风', null, null, null, '按下 / 松开 → 语音输入（Win+H）'],
+  ['上', '↑', null, null],
+  ['左', '←', null, null],
+  ['确定', '回车（Enter）', null, null],
+  ['右', '→', null, null],
+  ['下', '↓', null, null],
+  ['返回', '删除（退格）', null, null],
+  ['音量 +', '音量 +', null, null],
+  ['主页', '显示桌面（Win+D）', null, null],
+  ['音量 −', '音量 −', null, null],
+  ['菜单', '快捷菜单（开/关）', null, null],
+  ['TV', '切换应用（Alt+Tab）', null, null],
+];
+
+// 覆盖层：按键 -> [单击, 双击, 长按]，null 表示这一格沿用全局
+const OVERRIDES = {
+  zcode: {
+    上: ['PageUp'], 下: ['PageDown'],
+    确定: ['聚焦输入框 / 回车'], 返回: ['Esc'],
+  },
+  dsh: {
+    上: ['PageUp'], 下: ['PageDown'],
+    确定: ['回车（Enter）'], 返回: ['Esc'],
+  },
+  claude: {
+    上: ['PageUp'], 下: ['PageDown'], 返回: ['Esc'],
+  },
+};
+
+const SCOPES = {
+  global: {
+    label: '全局（所有应用）', tableLabel: '映射表', tableTitle: '',
+    saveBtn: '保存此键', isGlobal: true,
+  },
+  zcode: {
+    label: 'ZCode', tableLabel: '映射表 · ZCode',
+    tableTitle: '前台为 ZCode 时生效', saveBtn: '保存到 ZCode 的配置',
+  },
+  dsh: {
+    label: 'DeepSeek Harness', tableLabel: '映射表 · DeepSeek Harness',
+    tableTitle: '窗口标题命中时生效', saveBtn: '保存到 DeepSeek Harness 的配置',
+  },
+  claude: {
+    label: 'Claude Code', tableLabel: '映射表 · Claude Code',
+    tableTitle: '前台为 Claude 时生效', saveBtn: '保存到 Claude Code 的配置',
+  },
+};
+const TRIGGER_COLS = ['单击', '双击', '长按'];
+
+let scope = 'global';
+let selected = { button: '确定', trigger: 0 };
+// 「改用全局」的临时状态：scope|按键|列序号
+const dismissed = new Set();
+
+/** 取某个 scope 下、某个按键某一列最终生效的动作。 */
+function cellOf(name, row, col) {
+  const ov = OVERRIDES[scope] && OVERRIDES[scope][name];
+  const key = scope + '|' + name + '|' + col;
+  const overridden = !!(ov && ov[col] && !dismissed.has(key));
+  return {
+    text: overridden ? ov[col] : row[col + 1],
+    overridden,
+    inherit: !!(ov && ov[col]) && dismissed.has(key),
+  };
+}
+
+function renderMatrix() {
+  const rows = KEYS.map((row) => {
+    const name = row[0];
+    if (row[4]) {
+      // 麦克风：PTT，占满触发方式三列
+      return `<div class="matrix-row mic">
+        <span class="matrix-key">${name}</span>
+        <span class="matrix-cell span">${row[4]}</span>
+      </div>`;
+    }
+    const cells = TRIGGER_COLS.map((_, col) => {
+      const c = cellOf(name, row, col);
+      const cls = c.overridden ? 'matrix-cell own' : c.text ? 'matrix-cell on' : 'matrix-cell';
+      const sel = (selected.button === name && selected.trigger === col) ? ' sel' : '';
+      return `<span class="${cls}${sel}" data-cell="${name}|${col}"
+        title="${c.text || '未绑定'}">${c.text || '—'}</span>`;
+    }).join('');
+    return `<div class="matrix-row">
+      <span class="matrix-key">${name}</span>${cells}
+    </div>`;
+  }).join('');
+
+  document.getElementById('mappingMatrix').innerHTML =
+    `<div class="matrix-row head">
+       <span class="matrix-key">按键</span>
+       <span class="matrix-cell">单击</span>
+       <span class="matrix-cell">双击</span>
+       <span class="matrix-cell">长按</span>
+     </div>` + rows;
+}
+
+function render() {
+  // 作用域可能已经被删掉（删掉的正好是当前正在看的那一份），退回全局
+  if (!SCOPES[scope]) scope = 'global';
+  const s = SCOPES[scope];
+  document.querySelectorAll('.scope-pill[data-scope]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.scope === scope);
+  });
+
+  document.getElementById('tableLabel').textContent = s.tableLabel;
+  document.getElementById('tableTitle').textContent = s.tableTitle;
+  document.getElementById('saveBtn').textContent = s.saveBtn;
+  // 切换作用域时清掉上一次的「已保存」提示（s.hint 已废弃，别再赋值）
+  document.getElementById('saveHint').textContent = '';
+
+  renderMatrix();
+  renderWizard();
+}
+
+/** 向导区跟随选中的格子刷新。 */
+function renderWizard() {
+  const row = KEYS.find((r) => r[0] === selected.button);
+  document.querySelector('.current-key').textContent = selected.button;
+
+  const isMic = !!row[4];
+  document.querySelectorAll('.trigger-btn').forEach((b, i) => {
+    b.classList.toggle('active', !isMic && i === selected.trigger);
+    b.disabled = isMic;
+  });
+
+  const c = isMic
+    ? { text: row[4], overridden: false }
+    : cellOf(row[0], row, selected.trigger);
+  document.querySelector('.preview-value').textContent =
+    selected.button + (isMic ? '' : ' · ' + TRIGGER_COLS[selected.trigger]) +
+    ' → ' + (c.text || '未绑定');
+
+  // 只有被这份配置覆盖过的格子才提供「改用全局」
+  document.getElementById('useGlobalBtn').hidden = !c.overridden;
+}
+
+document.getElementById('useGlobalBtn').addEventListener('click', () => {
+  dismissed.add(scope + '|' + selected.button + '|' + selected.trigger);
+  render();
+});
+
+document.getElementById('mappingMatrix').addEventListener('click', (e) => {
+  const cell = e.target.closest('[data-cell]');
+  if (!cell) return;
+  const [name, col] = cell.dataset.cell.split('|');
+  selected = { button: name, trigger: Number(col) };
+  render();
+});
+
+document.querySelectorAll('.scope-pill[data-scope]').forEach((b) => {
+  b.addEventListener('click', () => { scope = b.dataset.scope; render(); });
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const s = SCOPES[scope];
+  document.getElementById('saveHint').textContent = s.isGlobal
+    ? '已保存到全局映射（config.json）'
+    : `已保存到「${s.label}」的配置，立即生效（不需要重启）`;
+});
+
+const mask = document.getElementById('dlgMask');
+document.getElementById('btnNew').addEventListener('click', () => mask.classList.add('open'));
+document.getElementById('btnCancel').addEventListener('click', () => mask.classList.remove('open'));
+let appSeq = 0;
+
+document.getElementById('btnCreate').addEventListener('click', () => {
+  const name = document.getElementById('fName').value.trim() || '（未命名）';
+  const id = 'app' + (++appSeq);
+  SCOPES[id] = {
+    label: name, tableLabel: '映射表 · ' + name, tableTitle: '前台为 ' + name + ' 时生效',
+    saveBtn: '保存到 ' + name + ' 的配置',
+  };
+  addScopePill(id, name);
+  mask.classList.remove('open');
+  scope = id;
+  render();
+});
+
+// ---------- 作用范围胶囊：用户自建的带一个删除叉 ----------
+
+/** 往选择器里加一个作用范围胶囊；removable 时右上角带删除叉。 */
+function addScopePill(id, label, removable = true) {
+  const wrap = document.createElement('span');
+  wrap.className = 'scope-item';
+  wrap.dataset.scopeItem = id;
+
+  const pill = document.createElement('button');
+  pill.className = 'scope-pill';
+  pill.dataset.scope = id;
+  pill.innerHTML = '<span class="scope-dot"></span>' + label;
+  pill.addEventListener('click', () => { scope = id; render(); });
+  wrap.appendChild(pill);
+
+  if (removable) {
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'scope-remove';
+    x.title = '删除这份配置';
+    x.innerHTML = '&times;';
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      askDelete(id, label);
+    });
+    wrap.appendChild(x);
+  }
+
+  document.getElementById('btnNew').before(wrap);
+  return wrap;
+}
+
+// ---------- 删除：先二次确认 ----------
+let pendingDelete = null;
+
+function askDelete(id, label) {
+  pendingDelete = { id, label };
+  document.getElementById('delDesc').textContent =
+    '「' + label + '」将不再有专属配置，所有按键沿用全局。';
+  document.getElementById('delMask').classList.add('open');
+}
+
+document.getElementById('delCancel').addEventListener('click', () => {
+  pendingDelete = null;
+  document.getElementById('delMask').classList.remove('open');
+});
+
+document.getElementById('delConfirm').addEventListener('click', () => {
+  if (pendingDelete) {
+    const { id } = pendingDelete;
+    delete SCOPES[id];
+    const open = document.querySelector('[data-scope="' + id + '"]');
+    const wrap = open && open.closest('.scope-item');
+    (wrap || open).remove();
+    // 删掉的正是在看的那一份，就退回全局
+    if (scope === id) scope = 'global';
+    render();
+  }
+  pendingDelete = null;
+  document.getElementById('delMask').classList.remove('open');
+});
+
+// 稿子预置一份「自建」的应用配置：删除叉只长在自建配置上，
+// 不预置的话一打开根本看不到它。
+SCOPES.demo = {
+  label: '我的助手',
+  tableLabel: '映射表 · 我的助手',
+  tableTitle: '前台为 我的助手 时生效',
+  saveBtn: '保存到 我的助手 的配置',
+};
+addScopePill('demo', '我的助手');
+
+render();
+</script>
+<!-- ==================== 设计说明 ==================== -->
+<section class="notes-section">
+  <h2>设计说明</h2>
+  <p class="notes-sub">以下内容不属于应用界面，实现时不会出现在产品里。</p>
+  <ul>
+    <li><b>「拦截 HID 按键信号」已搬到新页面</b>：从「按键映射」移到「通用设置」，
+        排在「按键映射」之后。点左侧导航可以切过去看。</li>
+    <li><b>「按键映射」新增作用范围</b>：选中某个应用后，编辑的是它的覆盖层，
+        没覆盖的格子自动沿用全局，不必为每个应用重抄整张表。</li>
+    <li><b>映射表改成矩阵</b>：行＝按键，列＝单击 / 双击 / 长按。原来的平铺列表只列出
+        已配置的组合，看不出「哪些还没绑」；矩阵把全部格子摊开，空格显示 <code>—</code>。</li>
+    <li><b>麦克风单独一行跨三列</b>：它是 PTT 键，只有按下 / 松开，塞进三个触发列会误导。</li>
+    <li><b>颜色含义</b>：蓝底＝这份配置覆盖过，灰字＝沿用全局，<code>—</code>＝未绑定。</li>
+    <li><b>点矩阵里的格子即可选中它去编辑</b>；只有选中的格子是被覆盖过的，
+        向导里才会出现「改用全局」。</li>
+    <li><b>状态只在「不一致」时才提示</b>：开关本身就是状态，正常情况不再复读。
+        只有开关开着、驱动注入却没就绪时，才补一句告警。</li>
+    <li><b>待定</b>：长按判定 / 双击间隔要不要也挪到「通用设置」？它们是全局参数，
+        现在藏在按键映射页的向导里，容易让人以为是逐键设置。</li>
+    <li><b>可点的部分</b>：左侧「按键映射」「通用设置」两页、作用范围切换、矩阵格子、
+        「+ 新建应用」。其余导航页本稿未涉及，点了没反应。</li>
+    <li>遥控器图形是现有组件，稿里用简图代替；「图标 / 启动方式」暂不进新建对话框。</li>
+  </ul>
+</section>
+
+</body>
+</html>
