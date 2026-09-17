@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { NewProfileDialog } from "../components/NewProfileDialog";
+import { ShortcutDialog } from "../components/ShortcutDialog";
 import {
   ACTION_CATEGORIES,
   FALLBACK_MAPPING,
@@ -13,10 +14,7 @@ import {
 import {
   COMBO_CATEGORY,
   CUSTOM_COMBO_ACTION,
-  canonicalizeCombo,
   formatComboDisplay,
-  keyEventToCombo,
-  modifierTokenFromCode,
   parseComboActionKey,
   toComboActionKey,
 } from "./mapping/combo";
@@ -30,25 +28,36 @@ import {
   loadProfiles,
   saveProfileBinding,
 } from "./mapping/profile";
+import {
+  comboLabel,
+  deleteShortcut,
+  keysId,
+  loadShortcuts,
+  saveShortcut,
+  shortcutNameFor,
+  type NamedShortcut,
+} from "./mapping/shortcuts";
 import { GLOBAL_SCOPE, type AppProfileView, type MappingEntry, type ScopeId } from "./mapping/types";
 
 export function MappingPage() {
   const [mapping, setMapping] = useState<MappingEntry[]>(FALLBACK_MAPPING);
   const [profiles, setProfiles] = useState<AppProfileView[]>([]);
+  const [shortcuts, setShortcuts] = useState<NamedShortcut[]>([]);
   const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
   const [selected, setSelected] = useState("ok");
   const [trigger, setTrigger] = useState("single_click");
   const [category, setCategory] = useState("system");
   const [action, setAction] = useState("return");
   const [comboTokens, setComboTokens] = useState<string[]>([]);
-  const [comboDraft, setComboDraft] = useState("");
-  const [capturing, setCapturing] = useState(false);
-  const pendingComboRef = useRef<string[]>([]);
-  const heldModsRef = useRef<string[]>([]);
   const remoteArtRef = useRef<HTMLDivElement | null>(null);
   const [saveMsg, setSaveMsg] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AppProfileView | null>(null);
+  /** 快捷键对话框：`editing` 为 null 表示新建。 */
+  const [shortcutDialog, setShortcutDialog] = useState<{
+    open: boolean;
+    editing: NamedShortcut | null;
+  }>({ open: false, editing: null });
 
   /**
    * 遥控器图形按卡片剩下的高度缩放。
@@ -89,13 +98,42 @@ export function MappingPage() {
       .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
       .catch(() => setMapping(FALLBACK_MAPPING));
     refreshProfiles();
+    loadShortcuts().then(setShortcuts);
   }, [refreshProfiles]);
 
-  const globalCells = useMemo(() => toCellMap(mapping), [mapping]);
+  // 组合键在界面上显示名字而不是「快捷键 左Ctrl+K」。库纯粹是显示层，
+  // 在这里一次性把标签换掉，矩阵和下面的保存逻辑都不用认识「自定义快捷键」。
+  const withNames = useCallback(
+    (entries: MappingEntry[]) =>
+      entries.map((e) => ({
+        ...e,
+        action: shortcutNameFor(shortcuts, e.action_key) ?? e.action,
+      })),
+    [shortcuts],
+  );
+
   const activeProfile = profiles.find((p) => p.id === scope);
+
+  /*
+   * 两套 Map，刻意分开：
+   *
+   * - **逻辑用**（下面这对，不带名字）：判断「这一格真正生效的是哪条绑定」。
+   * - **显示用**（View 那对）：把组合键换成自定义名字。
+   *
+   * 混用会造成一个很隐蔽的 bug：withNames 依赖 shortcuts，库一变这两个 Map
+   * 就是新对象，下面那个同步 effect 会跟着重跑，按当前格子的绑定把分类重置
+   * 回「系统」——于是在自定义分类里新建完一条快捷键，那一栏立刻被切走，
+   * 刚建的东西你看不到也选不上。名字是显示层，不该影响「哪条绑定生效」。
+   */
+  const globalCells = useMemo(() => toCellMap(mapping), [mapping]);
   const overrideCells = useMemo(
     () => toCellMap(activeProfile?.bindings ?? []),
     [activeProfile],
+  );
+  const globalView = useMemo(() => toCellMap(withNames(mapping)), [mapping, withNames]);
+  const overrideView = useMemo(
+    () => toCellMap(withNames(activeProfile?.bindings ?? [])),
+    [activeProfile, withNames],
   );
 
   // 选中按键或切换触发方式时，向导自动载入**当前作用范围下真正生效**的那条绑定：
@@ -111,10 +149,6 @@ export function MappingPage() {
       setCategory(COMBO_CATEGORY);
       setAction(CUSTOM_COMBO_ACTION);
       setComboTokens(combo);
-      setComboDraft(combo.join("+"));
-      pendingComboRef.current = [];
-      heldModsRef.current = [];
-      setCapturing(false);
       return;
     }
     const cat = ACTION_CATEGORIES.find((c) =>
@@ -123,76 +157,7 @@ export function MappingPage() {
     setCategory(cat?.key || "other");
     setAction(actionKey);
     setComboTokens([]);
-    setComboDraft("");
-    pendingComboRef.current = [];
-    heldModsRef.current = [];
-    setCapturing(false);
   }, [globalCells, overrideCells, selected, trigger]);
-
-  function commitCombo(tokens: string[]) {
-    pendingComboRef.current = [];
-    heldModsRef.current = [];
-    setComboTokens(tokens);
-    setComboDraft(tokens.join("+"));
-    setSaveMsg("");
-  }
-
-  function onComboFocus() {
-    pendingComboRef.current = [];
-    heldModsRef.current = [];
-    setCapturing(true);
-    setSaveMsg("");
-  }
-
-  function onComboBlur() {
-    if (pendingComboRef.current.length) {
-      const tokens = canonicalizeCombo(pendingComboRef.current);
-      if (tokens?.length) {
-        setComboTokens(tokens);
-        setComboDraft(tokens.join("+"));
-      }
-    }
-    pendingComboRef.current = [];
-    heldModsRef.current = [];
-    setCapturing(false);
-  }
-
-  function onComboKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.currentTarget.blur();
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.repeat) return;
-    const captured = keyEventToCombo(e.nativeEvent, heldModsRef.current);
-    if (!captured) {
-      setSaveMsg("该按键暂不支持，请换字母、数字、F1–F12，或左/右 Ctrl、Shift、Alt、Win");
-      return;
-    }
-    const mod = modifierTokenFromCode(e.code);
-    if (mod && !heldModsRef.current.includes(mod)) {
-      heldModsRef.current = [...heldModsRef.current, mod];
-    }
-    pendingComboRef.current = captured.tokens;
-    setComboDraft(captured.tokens.join("+"));
-    if (captured.complete) commitCombo(captured.tokens);
-  }
-
-  function onComboKeyUp(e: KeyboardEvent<HTMLInputElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    const mod = modifierTokenFromCode(e.code);
-    if (!mod) return;
-    const remaining = heldModsRef.current.filter((m) => m !== mod);
-    if (remaining.length === 0 && pendingComboRef.current.length) {
-      const tokens = canonicalizeCombo(pendingComboRef.current);
-      if (tokens?.length) commitCombo(tokens);
-      return;
-    }
-    heldModsRef.current = remaining;
-  }
 
   // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
   useEffect(() => {
@@ -205,18 +170,16 @@ export function MappingPage() {
   const availableTriggers = triggersFor(selected);
 
   const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
-  const comboLabel = comboTokens.length
-    ? `快捷键 ${formatComboDisplay(comboTokens)}`
-    : "自定义快捷键";
   const actionLabel =
     category === COMBO_CATEGORY
-      ? comboLabel
+      ? comboLabel(shortcuts, comboTokens)
       : ACTION_CATEGORIES.find((c) => c.key === category)
           ?.actions.find((a) => a.key === action)?.label || action;
 
   const selectedCell = cellKey(selected, trigger);
-  const selectedOverride = overrideCells.get(selectedCell);
-  const selectedGlobal = globalCells.get(selectedCell);
+  // 这两条只用于显示（覆盖说明里的「全局是〈什么〉」），所以取带名字的那套
+  const selectedOverride = overrideView.get(selectedCell);
+  const selectedGlobal = globalView.get(selectedCell);
   const isGlobalScope = scope === GLOBAL_SCOPE;
 
   const scopeItems: ScopeItem[] = [
@@ -233,28 +196,12 @@ export function MappingPage() {
     let actionToSave = action;
     let savedLabel = actionLabel;
     if (category === COMBO_CATEGORY) {
-      let tokens = comboTokens;
-      if (!tokens.length && comboDraft.trim()) {
-        const parsed = canonicalizeCombo(
-          comboDraft
-            .split("+")
-            .map((s) => s.trim().toLowerCase())
-            .filter(Boolean),
-        );
-        if (!parsed) {
-          setSaveMsg("快捷键格式无效，例如 rctrl、c 或 lctrl+c");
-          return;
-        }
-        tokens = parsed;
-        setComboTokens(parsed);
-        setComboDraft(parsed.join("+"));
-      }
-      if (!tokens.length) {
-        setSaveMsg("请先录制或输入快捷键");
+      if (!comboTokens.length) {
+        setSaveMsg("请先选一个自定义快捷键，或用「+ 新建快捷键」建一个");
         return;
       }
-      actionToSave = toComboActionKey(tokens);
-      savedLabel = `快捷键 ${formatComboDisplay(tokens)}`;
+      actionToSave = toComboActionKey(comboTokens);
+      savedLabel = comboLabel(shortcuts, comboTokens);
     }
     if (!isTauri()) return;
 
@@ -335,6 +282,41 @@ export function MappingPage() {
     }
   }
 
+  /**
+   * 存一条自定义快捷键。
+   *
+   * 编辑已有条目时**改了按键就等于换了一条**（keys 是身份）：先把旧的那条删掉
+   * 再存新的，否则会留下一条没人用的孤儿。只改名字则 keys 不变，后端按 keys
+   * 就地更新。
+   */
+  async function handleSaveShortcut(name: string, keys: string[]) {
+    const editing = shortcutDialog.editing;
+    setShortcutDialog({ open: false, editing: null });
+    try {
+      if (editing && keysId(editing.keys) !== keysId(keys)) {
+        await deleteShortcut(editing.keys);
+      }
+      setShortcuts(await saveShortcut(name, keys));
+      // 存完就把这一条选上——用户建它就是为了用它。
+      setCategory(COMBO_CATEGORY);
+      setAction(CUSTOM_COMBO_ACTION);
+      setComboTokens(keys);
+      setSaveMsg(`已保存快捷键「${name}」，再点「保存」绑给这个键`);
+    } catch (err) {
+      setSaveMsg(`保存快捷键失败: ${err}`);
+    }
+  }
+
+  async function handleDeleteShortcut(keys: string[]) {
+    setShortcutDialog({ open: false, editing: null });
+    try {
+      setShortcuts(await deleteShortcut(keys));
+      setSaveMsg("已删掉这条命名。已经绑上它的按键不受影响，只是不再显示名字");
+    } catch (err) {
+      setSaveMsg(`删除快捷键失败: ${err}`);
+    }
+  }
+
   return (
     <div className="page page-fill">
       <div className="section-label">按键配置</div>
@@ -391,11 +373,7 @@ export function MappingPage() {
                       onClick={() => {
                         setCategory(c.key);
                         setAction(c.actions[0]?.key || "disabled");
-                        setCapturing(false);
-                        if (c.key !== COMBO_CATEGORY) {
-                          setComboTokens([]);
-                          setComboDraft("");
-                        }
+                        if (c.key !== COMBO_CATEGORY) setComboTokens([]);
                       }}
                     >
                       {c.title}
@@ -403,40 +381,38 @@ export function MappingPage() {
                   ))}
                 </div>
                 {category === COMBO_CATEGORY ? (
-                  <div className="combo-capture">
-                    <div className="combo-capture-row">
-                      <input
-                        className={`combo-input${capturing ? " listening" : ""}`}
-                        readOnly
-                        value={
-                          capturing && comboDraft
-                            ? formatComboDisplay(comboDraft.split("+"))
-                            : comboTokens.length
-                              ? formatComboDisplay(comboTokens)
-                              : ""
-                        }
-                        placeholder={capturing ? "按下快捷键" : "点击此处，然后按下快捷键"}
-                        onFocus={onComboFocus}
-                        onBlur={onComboBlur}
-                        onKeyDown={onComboKeyDown}
-                        onKeyUp={onComboKeyUp}
-                      />
-                      {comboTokens.length > 0 && (
+                  <div className="shortcut-grid">
+                    {shortcuts.map((sc) => (
+                      <span className="shortcut-item" key={keysId(sc.keys)}>
                         <button
                           type="button"
-                          className="btn"
-                          onClick={() => {
-                            pendingComboRef.current = [];
-                            heldModsRef.current = [];
-                            setComboTokens([]);
-                            setComboDraft("");
-                            setCapturing(false);
+                          className={`shortcut-btn${keysId(sc.keys) === keysId(comboTokens) ? " active" : ""}`}
+                          onClick={() => setComboTokens(sc.keys)}
+                        >
+                          <span className="shortcut-name">{sc.name}</span>
+                          <span className="shortcut-keys">{formatComboDisplay(sc.keys)}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="shortcut-edit"
+                          title="改名 / 删除"
+                          aria-label={`编辑「${sc.name}」`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShortcutDialog({ open: true, editing: sc });
                           }}
                         >
-                          清除
+                          ✎
                         </button>
-                      )}
-                    </div>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      className="shortcut-btn add"
+                      onClick={() => setShortcutDialog({ open: true, editing: null })}
+                    >
+                      <span className="shortcut-name">+ 新建快捷键</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="action-grid">
@@ -487,8 +463,8 @@ export function MappingPage() {
                 }
                 buttons={REMOTE_BUTTONS}
                 triggers={triggersFor("ok")}
-                global={globalCells}
-                override={overrideCells}
+                global={globalView}
+                override={overrideView}
                 selected={{ button: selected, trigger }}
                 onSelect={(button, trig) => {
                   setSelected(button);
@@ -518,6 +494,14 @@ export function MappingPage() {
         confirmLabel="删除"
         onConfirm={handleDelete}
         onCancel={() => setPendingDelete(null)}
+      />
+
+      <ShortcutDialog
+        open={shortcutDialog.open}
+        editing={shortcutDialog.editing}
+        onCancel={() => setShortcutDialog({ open: false, editing: null })}
+        onSave={handleSaveShortcut}
+        onDelete={handleDeleteShortcut}
       />
     </div>
   );

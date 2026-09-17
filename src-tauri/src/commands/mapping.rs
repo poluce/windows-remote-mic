@@ -136,3 +136,80 @@ pub fn get_key_calibrations() -> std::collections::HashMap<String, core_config::
         .unwrap_or_default();
     cfg.key_calibrations
 }
+
+// ---------------------------------------------------------------------------
+// 用户命名的自定义快捷键
+//
+// 这三个命令**不碰调度器**：名字只是显示层，映射绑定里存的仍是
+// `combo:lctrl+k`，改名或删除都不会影响任何已经保存的绑定。
+// ---------------------------------------------------------------------------
+
+/// 读自定义快捷键库。
+#[tauri::command]
+pub fn get_shortcuts() -> Vec<core_config::NamedShortcut> {
+    config_store()
+        .and_then(|s| s.load().ok())
+        .map(|cfg| cfg.shortcuts)
+        .unwrap_or_default()
+}
+
+/// 新增或改名，返回改完之后的整个库。
+///
+/// `keys` 就是这条记录的身份——同一个组合只留一条，拿同样的 keys 再存一次
+/// 就是改名。这样前端不必区分「新增」和「改名」两条路径。
+#[tauri::command]
+pub fn save_shortcut(
+    name: String,
+    keys: Vec<String>,
+) -> Result<Vec<core_config::NamedShortcut>, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("请给这个快捷键起个名字".into());
+    }
+    let keys = normalize_keys(&keys);
+    if keys.is_empty() {
+        return Err("请先录制或输入快捷键".into());
+    }
+
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    match cfg.shortcuts.iter_mut().find(|s| s.keys == keys) {
+        Some(existing) => existing.name = name,
+        None => cfg
+            .shortcuts
+            .push(core_config::NamedShortcut { name, keys }),
+    }
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    core_log::log_info(&format!(
+        "[commands/mapping] 自定义快捷键库已更新：{} 条",
+        cfg.shortcuts.len()
+    ));
+    Ok(cfg.shortcuts)
+}
+
+/// 删掉一条。删不存在的 keys 也算成功——调用方要的结果是「它没了」。
+#[tauri::command]
+pub fn delete_shortcut(keys: Vec<String>) -> Result<Vec<core_config::NamedShortcut>, String> {
+    let keys = normalize_keys(&keys);
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    let before = cfg.shortcuts.len();
+    cfg.shortcuts.retain(|s| s.keys != keys);
+    if cfg.shortcuts.len() == before {
+        return Ok(cfg.shortcuts);
+    }
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    core_log::log_info(&format!(
+        "[commands/mapping] 自定义快捷键库已更新：{} 条",
+        cfg.shortcuts.len()
+    ));
+    Ok(cfg.shortcuts)
+}
+
+/// 去空白 + 小写；空 token 丢掉。前端已经规范化过顺序，这里只做兜底。
+fn normalize_keys(keys: &[String]) -> Vec<String> {
+    keys.iter()
+        .map(|k| k.trim().to_ascii_lowercase())
+        .filter(|k| !k.is_empty())
+        .collect()
+}

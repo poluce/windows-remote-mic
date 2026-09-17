@@ -1119,16 +1119,102 @@ button:focus-visible,
   font-size: 12px;
 }
 
-.combo-capture {
+/* ---------- 自定义快捷键库 ---------- */
+.shortcut-grid {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.combo-capture-row {
+.shortcut-item {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 两行：名字在上、按键在下。名字是给人记的，按键是给人核对的 */
+.shortcut-btn {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.shortcut-btn:hover {
+  background: var(--surface-2);
+}
+
+.shortcut-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.shortcut-btn.add {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.shortcut-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.shortcut-keys {
+  font-size: 10.5px;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+.shortcut-btn.active .shortcut-keys {
+  opacity: 0.85;
+}
+
+/* 改名 / 删除。常驻但压暗，悬停才提亮——全隐藏会让人找不到入口 */
+.shortcut-edit {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--surface);
+  background: var(--text-3);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.shortcut-item:hover .shortcut-edit {
+  opacity: 1;
+}
+
+.shortcut-edit:hover {
+  background: var(--accent);
+}
+
+.shortcut-edit:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .combo-input {
@@ -1572,6 +1658,16 @@ button:focus-visible,
   margin-top: 22px;
 }
 
+/* 「删除」留在左边，其余按钮靠右——把不可逆的那个和「取消/保存」分开 */
+.dialog-spacer {
+  flex: 1;
+}
+
+.dialog-error {
+  margin: 10px 0 0;
+  color: var(--err);
+}
+
 .dialog .btn.danger {
   background: var(--err);
   border-color: var(--err);
@@ -1656,7 +1752,7 @@ button:focus-visible,
 }
 
 .category-tabs + .action-grid,
-.category-tabs + .combo-capture {
+.category-tabs + .shortcut-grid {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);

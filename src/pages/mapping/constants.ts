@@ -87,6 +87,10 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     ],
   },
   {
+    // 这一栏的按钮不来自下面的 actions，而是**用户在界面上建的快捷键库**
+    // （见 mapping/shortcuts.ts）。这里的 `custom_combo` 只是个哨兵值：
+    // 选中一个组合键动作时把 category 设成 combo、action 设成它，
+    // 真正要保存的 action_key 由 comboTokens 现算。
     key: "combo",
     title: "自定义",
     actions: [{ key: "custom_combo", label: "自定义快捷键" }],
