@@ -1388,6 +1388,114 @@ button:focus-visible,
   padding: 4px 6px;
 }
 
+/* ---------- 铺满页（按键映射） ---------- */
+/*
+ * 这一页主体是一张矩阵，滚动一下就等于看不全——「哪些键还没绑」必须一屏可见，
+ * 所以整页不许出现滚动条。
+ *
+ * 做法：从 .page-fill 到最里层，**每一层都要显式允许被压缩**（min-height: 0）。
+ * flex 项的 min-height 默认是 auto，也就是「不许小于内容」；只要中间有一层没
+ * 放开，最里面那层就不会缩，而是反过来把整页顶高、逼出滚动条。
+ *
+ * 全页唯一「行数不定」的东西是矩阵，放不下时让它自己在卡片里滚——这是表格
+ * 天然的容器，也好过让整页滚到看不见表头。
+ */
+.content-fill {
+  padding-bottom: 26px;
+}
+
+.page-fill {
+  display: flex;
+  flex-direction: column;
+  /* 必须是 height 而不是 min-height。用 min-height 的话容器高度仍由内容决定，
+     下面那些 min-height: 0 就永远轮不到生效——内容说了算，压缩无从谈起。
+     给死高度之后，flex 才会把「不够」这件事往下传，最后落在矩阵自己滚动上。 */
+  height: 100%;
+}
+
+/* 分区标题和「作用范围」保持自然高度，剩下的全给向导 */
+.page-fill .mapping-wizard {
+  flex: 1;
+  min-height: 0;
+  /* 关键：grid 的隐式行默认是 auto，也就是「按内容定高」——那样子项根本
+     不会跟着容器缩，整页就有一条谁也压不下去的死底线。minmax(0, 1fr)
+     让这一行正好等于容器高度，并且允许被压到 0。 */
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* 卡片自带 margin-bottom；页面铺满时它会变成多出来的 16px，把页面顶出滚动条 */
+.page-fill .mapping-wizard > .card {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+/* 右卡：向导在上，矩阵吃掉剩余高度 */
+.page-fill .merged-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-fill .merged-cols {
+  flex: 1;
+  min-height: 0;
+  /* 同上：隐式行 auto 会让两栏顶着容器不肯缩 */
+  grid-template-rows: minmax(0, 1fr);
+  /* 基础规则里是 align-items: start（各占内容高度）。那样两栏会撑破自己
+     那一行——行被压到 348px，栏还是 458px，多出来的全变成整页的溢出。
+     铺满时必须 stretch，栏高才等于行高。 */
+  align-items: stretch;
+}
+
+.page-fill .merged-col:last-child {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 左边那栏（触发方式 / 动作分类 / 预览 / 保存）内容也是定高的，窗口一矮同样
+   会撑破卡片。它和矩阵一样在这里自己滚，整页才守得住「绝不滚」。 */
+.page-fill .merged-col:first-child {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page-fill .matrix {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* 行分摊剩余高度；每行仍有 min-height，窗口太矮时不会把字压扁，
+   而是矩阵自己长出滚动条 */
+.page-fill .matrix-row {
+  flex: 1;
+}
+
+.page-fill .matrix-row.head {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+/* 遥控器图形：定尺寸像素图，高度由 MappingPage 里的 ResizeObserver 反推 zoom */
+.page-fill .remote-art {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.page-fill .remote-art .x2pro-remote {
+  zoom: var(--remote-zoom, 1.3);
+}
+
 /* ---------- 对话框 ---------- */
 .dialog-mask {
   position: fixed;
