@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { NewProfileDialog } from "../components/NewProfileDialog";
 import {
   ACTION_CATEGORIES,
   FALLBACK_MAPPING,
@@ -18,10 +20,22 @@ import {
   parseComboActionKey,
   toComboActionKey,
 } from "./mapping/combo";
-import type { MappingEntry } from "./mapping/types";
+import { cellKey, toCellMap } from "./mapping/cells";
+import { MappingMatrix } from "./mapping/MappingMatrix";
+import { ScopeBar, type ScopeItem } from "./mapping/ScopeBar";
+import {
+  clearProfileBinding,
+  createProfile as createProfileRequest,
+  deleteProfile,
+  loadProfiles,
+  saveProfileBinding,
+} from "./mapping/profile";
+import { GLOBAL_SCOPE, type AppProfileView, type MappingEntry, type ScopeId } from "./mapping/types";
 
 export function MappingPage() {
   const [mapping, setMapping] = useState<MappingEntry[]>(FALLBACK_MAPPING);
+  const [profiles, setProfiles] = useState<AppProfileView[]>([]);
+  const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
   const [selected, setSelected] = useState("ok");
   const [trigger, setTrigger] = useState("single_click");
   const [category, setCategory] = useState("system");
@@ -32,42 +46,12 @@ export function MappingPage() {
   const pendingComboRef = useRef<string[]>([]);
   const heldModsRef = useRef<string[]>([]);
   const [saveMsg, setSaveMsg] = useState("");
-  const [longPressMs, setLongPressMs] = useState(550);
-  const [doubleClickMs, setDoubleClickMs] = useState(300);
-  const [eatEnabled, setEatEnabled] = useState<boolean | null>(null);
-  const [eatBusy, setEatBusy] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<AppProfileView | null>(null);
 
-  useEffect(() => {
-    if (!isTauri()) {
-      setEatEnabled(true);
-      return;
-    }
-    invoke<boolean>("get_hid_tap_eat")
-      .then(setEatEnabled)
-      .catch(() => setEatEnabled(true));
+  const refreshProfiles = useCallback(async () => {
+    setProfiles(await loadProfiles());
   }, []);
-
-  async function toggleEat() {
-    if (!isTauri() || eatEnabled === null || eatBusy) {
-      return;
-    }
-    setEatBusy(true);
-    try {
-      const next = await invoke<boolean>("set_hid_tap_eat", {
-        enabled: !eatEnabled,
-      });
-      setEatEnabled(next);
-      setSaveMsg(
-        next
-          ? "已开启拦截：系统不再响应遥控器按键，只由本应用注入映射动作"
-          : "已关闭拦截：系统会同时响应遥控器按键",
-      );
-    } catch (err) {
-      setSaveMsg(`切换失败：${err}`);
-    } finally {
-      setEatBusy(false);
-    }
-  }
 
   useEffect(() => {
     if (!isTauri()) {
@@ -77,33 +61,23 @@ export function MappingPage() {
     invoke<MappingEntry[]>("get_mappings")
       .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
       .catch(() => setMapping(FALLBACK_MAPPING));
-    invoke<{ long_press_ms: number; double_click_ms: number }>("get_trigger_timing")
-      .then((t) => {
-        setLongPressMs(t.long_press_ms);
-        setDoubleClickMs(t.double_click_ms);
-      })
-      .catch(() => {});
-  }, []);
+    refreshProfiles();
+  }, [refreshProfiles]);
 
-  async function saveTiming(nextLong: number, nextDouble: number) {
-    if (!isTauri()) return;
-    setLongPressMs(nextLong);
-    setDoubleClickMs(nextDouble);
-    try {
-      await invoke("set_trigger_timing", {
-        longPressMs: nextLong,
-        doubleClickMs: nextDouble,
-      });
-    } catch (err) {
-      setSaveMsg(`保存触发时间失败: ${err}`);
-    }
-  }
+  const globalCells = useMemo(() => toCellMap(mapping), [mapping]);
+  const activeProfile = profiles.find((p) => p.id === scope);
+  const overrideCells = useMemo(
+    () => toCellMap(activeProfile?.bindings ?? []),
+    [activeProfile],
+  );
 
-  // 选中按键或切换触发方式时，右侧自动展示该按键已绑定的动作。
+  // 选中按键或切换触发方式时，向导自动载入**当前作用范围下真正生效**的那条绑定：
+  // 先问这份应用配置有没有覆盖，没有才落到全局。和调度器的解析顺序一致，
+  // 否则界面上显示的动作和实际按下去发生的会对不上。
   useEffect(() => {
-    const binding = mapping.find(
-      (m) => m.button === selected && m.trigger === trigger
-    );
+    const binding =
+      overrideCells.get(cellKey(selected, trigger)) ??
+      globalCells.get(cellKey(selected, trigger));
     const actionKey = binding?.action_key || "disabled";
     const combo = parseComboActionKey(actionKey);
     if (combo) {
@@ -126,7 +100,7 @@ export function MappingPage() {
     pendingComboRef.current = [];
     heldModsRef.current = [];
     setCapturing(false);
-  }, [mapping, selected, trigger]);
+  }, [globalCells, overrideCells, selected, trigger]);
 
   function commitCombo(tokens: string[]) {
     pendingComboRef.current = [];
@@ -213,8 +187,22 @@ export function MappingPage() {
       : ACTION_CATEGORIES.find((c) => c.key === category)
           ?.actions.find((a) => a.key === action)?.label || action;
 
+  const selectedCell = cellKey(selected, trigger);
+  const selectedOverride = overrideCells.get(selectedCell);
+  const selectedGlobal = globalCells.get(selectedCell);
+  const isGlobalScope = scope === GLOBAL_SCOPE;
+
+  const scopeItems: ScopeItem[] = [
+    { id: GLOBAL_SCOPE, label: "全局（所有应用）", removable: false },
+    ...profiles.map((p) => ({
+      id: p.id,
+      label: p.name,
+      color: p.icon_color ?? undefined,
+      removable: true,
+    })),
+  ];
+
   async function save() {
-    if (!isTauri()) return;
     let actionToSave = action;
     let savedLabel = actionLabel;
     if (category === COMBO_CATEGORY) {
@@ -241,31 +229,82 @@ export function MappingPage() {
       actionToSave = toComboActionKey(tokens);
       savedLabel = `快捷键 ${formatComboDisplay(tokens)}`;
     }
+    if (!isTauri()) return;
+
+    const where = `${selectedName} · ${TRIGGER_LABEL[trigger]}`;
     try {
-      await invoke("save_mapping", {
-        edit: { button: selected, trigger, action: actionToSave },
-      });
-      const entry: MappingEntry = {
-        button: selected,
-        name: selectedName,
-        trigger,
-        action: savedLabel,
-        action_key: actionToSave,
-      };
-      setMapping((prev) => {
-        const idx = prev.findIndex(
-          (m) => m.button === selected && m.trigger === trigger
-        );
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = entry;
-          return next;
-        }
-        return [...prev, entry];
-      });
-      setSaveMsg(`已保存：${selectedName} · ${TRIGGER_LABEL[trigger]} → ${savedLabel}`);
+      if (isGlobalScope) {
+        await invoke("save_mapping", {
+          edit: { button: selected, trigger, action: actionToSave },
+        });
+        const entry: MappingEntry = {
+          button: selected,
+          name: selectedName,
+          trigger,
+          action: savedLabel,
+          action_key: actionToSave,
+        };
+        setMapping((prev) => {
+          const idx = prev.findIndex(
+            (m) => m.button === selected && m.trigger === trigger
+          );
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = entry;
+            return next;
+          }
+          return [...prev, entry];
+        });
+        setSaveMsg(`已保存：${where} → ${savedLabel}`);
+      } else {
+        await saveProfileBinding(scope, selected, trigger, actionToSave);
+        // 后端写完文件并重载了调度器，这里把它的结果读回来当唯一事实来源，
+        // 不在前端自己拼一份「应该是这样」的副本。
+        await refreshProfiles();
+        setSaveMsg(`已保存到「${activeProfile?.name}」：${where} → ${savedLabel}`);
+      }
     } catch (err) {
       setSaveMsg(`保存失败: ${err}`);
+    }
+  }
+
+  /** 「改用全局」：只撤掉选中的这一格，这份配置的其它格子不动。 */
+  async function useGlobal() {
+    if (isGlobalScope) return;
+    const where = `${selectedName} · ${TRIGGER_LABEL[trigger]}`;
+    try {
+      await clearProfileBinding(scope, selected, trigger);
+      await refreshProfiles();
+      setSaveMsg(`「${where}」已改回沿用全局`);
+    } catch (err) {
+      setSaveMsg(`取消失败: ${err}`);
+    }
+  }
+
+  async function handleCreate(name: string, process: string, title: string) {
+    setNewOpen(false);
+    try {
+      const id = await createProfileRequest(name, process, title);
+      await refreshProfiles();
+      setScope(id);
+      setSaveMsg("已新建这份配置，改过的按键会自动覆盖全局");
+    } catch (err) {
+      setSaveMsg(`新建失败: ${err}`);
+    }
+  }
+
+  async function handleDelete() {
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (!target) return;
+    try {
+      await deleteProfile(target.id);
+      await refreshProfiles();
+      // 删掉的正好是当前正在看的那一份，就退回全局。
+      if (scope === target.id) setScope(GLOBAL_SCOPE);
+      setSaveMsg(`已删除「${target.name}」的配置，它的按键回到全局`);
+    } catch (err) {
+      setSaveMsg(`删除失败: ${err}`);
     }
   }
 
@@ -273,27 +312,17 @@ export function MappingPage() {
     <div className="page">
       <div className="section-label">按键配置</div>
 
-      <section className="card eat-card">
-        <div className="eat-info">
-          <div className="eat-title">拦截 HID 按键信号</div>
-          <p className="hint">
-            {eatEnabled === null
-              ? "读取中…"
-              : eatEnabled
-                ? "已开启：系统不响应遥控器按键，只由本应用注入映射动作"
-                : "已关闭：系统会同时响应遥控器按键"}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={eatEnabled === true}
-          className={`switch${eatEnabled ? " on" : ""}`}
-          onClick={toggleEat}
-          disabled={eatEnabled === null || eatBusy || !isTauri()}
-        >
-          <span className="switch-thumb" />
-        </button>
+      <section className="card">
+        <div className="card-title">作用范围</div>
+        <ScopeBar
+          items={scopeItems}
+          active={scope}
+          onSelect={setScope}
+          onRemove={(item) =>
+            setPendingDelete(profiles.find((p) => p.id === item.id) ?? null)
+          }
+          onNew={() => setNewOpen(true)}
+        />
       </section>
 
       <div className="mapping-wizard">
@@ -303,155 +332,167 @@ export function MappingPage() {
           <p className="hint current-key">{selectedName}</p>
         </section>
 
-        <section className="card wizard-card">
-          <div className="wizard-group">
-            <div className="wizard-label">② 触发方式</div>
-            <div className="trigger-options">
-              {availableTriggers.map((t) => (
-                <button
-                  key={t.key}
-                  className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
-                  title={t.desc}
-                  onClick={() => setTrigger(t.key)}
-                >
-                  <span className="trigger-name">{t.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="timing-row">
-              <label className="timing-label">
-                长按判定
-                <select
-                  value={longPressMs}
-                  onChange={(e) => saveTiming(Number(e.target.value), doubleClickMs)}
-                >
-                  <option value={400}>0.4 秒</option>
-                  <option value={550}>0.55 秒</option>
-                  <option value={700}>0.7 秒</option>
-                  <option value={1000}>1.0 秒</option>
-                </select>
-              </label>
-              <label className="timing-label">
-                双击间隔
-                <select
-                  value={doubleClickMs}
-                  onChange={(e) => saveTiming(longPressMs, Number(e.target.value))}
-                >
-                  <option value={200}>0.2 秒</option>
-                  <option value={300}>0.3 秒</option>
-                  <option value={400}>0.4 秒</option>
-                  <option value={500}>0.5 秒</option>
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div className="wizard-group">
-            <div className="wizard-label">③ 动作分类</div>
-            <div className="category-tabs">
-              {ACTION_CATEGORIES.map((c) => (
-                <button
-                  key={c.key}
-                  className={`btn small ${category === c.key ? "primary" : ""}`}
-                  onClick={() => {
-                    setCategory(c.key);
-                    setAction(c.actions[0]?.key || "disabled");
-                    setCapturing(false);
-                    if (c.key !== COMBO_CATEGORY) {
-                      setComboTokens([]);
-                      setComboDraft("");
-                    }
-                  }}
-                >
-                  {c.title}
-                </button>
-              ))}
-            </div>
-            {category === COMBO_CATEGORY ? (
-              <div className="combo-capture">
-                <div className="combo-capture-row">
-                  <input
-                    className={`combo-input${capturing ? " listening" : ""}`}
-                    readOnly
-                    value={
-                      capturing && comboDraft
-                        ? formatComboDisplay(comboDraft.split("+"))
-                        : comboTokens.length
-                          ? formatComboDisplay(comboTokens)
-                          : ""
-                    }
-                    placeholder={capturing ? "按下快捷键" : "点击此处，然后按下快捷键"}
-                    onFocus={onComboFocus}
-                    onBlur={onComboBlur}
-                    onKeyDown={onComboKeyDown}
-                    onKeyUp={onComboKeyUp}
-                  />
-                  {comboTokens.length > 0 && (
+        {/* 向导与映射表合并成一张卡，左右水平排布 */}
+        <section className="card wizard-card merged-card">
+          <div className="merged-cols">
+            <div className="merged-col">
+              <div className="wizard-group">
+                <div className="wizard-label">② 触发方式</div>
+                <div className="trigger-options">
+                  {availableTriggers.map((t) => (
                     <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        pendingComboRef.current = [];
-                        heldModsRef.current = [];
-                        setComboTokens([]);
-                        setComboDraft("");
-                        setCapturing(false);
-                      }}
+                      key={t.key}
+                      className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
+                      title={t.desc}
+                      onClick={() => setTrigger(t.key)}
                     >
-                      清除
+                      <span className="trigger-name">{t.label}</span>
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
-            ) : (
-              <div className="action-grid">
-                {ACTION_CATEGORIES.find((c) => c.key === category)?.actions.map((a) => (
-                  <button
-                    key={a.key}
-                    className={`btn small ${action === a.key ? "primary" : ""}`}
-                    onClick={() => setAction(a.key)}
-                  >
-                    {a.label}
-                  </button>
-                ))}
+
+              <div className="wizard-group">
+                <div className="wizard-label">③ 动作分类</div>
+                <div className="category-tabs">
+                  {ACTION_CATEGORIES.map((c) => (
+                    <button
+                      key={c.key}
+                      className={`btn small ${category === c.key ? "primary" : ""}`}
+                      onClick={() => {
+                        setCategory(c.key);
+                        setAction(c.actions[0]?.key || "disabled");
+                        setCapturing(false);
+                        if (c.key !== COMBO_CATEGORY) {
+                          setComboTokens([]);
+                          setComboDraft("");
+                        }
+                      }}
+                    >
+                      {c.title}
+                    </button>
+                  ))}
+                </div>
+                {category === COMBO_CATEGORY ? (
+                  <div className="combo-capture">
+                    <div className="combo-capture-row">
+                      <input
+                        className={`combo-input${capturing ? " listening" : ""}`}
+                        readOnly
+                        value={
+                          capturing && comboDraft
+                            ? formatComboDisplay(comboDraft.split("+"))
+                            : comboTokens.length
+                              ? formatComboDisplay(comboTokens)
+                              : ""
+                        }
+                        placeholder={capturing ? "按下快捷键" : "点击此处，然后按下快捷键"}
+                        onFocus={onComboFocus}
+                        onBlur={onComboBlur}
+                        onKeyDown={onComboKeyDown}
+                        onKeyUp={onComboKeyUp}
+                      />
+                      {comboTokens.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => {
+                            pendingComboRef.current = [];
+                            heldModsRef.current = [];
+                            setComboTokens([]);
+                            setComboDraft("");
+                            setCapturing(false);
+                          }}
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="action-grid">
+                    {ACTION_CATEGORIES.find((c) => c.key === category)?.actions.map((a) => (
+                      <button
+                        key={a.key}
+                        className={`btn small ${action === a.key ? "primary" : ""}`}
+                        onClick={() => setAction(a.key)}
+                      >
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="preview-box">
-            <span className="preview-label">即将保存</span>
-            <span className="preview-value">
-              {selectedName} · {TRIGGER_LABEL[trigger]} → {actionLabel}
-            </span>
-          </div>
+              <div className="preview-box">
+                <span className="preview-label">即将保存</span>
+                <span className="preview-value">
+                  {selectedName} · {TRIGGER_LABEL[trigger]} → {actionLabel}
+                </span>
+              </div>
 
-          <div className="actions">
-            <button
-              className="btn primary"
-              onClick={save}
-              disabled={!isTauri()}
-            >
-              保存此键
-            </button>
+              {selectedOverride && (
+                <p className="hint override-note">
+                  这一格已改成「{selectedOverride.action}」，全局是「
+                  {selectedGlobal?.action ?? "未绑定"}」。
+                </p>
+              )}
+
+              <div className="actions">
+                <button className="btn primary" onClick={save} disabled={!isTauri()}>
+                  {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
+                </button>
+                {!isGlobalScope && selectedOverride && (
+                  <button className="btn" onClick={useGlobal}>
+                    改用全局
+                  </button>
+                )}
+              </div>
+              {saveMsg && <p className="hint">{saveMsg}</p>}
+            </div>
+
+            <div className="merged-col">
+              <MappingMatrix
+                title={isGlobalScope ? "映射表" : `映射表 · ${activeProfile?.name ?? ""}`}
+                hint={
+                  isGlobalScope
+                    ? undefined
+                    : `蓝底 ＝ 这份配置改过的，其余沿用全局`
+                }
+                buttons={REMOTE_BUTTONS}
+                triggers={triggersFor("ok")}
+                global={globalCells}
+                override={overrideCells}
+                selected={{ button: selected, trigger }}
+                onSelect={(button, trig) => {
+                  setSelected(button);
+                  setTrigger(trig);
+                }}
+              />
+            </div>
           </div>
-          {saveMsg && <p className="hint">{saveMsg}</p>}
         </section>
       </div>
 
-      <div className="section-label">映射表</div>
-      <section className="card">
-        <div className="card-title">当前映射表</div>
-        <div className="mapping-list">
-          {mapping.map((b) => (
-            <div key={`${b.button}-${b.trigger}`} className="mapping-row">
-              <span className="mapping-key">
-                {b.name} · {TRIGGER_LABEL[b.trigger] || b.trigger}
-              </span>
-              <span className="mapping-action">{b.action}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <NewProfileDialog
+        open={newOpen}
+        onCancel={() => setNewOpen(false)}
+        onCreate={handleCreate}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        danger
+        title="删除这份配置？"
+        desc={
+          pendingDelete
+            ? `「${pendingDelete.name}」将不再有专属配置，所有按键沿用全局。`
+            : undefined
+        }
+        confirmLabel="删除"
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

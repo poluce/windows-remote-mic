@@ -1086,29 +1086,6 @@ button:focus-visible,
   font-size: 13px;
 }
 
-.timing-row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.timing-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.timing-label select {
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 4px 8px;
-  font-size: 13px;
-}
 
 .category-tabs {
   display: flex;
@@ -1187,4 +1164,339 @@ button:focus-visible,
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- 通用设置页 ---------- */
+/* 复用已有的 .form-card / .form-row / .form-label（macOS 系统设置式），
+   这里只补「标题 + 说明」两行文字的主体列，以及行尾的窄下拉。 */
+.form-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-text .hint {
+  margin: 3px 0 0;
+}
+
+.form-text .hint.warn {
+  color: var(--warn);
+}
+
+.timing-select {
+  width: auto;
+  min-width: 104px;
+  flex: none;
+}
+
+/* ---------- 作用范围选择器 ---------- */
+.scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.scope-pill:hover {
+  border-color: var(--border-strong);
+}
+
+.scope-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.scope-pill.new {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.scope-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+
+.scope-pill.active .scope-dot {
+  background: var(--accent);
+}
+
+/* 自建配置右上角的删除叉：只有它能删，所以只有它长这个 */
+.scope-item {
+  position: relative;
+  display: inline-flex;
+}
+
+.scope-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--surface);
+  background: var(--text-3);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.scope-remove:hover {
+  background: var(--err);
+}
+
+.scope-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
+.matrix-hint {
+  margin: 0 0 8px;
+}
+
+.matrix {
+  border-top: 1px solid var(--border);
+}
+
+.matrix-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 1fr 1fr;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  min-height: 31px;
+}
+
+.matrix-row.head {
+  min-height: 26px;
+}
+
+.matrix-row.head .matrix-cell {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.matrix-row.head .matrix-key {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.matrix-key {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  padding-right: 6px;
+}
+
+.matrix-cell {
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--border);
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 有绑定，但这一格是沿用全局的 */
+.matrix-cell.on {
+  color: var(--text);
+}
+
+/* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
+.matrix-cell.own {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.matrix-cell.sel {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 3px;
+}
+
+.matrix-cell.span {
+  grid-column: 2 / 5;
+  color: var(--warn);
+}
+
+.matrix-cell[data-cell] {
+  cursor: pointer;
+}
+
+.matrix-cell[data-cell]:hover {
+  background: var(--surface-2);
+}
+
+.matrix-row.mic .matrix-key {
+  color: var(--text-2);
+}
+
+.override-note {
+  margin: 8px 0 0;
+}
+
+/* ---------- 映射卡：向导与矩阵左右并排 ---------- */
+.mapping-wizard {
+  grid-template-columns: minmax(190px, 215px) 1fr;
+}
+
+.merged-cols {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.78fr) minmax(400px, 1.22fr);
+  align-items: start;
+}
+
+.merged-col + .merged-col {
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+  margin-left: 20px;
+}
+
+.merged-card .actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.merged-card .matrix-cell {
+  padding: 4px 6px;
+}
+
+/* ---------- 对话框 ---------- */
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.dialog-mask.open {
+  display: flex;
+}
+
+.dialog {
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 22px 24px;
+}
+
+.dialog h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.dialog-desc {
+  margin: 2px 0 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.dialog .btn.danger {
+  background: var(--err);
+  border-color: var(--err);
+  color: #fff;
+}
+
+.dialog .btn.danger:hover:not(:disabled) {
+  background: #b80012;
+  border-color: #b80012;
+}
+
+.field {
+  margin-top: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field .row {
+  display: flex;
+  gap: 8px;
+}
+
+.field .row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field .tip {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+.field .tip code {
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.stage2 {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
 }

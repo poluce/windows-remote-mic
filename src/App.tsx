@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Sidebar, type PageId } from "./components/Sidebar";
 import { ConnectionPage } from "./pages/ConnectionPage";
 import { MappingPage } from "./pages/MappingPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { LogPage } from "./pages/LogPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -24,6 +25,7 @@ function App() {
         <div className="content">
           {page === "connection" && <ConnectionPage />}
           {page === "mapping" && <MappingPage />}
+          {page === "settings" && <SettingsPage />}
           {page === "diagnostics" && <DiagnosticsPage />}
           {page === "log" && <LogPage />}
           {page === "guidance" && <OnboardingPage />}
