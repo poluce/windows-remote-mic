@@ -1004,8 +1004,10 @@ button:focus-visible,
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  /* 左列只放遥控器图形，收窄一点把宽度让给右边的矩阵 */
-  grid-template-columns: minmax(190px, 215px) 1fr;
+  /* 左列只放遥控器图形，收窄一点把宽度让给右边的矩阵。
+     右边同样写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话
+     窗口一窄就会被里面两张卡的最小宽度顶出去。 */
+  grid-template-columns: minmax(190px, 215px) minmax(0, 1fr);
   gap: 16px;
   /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
      各占各的内容高度，遥控器卡明显比右边的向导 + 矩阵卡高出一截。 */
@@ -1367,9 +1369,17 @@ button:focus-visible,
 }
 
 /* ---------- 映射卡：向导与矩阵左右并排 ---------- */
+/*
+ * 两列的下限一律写 0，让它们**可以被压缩**。
+ *
+ * 原来写的是 minmax(270px, ...) / minmax(400px, ...)：窗口一窄，这两个下限
+ * 加起来（670 + 列间距 41 + 卡片内边距 44）超过容器，网格就横向撑破卡片，
+ * 整页出现横向滚动。下限在这里给不出任何好处——真正决定可用宽度的是窗口
+ * 自身的最小尺寸，而不是让内容硬撑。
+ */
 .merged-cols {
   display: grid;
-  grid-template-columns: minmax(270px, 0.78fr) minmax(400px, 1.22fr);
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
   align-items: start;
 }
 
@@ -1382,13 +1392,10 @@ button:focus-visible,
  * 按钮墙就会自己滚起来，连「保存此键」都被推到看不见。780px 这个门槛是量
  * 出来的——6 行按钮的内容高 499px，加上分区标题与作用范围两行，可视区低于
  * 它就放不下了。
- *
- * 注意约束在 max（230px）而不在 min：原来写成 minmax(270px, 0.78fr)，只要
- * fr 算出来大于 270，那个下限就完全不起作用——想收窄得改 max 或比例。
  */
 @media (min-height: 780px) {
   .merged-cols {
-    grid-template-columns: minmax(200px, 230px) minmax(360px, 1fr);
+    grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
   }
 }
 
