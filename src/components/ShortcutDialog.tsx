@@ -3,7 +3,6 @@ import {
   canonicalizeCombo,
   comboFromHeld,
   formatComboDisplay,
-  hasMainKey,
   tokenFromEvent,
 } from "../pages/mapping/combo";
 import type { NamedShortcut } from "../pages/mapping/shortcuts";
@@ -37,18 +36,14 @@ export function ShortcutDialog({
   const [error, setError] = useState("");
   /** 此刻物理上按着的全部按键（修饰键 + 主键），按按下顺序。 */
   const heldRef = useRef<string[]>([]);
-  /** 最近一次「录全了」的组合。松手时回到它，所以录制结果不会被松手抹掉。 */
-  const completeRef = useRef<string[]>([]);
 
   // 每次打开都按「当前编辑的是哪一条」重置，避免带上一次的残留。
   useEffect(() => {
     if (!open) return;
-    const initial = editing?.keys ?? [];
     setName(editing?.name ?? "");
-    setTokens(initial);
+    setTokens(editing?.keys ?? []);
     setError("");
     heldRef.current = [];
-    completeRef.current = initial;
   }, [open, editing]);
 
   useEffect(() => {
@@ -93,8 +88,7 @@ export function ShortcutDialog({
       setError(UNSUPPORTED_KEY);
       return;
     }
-    if (captured.complete) completeRef.current = captured.tokens;
-    setTokens(captured.tokens);
+    setTokens(captured);
     setError("");
   }
 
@@ -103,11 +97,9 @@ export function ShortcutDialog({
     e.stopPropagation();
     const token = tokenFromEvent(e.nativeEvent);
     if (!token) return;
+    // 松手不动显示：最后按下的就是结果。只按一个修饰键也算（右Ctrl 可以单独发），
+    // 所以这里绝不能清空——清空正是当初「录完一闪就没」的原因。
     heldRef.current = heldRef.current.filter((t) => t !== token);
-    // 还按着别的键就保持现状，让用户看到自己正按的组合。
-    if (heldRef.current.length) return;
-    // 全部松开了：录全了就留着，只按过修饰键就退回上一次的有效值。
-    setTokens(completeRef.current);
   }
 
   function submit() {
@@ -118,10 +110,6 @@ export function ShortcutDialog({
     }
     if (!tokens.length) {
       setError("请先录制快捷键");
-      return;
-    }
-    if (!hasMainKey(tokens)) {
-      setError("再按一个主键（字母、数字、F1–F12 或 Enter/Tab 等）");
       return;
     }
     const canonical = canonicalizeCombo(tokens);
@@ -162,7 +150,7 @@ export function ShortcutDialog({
             onKeyUp={onComboKeyUp}
           />
           <div className="tip">
-            左右修饰键是分开的：左Ctrl 和右Ctrl 不是同一个键；修饰键和主键先按哪个都行。
+            左右修饰键是分开的（左Ctrl 和右Ctrl 不是同一个键）；只录一个修饰键也可以。
           </div>
         </div>
 

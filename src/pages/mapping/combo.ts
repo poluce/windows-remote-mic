@@ -127,11 +127,6 @@ export function modifierTokenFromCode(code: string): string | null {
   return MODIFIER_CODE_TO_TOKEN[code] ?? null;
 }
 
-/** 这个 token 是不是修饰键（别名形式也算，例如手改配置里的 `ctrl`）。 */
-export function isModifierToken(token: string): boolean {
-  return Boolean(MODIFIER_ALIASES[token.trim().toLowerCase()]);
-}
-
 function mainTokenFromEvent(e: KeyboardEvent): string | null {
   const code = e.code;
   if (code.startsWith("Key") && code.length === 4) {
@@ -199,19 +194,9 @@ export function parseComboActionKey(actionKey: string): string[] | null {
   return canonicalizeCombo(spec.split("+"));
 }
 
-export type ComboCapture = {
-  tokens: string[];
-  complete: boolean;
-};
-
 /** 一次按键对应哪个 token：修饰键或主键；不支持的按键返回 null。 */
 export function tokenFromEvent(e: KeyboardEvent): string | null {
   return modifierTokenFromCode(e.code) ?? mainTokenFromEvent(e);
-}
-
-/** 组合里有没有主键。只按修饰键不算一条有效快捷键。 */
-export function hasMainKey(tokens: string[]): boolean {
-  return tokens.some((t) => !isModifierToken(t));
 }
 
 /**
@@ -221,8 +206,11 @@ export function hasMainKey(tokens: string[]): boolean {
  * 按下/松开顺序维护。这里**不关心按下顺序**：修饰键归修饰键、主键取最后一个，
  * 所以「先按 Ctrl 再按 K」和「先按 K 再按 Ctrl」得到同一个 `lctrl+k`——人手
  * 同时按下两个键时操作系统给出的先后是随机的，录不出来才是 bug。
+ *
+ * 只按修饰键也是合法组合（`rctrl`），后端 `parse_combo_spec` 明确支持
+ * 「修饰键可单独使用」，所以这里不做「必须有主键」的限制。
  */
-export function comboFromHeld(held: string[]): ComboCapture | null {
+export function comboFromHeld(held: string[]): string[] | null {
   const mods: string[] = [];
   let main: string | null = null;
   for (const raw of held) {
@@ -235,7 +223,5 @@ export function comboFromHeld(held: string[]): ComboCapture | null {
     }
     main = t;
   }
-  const tokens = canonicalizeCombo(main ? [...mods, main] : mods);
-  if (!tokens) return null;
-  return { tokens, complete: main !== null };
+  return canonicalizeCombo(main ? [...mods, main] : mods);
 }
