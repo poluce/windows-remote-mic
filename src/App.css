@@ -1026,21 +1026,26 @@ button:focus-visible,
   zoom: 1.3;
 }
 
+/* ---------- 映射向导：左栏的垂直间距 ----------
+ * 左栏收窄到 230px 后按钮多占一行（内容高 +32px）。下面这几处各让出
+ * 4–6px，把多出来的那行换回来——否则默认窗口 1000x700 下左栏会溢出
+ * 24px，「保存此键」被推到可视区外。都是 2–6px 的微调，观感不变。
+ */
 .wizard-group {
-  margin-bottom: 14px;
+  margin-bottom: 9px;
 }
 
 .wizard-label {
   font-weight: 600;
   font-size: 13px;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
 }
 
 .action-grid {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 5px;
 }
 
 .action-grid .btn {
@@ -1105,8 +1110,8 @@ button:focus-visible,
 }
 
 .preview-box {
-  margin: 12px 0;
-  padding: 10px 12px;
+  margin: 8px 0;
+  padding: 8px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1376,27 +1381,18 @@ button:focus-visible,
  * 加起来（670 + 列间距 41 + 卡片内边距 44）超过容器，网格就横向撑破卡片，
  * 整页出现横向滚动。下限在这里给不出任何好处——真正决定可用宽度的是窗口
  * 自身的最小尺寸，而不是让内容硬撑。
+ *
+ * 左栏是按钮墙：越窄，按钮换行越多、栏越高。230px 是量出来的甜点——按钮
+ * 从 5 行变 6 行（内容 467 → 499px），但矩阵能拿到多 50px 宽，格子里的字
+ * 就不再被省略号截断（「显示桌面（Win+D」少一个右括号）。
+ *
+ * 这里**不加高度条件**。加过一版 `@media (min-height: 780px)`，结果默认
+ * 窗口 1000x700 可视区只有 700，条件不成立，改动等于没做。
  */
 .merged-cols {
   display: grid;
-  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
   align-items: start;
-}
-
-/*
- * 左栏是一面按钮墙：越窄，按钮换行越多、栏就越高。窗口够高时收窄它，把宽度
- * 让给矩阵——矩阵格子会被省略号截断（「显示桌面（Win+D」少一个右括号），
- * 收窄 50px 正好治好。
- *
- * 为什么用高度分档而不是无脑收窄：1280x800 那档左栏只剩 31px 余量，再收窄
- * 按钮墙就会自己滚起来，连「保存此键」都被推到看不见。780px 这个门槛是量
- * 出来的——6 行按钮的内容高 499px，加上分区标题与作用范围两行，可视区低于
- * 它就放不下了。
- */
-@media (min-height: 780px) {
-  .merged-cols {
-    grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
-  }
 }
 
 .merged-col + .merged-col {
@@ -1406,7 +1402,7 @@ button:focus-visible,
 }
 
 .merged-card .actions {
-  margin-top: 12px;
+  margin-top: 6px;
   flex-wrap: wrap;
 }
 
