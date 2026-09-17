@@ -270,4 +270,12 @@ cargo check -p remote-mic
   ```
 - 提交前检查 `git status`，避免把临时文件或平台相关 node_modules 提交进去。
 - 需要重启 Tauri dev 时，先结束旧 `remote-mic.exe` / 占用 `1420` 的进程，再重新启动。
+- **前端改动看不见？先确认应用是怎么起的。**（踩过一次，浪费好几轮）
+  - `npm run tauri dev` → 走 Vite 开发服务器（`build.devUrl`），改 CSS/TSX **即时热更新**，端口 1420 在监听。
+  - `cargo run` → **没有开发服务器**，Tauri 把 `dist/` 在**编译期**烤进二进制（`build.frontendDist`）。
+    此时改前端必须 `npm run build` **再重编 Rust 再重启应用**才生效；只看 `1420` 端口是不是开着、
+    或者只跑 `npm run build`，都会以为改动生效了，实际窗口里还是旧的。
+  - 判别方法：`Get-NetTCPConnection -LocalPort 1420 -State Listen` 有没有结果；
+    再比 `remote-mic.exe` 的编译时间与 `dist/` 的构建时间——exe 更早就说明前端是旧的。
+  - UI 改动**必须在真的那一个实例上看过**再汇报，不能只凭无头浏览器或构建通过就下结论。
 - **HOGP 旁路 / 吃掉模式失效时**：先调用 skill `hogp-report-path-re`（`.agent/skills/hogp-report-path-re/SKILL.md`），按其中的方法论与 Playbook 重新定位驱动报告写入点；不要凭旧偏移盲改。
