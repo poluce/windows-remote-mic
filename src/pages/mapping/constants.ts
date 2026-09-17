@@ -91,7 +91,7 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
   },
   {
     key: "combo",
-    title: "快捷键",
+    title: "自定义",
     actions: [{ key: "custom_combo", label: "自定义快捷键" }],
   },
   {
