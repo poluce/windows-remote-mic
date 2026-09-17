@@ -1373,6 +1373,25 @@ button:focus-visible,
   align-items: start;
 }
 
+/*
+ * 左栏是一面按钮墙：越窄，按钮换行越多、栏就越高。窗口够高时收窄它，把宽度
+ * 让给矩阵——矩阵格子会被省略号截断（「显示桌面（Win+D」少一个右括号），
+ * 收窄 50px 正好治好。
+ *
+ * 为什么用高度分档而不是无脑收窄：1280x800 那档左栏只剩 31px 余量，再收窄
+ * 按钮墙就会自己滚起来，连「保存此键」都被推到看不见。780px 这个门槛是量
+ * 出来的——6 行按钮的内容高 499px，加上分区标题与作用范围两行，可视区低于
+ * 它就放不下了。
+ *
+ * 注意约束在 max（230px）而不在 min：原来写成 minmax(270px, 0.78fr)，只要
+ * fr 算出来大于 270，那个下限就完全不起作用——想收窄得改 max 或比例。
+ */
+@media (min-height: 780px) {
+  .merged-cols {
+    grid-template-columns: minmax(200px, 230px) minmax(360px, 1fr);
+  }
+}
+
 .merged-col + .merged-col {
   border-left: 1px solid var(--border);
   padding-left: 20px;
