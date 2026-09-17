@@ -117,7 +117,11 @@ pub struct ForegroundStatus {
 /// 快捷菜单内圈的一个应用图标。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MenuAppEntry {
-    /// 稳定标识：回传 `open_app_profile` 时用它定位配置（当前即展示名）。
+    /// 稳定标识：回传 `open_app_profile` 时用它定位配置（就是文件名）。
+    ///
+    /// **不要改用展示名**：展示名在编辑器里可改，改完快捷菜单就会点空。
+    pub id: String,
+    /// 展示名，只给人看。
     pub name: String,
     /// 图标上的 1–2 个字符。
     pub label: String,
@@ -250,6 +254,7 @@ impl KeyDispatcher {
             .filter_map(|p| {
                 let icon = p.icon.as_ref()?;
                 Some(MenuAppEntry {
+                    id: p.id.clone(),
                     name: p.display_name(),
                     label: icon.label.clone(),
                     color: icon.color.clone(),
@@ -259,18 +264,21 @@ impl KeyDispatcher {
             .collect()
     }
 
-    /// 按展示名取一份应用配置的副本（供「点图标」时启动/聚焦用）。
+    /// 当前全部应用配置的快照（编辑器的作用范围选择器与矩阵用它）。
+    ///
+    /// 返回副本：调用方要遍历它拼 UI 数据，不该占着调度器的锁。
+    pub fn profiles_snapshot(&self) -> Vec<AppProfile> {
+        let inner = self.inner.lock().unwrap();
+        inner.profiles.profiles().to_vec()
+    }
+
+    /// 按 id（文件名）取一份应用配置的副本（供「点图标」与编辑器定位目标用）。
     ///
     /// 返回副本而不是引用：调用方要去做启动窗口这类可能阻塞的事，
     /// 不该一直占着调度器的锁。
-    pub fn profile_named(&self, name: &str) -> Option<AppProfile> {
+    pub fn profile_by_id(&self, id: &str) -> Option<AppProfile> {
         let inner = self.inner.lock().unwrap();
-        inner
-            .profiles
-            .profiles()
-            .iter()
-            .find(|p| p.display_name() == name)
-            .cloned()
+        inner.profiles.get_by_id(id).cloned()
     }
 
     /// 当前语音识别目标。
@@ -1240,11 +1248,13 @@ mod tests {
         let mut registry = ProfileRegistry::default();
 
         registry.upsert(AppProfile {
+            id: "no-icon".into(),
             process: core_app_profile::ProcessSpec::One("__no_icon__.exe".into()),
             name: "没有图标".into(),
             ..Default::default()
         });
         registry.upsert(AppProfile {
+            id: "first".into(),
             process: core_app_profile::ProcessSpec::One("__first__.exe".into()),
             name: "第一个".into(),
             icon: Some(core_app_profile::IconSpec {
@@ -1254,6 +1264,7 @@ mod tests {
             ..Default::default()
         });
         registry.upsert(AppProfile {
+            id: "second".into(),
             process: core_app_profile::ProcessSpec::One("__second__.exe".into()),
             name: "第二个".into(),
             icon: Some(core_app_profile::IconSpec {
@@ -1267,17 +1278,24 @@ mod tests {
         let apps = dispatcher.menu_apps();
 
         assert_eq!(apps.len(), 2, "没有 icon 的配置不该出现在菜单里");
+        assert_eq!(apps[0].id, "first");
         assert_eq!(apps[0].name, "第一个");
         assert_eq!(apps[0].label, "1st");
         assert_eq!(apps[0].color, "#111111");
+        assert_eq!(apps[1].id, "second");
         assert_eq!(apps[1].name, "第二个");
         // 这两个进程都不存在，所以都是「点了会启动」。
         assert!(!apps[0].open && !apps[1].open);
 
-        // 按展示名能取回配置副本，供 open_app_profile 使用。
-        assert!(dispatcher.profile_named("第二个").is_some());
-        assert!(dispatcher.profile_named("没有图标").is_some());
-        assert!(dispatcher.profile_named("不存在").is_none());
+        // 按 id 能取回配置副本，供 open_app_profile 使用。
+        assert!(dispatcher.profile_by_id("second").is_some());
+        assert!(dispatcher.profile_by_id("no-icon").is_some());
+        assert!(dispatcher.profile_by_id("不存在").is_none());
+        // 展示名不是身份：改了名字不影响按 id 定位。
+        assert!(dispatcher.profile_by_id("第二个").is_none());
+
+        // 编辑器要的全量快照含没有图标的配置。
+        assert_eq!(dispatcher.profiles_snapshot().len(), 3);
     }
 
     /// 真机端到端：按「当前真实前台进程名」造一份配置，确认能被匹配到。

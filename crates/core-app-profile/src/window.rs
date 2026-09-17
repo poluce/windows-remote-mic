@@ -446,7 +446,7 @@ mod tests {
         eprintln!("聚焦结果：{:?}", focus(&window));
     }
 
-    /// 真机冒烟：用**内置配置**走一遍「点图标」，两条分支都要能验。
+    /// 真机冒烟：用**种子配置**走一遍「点图标」，两条分支都要能验。
     ///
     /// - ZCode 已打开 → `find_window` 必须命中（验证 EnumWindows + exe 名解析 + 进程名匹配）；
     /// - 没打开 → `launch` 必须真把它拉起来（验证 ShellExecuteW + `shell:AppsFolder`）。
@@ -456,12 +456,12 @@ mod tests {
     #[test]
     #[ignore = "需要桌面上已安装 ZCode"]
     fn open_zcode_smoke() {
-        let registry = crate::ProfileRegistry::builtin();
+        let registry = crate::ProfileRegistry::from_seeds();
         let p = registry
             .profiles()
             .iter()
             .find(|p| p.display_name() == "ZCode")
-            .expect("内置配置里应有 ZCode");
+            .expect("种子配置里应有 ZCode");
 
         eprintln!("配置：{} / {:?}", p.display_name(), p.process);
         eprintln!("启动方式：{:?}", p.launch);

@@ -103,12 +103,23 @@ fn config_store() -> Option<core_config::ConfigStore> {
     core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
 }
 
-/// 加载应用专属按键配置：内置（`profiles/*.json`，编译进二进制）+ 用户目录覆盖。
+/// 加载应用专属按键配置：**先播种，再读目录**。
 ///
-/// 用户目录是 `<配置目录>/app-profiles/`；与内置配置有进程名重叠时整份替换。
+/// 配置只有一个来源——`<配置目录>/app-profiles/*.json`。仓库根 `profiles/*.json`
+/// 是编译进来的种子，只在还没有同名文件时落地一次；落地之后磁盘上的文件就是
+/// 唯一事实来源，程序不再覆盖它（所以用户删掉的配置不会在下次启动时复活）。
 fn load_app_profiles() -> core_app_profile::ProfileRegistry {
-    let user_dir = config_store().map(|store| store.dir.join(core_app_profile::USER_PROFILE_DIR));
-    core_app_profile::ProfileRegistry::load(user_dir.as_deref())
+    let Some(store) = config_store() else {
+        core_log::log_warn("[app-profile] 拿不到配置目录，本次没有任何应用配置");
+        return core_app_profile::ProfileRegistry::default();
+    };
+    let written = core_app_profile::seed_user_dir(&store.dir);
+    if written > 0 {
+        core_log::log_line(&format!("[app-profile] 首次落地了 {written} 份种子配置"));
+    }
+    core_app_profile::ProfileRegistry::load(Some(
+        &store.dir.join(core_app_profile::USER_PROFILE_DIR),
+    ))
 }
 
 /// 来自设置界面的映射编辑数据。
@@ -520,9 +531,14 @@ pub fn run() {
             commands::audio::trigger_voice_typing,
             commands::diagnostics::run_self_test,
             commands::app_profile::app_profile_status,
+            commands::app_profile::app_profile_catalog,
             commands::app_profile::app_menu_apps,
             commands::app_profile::open_app_profile,
             commands::app_profile::reload_app_profiles,
+            commands::app_profile::create_app_profile,
+            commands::app_profile::save_profile_binding,
+            commands::app_profile::clear_profile_binding,
+            commands::app_profile::delete_app_profile,
             commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
         ])

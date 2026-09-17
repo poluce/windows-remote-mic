@@ -96,6 +96,14 @@ pub enum LaunchSpec {
 /// `..Default::default()` 补齐即可，不必每加一个字段就全仓库改一遍。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppProfile {
+    /// 稳定标识：`app-profiles/` 里那个文件的名字（不含 `.json`）。
+    ///
+    /// 只用来定位「保存 / 删除哪一份配置」，**不参与匹配**，也**不写进 JSON**
+    /// （`serde(skip)`）。展示名 `name` 是给人看的、随时可以改，不能拿来当身份——
+    /// 否则用户改个名字，快捷菜单的「点图标打开」和编辑器的「保存到这份配置」
+    /// 就会同时找不到目标。
+    #[serde(skip)]
+    pub id: String,
     /// 匹配用的进程名；省略则只看窗口标题。
     #[serde(default)]
     pub process: ProcessSpec,
@@ -144,9 +152,38 @@ impl AppProfile {
         let title = window_title.trim().to_lowercase();
         !title.is_empty()
             && self
-                .window_title_contains
+                .title_keys()
                 .iter()
-                .any(|needle| !needle.trim().is_empty() && title.contains(&needle.to_lowercase()))
+                .any(|needle| title.contains(needle))
+    }
+
+    /// 会不会和另一份配置抢同一个前台上下文。
+    ///
+    /// 进程名有交集，或窗口标题关键字有交集，就算冲突。**标题这一半不能省**：
+    /// 纯标题配置（Chrome PWA、WSL 里的服务）的 `process` 是空的，只按进程名
+    /// 判重的话两份同标题的配置会同时留在注册表里，而匹配用的是 `.find()`——
+    /// 永远只有先加载的那份生效，另一份变成「改了没反应」。
+    pub fn conflicts_with(&self, other: &Self) -> bool {
+        let theirs = other.process.names();
+        if self
+            .process
+            .names()
+            .iter()
+            .any(|name| !name.is_empty() && theirs.contains(name))
+        {
+            return true;
+        }
+        let theirs = other.title_keys();
+        self.title_keys().iter().any(|key| theirs.contains(key))
+    }
+
+    /// 规范化后的标题关键字（去空白 + 小写 + 丢掉空串）。空串不能变成「匹配一切」。
+    fn title_keys(&self) -> Vec<String> {
+        self.window_title_contains
+            .iter()
+            .map(|needle| needle.trim().to_lowercase())
+            .filter(|needle| !needle.is_empty())
+            .collect()
     }
 }
 

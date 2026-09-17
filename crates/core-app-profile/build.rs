@@ -1,9 +1,13 @@
-//! 把仓库根目录 `profiles/*.json` 编进二进制。
+//! 把仓库根目录 `profiles/*.json` 编进二进制，作为**首次运行的种子**。
 //!
 //! 一个应用一个文件：新增应用只需往 `profiles/` 放一个 JSON，
 //! 不需要改任何 Rust 代码（build.rs 会自动发现并 include）。
 //!
-//! 用户目录下的同名进程配置在运行时会覆盖内置的（见 `ProfileRegistry::load`）。
+//! 种子只在 `app-profiles/` 里还没有同名文件时落地一次，之后磁盘上的文件就是
+//! 唯一事实来源，程序不再覆盖它（见 `core_app_profile::seed_user_dir`）。
+//!
+//! **代价**：种子内容在这个阶段被冻结。以后改了这里某个 JSON，只对还没落地过
+//! 该 id 的机器生效；已落地过的用户要自己删掉文件才会换新的。
 
 use std::env;
 use std::fs;
@@ -27,7 +31,7 @@ fn main() {
             .collect(),
         Err(e) => {
             println!(
-                "cargo:warning=core-app-profile: 读不到 {}（{e}），本次不会内置任何应用配置",
+                "cargo:warning=core-app-profile: 读不到 {}（{e}），本次不会编译进任何应用配置种子",
                 profiles_dir.display()
             );
             Vec::new()
@@ -37,8 +41,8 @@ fn main() {
 
     let mut generated = String::from(
         "// 由 build.rs 生成，请勿手改。\n\
-         /// 内置应用配置：(文件名, 文件内容)。\n\
-         pub const BUILTIN_PROFILES: &[(&str, &str)] = &[\n",
+         /// 应用配置种子：(文件名, 文件内容)。\n\
+         pub const SEED_PROFILES: &[(&str, &str)] = &[\n",
     );
     for path in &files {
         println!("cargo:rerun-if-changed={}", path.display());
@@ -54,6 +58,6 @@ fn main() {
     }
     generated.push_str("];\n");
 
-    let dest = Path::new(&out_dir).join("builtin_profiles.rs");
-    fs::write(&dest, generated).expect("write builtin_profiles.rs");
+    let dest = Path::new(&out_dir).join("seed_profiles.rs");
+    fs::write(&dest, generated).expect("write seed_profiles.rs");
 }

@@ -454,7 +454,7 @@
       const item = innerItems[innerWheel.targetIndex];
       if (!item) return;
       log('打开应用：' + item.name);
-      invoke('open_app_profile', { name: item.name })
+      invoke('open_app_profile', { id: item.id })
         .then((msg) => log(String(msg)))
         .catch((err) => log('打开失败: ' + String(err)));
     }
