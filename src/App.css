@@ -1607,3 +1607,21 @@ button:focus-visible,
   border-radius: 4px;
   padding: 0 5px;
 }
+
+/* ---------- 动作分类与具体动作之间的分隔 ---------- */
+/*
+ * 「方向 / 系统 / 音量 / 语音 / 快捷键 / 其他」是一级分类，
+ * 「回车 / 退格 / Esc / …」是该分类下的具体动作。
+ * 两组按钮字号、圆角、边框完全一样又紧挨着，很容易被当成同一排一起看，
+ * 于是一道细线把两级关系显出来。
+ */
+.category-tabs {
+  margin-bottom: 0; /* 间距交给下面那道线，别再叠一层 */
+}
+
+.category-tabs + .action-grid,
+.category-tabs + .combo-capture {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
