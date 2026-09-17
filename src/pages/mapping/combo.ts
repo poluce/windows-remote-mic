@@ -127,6 +127,11 @@ export function modifierTokenFromCode(code: string): string | null {
   return MODIFIER_CODE_TO_TOKEN[code] ?? null;
 }
 
+/** 这个 token 是不是修饰键（别名形式也算，例如手改配置里的 `ctrl`）。 */
+export function isModifierToken(token: string): boolean {
+  return Boolean(MODIFIER_ALIASES[token.trim().toLowerCase()]);
+}
+
 function mainTokenFromEvent(e: KeyboardEvent): string | null {
   const code = e.code;
   if (code.startsWith("Key") && code.length === 4) {
@@ -199,20 +204,38 @@ export type ComboCapture = {
   complete: boolean;
 };
 
-/** 录制时用已跟踪的左右修饰键，而不是 e.ctrlKey（无法区分左右）。 */
-export function keyEventToCombo(
-  e: KeyboardEvent,
-  heldModifiers: string[],
-): ComboCapture | null {
-  const mod = modifierTokenFromCode(e.code);
-  if (mod) {
-    const next = heldModifiers.includes(mod) ? heldModifiers : [...heldModifiers, mod];
-    const tokens = canonicalizeCombo(next);
-    return tokens ? { tokens, complete: false } : null;
+/** 一次按键对应哪个 token：修饰键或主键；不支持的按键返回 null。 */
+export function tokenFromEvent(e: KeyboardEvent): string | null {
+  return modifierTokenFromCode(e.code) ?? mainTokenFromEvent(e);
+}
+
+/** 组合里有没有主键。只按修饰键不算一条有效快捷键。 */
+export function hasMainKey(tokens: string[]): boolean {
+  return tokens.some((t) => !isModifierToken(t));
+}
+
+/**
+ * 由「当前按住的全部按键」拼出组合键。
+ *
+ * 录制时不能用 `e.ctrlKey` 判断修饰键（分不出左右），所以账本由调用方按键的
+ * 按下/松开顺序维护。这里**不关心按下顺序**：修饰键归修饰键、主键取最后一个，
+ * 所以「先按 Ctrl 再按 K」和「先按 K 再按 Ctrl」得到同一个 `lctrl+k`——人手
+ * 同时按下两个键时操作系统给出的先后是随机的，录不出来才是 bug。
+ */
+export function comboFromHeld(held: string[]): ComboCapture | null {
+  const mods: string[] = [];
+  let main: string | null = null;
+  for (const raw of held) {
+    const t = raw.trim().toLowerCase();
+    if (!t) continue;
+    const aliased = MODIFIER_ALIASES[t];
+    if (aliased) {
+      mods.push(aliased);
+      continue;
+    }
+    main = t;
   }
-  const main = mainTokenFromEvent(e);
-  if (!main) return null;
-  const tokens = canonicalizeCombo([...heldModifiers, main]);
+  const tokens = canonicalizeCombo(main ? [...mods, main] : mods);
   if (!tokens) return null;
-  return { tokens, complete: true };
+  return { tokens, complete: main !== null };
 }

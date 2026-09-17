@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   canonicalizeCombo,
+  comboFromHeld,
   formatComboDisplay,
-  keyEventToCombo,
-  modifierTokenFromCode,
+  hasMainKey,
+  tokenFromEvent,
 } from "../pages/mapping/combo";
 import type { NamedShortcut } from "../pages/mapping/shortcuts";
+
+const UNSUPPORTED_KEY =
+  "该按键暂不支持，请换字母、数字、F1–F12，或左/右 Ctrl、Shift、Alt、Win";
 
 /**
  * 新建 / 编辑一条自定义快捷键。
@@ -31,15 +35,20 @@ export function ShortcutDialog({
   const [name, setName] = useState("");
   const [tokens, setTokens] = useState<string[]>([]);
   const [error, setError] = useState("");
-  const heldModsRef = useRef<string[]>([]);
+  /** 此刻物理上按着的全部按键（修饰键 + 主键），按按下顺序。 */
+  const heldRef = useRef<string[]>([]);
+  /** 最近一次「录全了」的组合。松手时回到它，所以录制结果不会被松手抹掉。 */
+  const completeRef = useRef<string[]>([]);
 
   // 每次打开都按「当前编辑的是哪一条」重置，避免带上一次的残留。
   useEffect(() => {
     if (!open) return;
+    const initial = editing?.keys ?? [];
     setName(editing?.name ?? "");
-    setTokens(editing?.keys ?? []);
+    setTokens(initial);
     setError("");
-    heldModsRef.current = [];
+    heldRef.current = [];
+    completeRef.current = initial;
   }, [open, editing]);
 
   useEffect(() => {
@@ -47,8 +56,17 @@ export function ShortcutDialog({
     function onKey(e: globalThis.KeyboardEvent) {
       if (e.key === "Escape") onCancel();
     }
+    // 窗口切走（Alt+Tab、点别的窗口）时剩下的 keyup 就收不到了，
+    // 不清账本会让那个修饰键一直粘着，污染下一次录制。
+    function dropHeld() {
+      heldRef.current = [];
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("blur", dropHeld);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", dropHeld);
+    };
   }, [open, onCancel]);
 
   if (!open) return null;
@@ -61,15 +79,21 @@ export function ShortcutDialog({
     e.preventDefault();
     e.stopPropagation();
     if (e.repeat) return;
-    const captured = keyEventToCombo(e.nativeEvent, heldModsRef.current);
-    if (!captured) {
-      setError("该按键暂不支持，请换字母、数字、F1–F12，或左/右 Ctrl、Shift、Alt、Win");
+    const token = tokenFromEvent(e.nativeEvent);
+    if (!token) {
+      setError(UNSUPPORTED_KEY);
       return;
     }
-    const mod = modifierTokenFromCode(e.code);
-    if (mod && !heldModsRef.current.includes(mod)) {
-      heldModsRef.current = [...heldModsRef.current, mod];
+    // 已经按着了就不再记账：按住不放会一直发 keydown，但组合里只该出现一次。
+    if (!heldRef.current.includes(token)) {
+      heldRef.current = [...heldRef.current, token];
     }
+    const captured = comboFromHeld(heldRef.current);
+    if (!captured) {
+      setError(UNSUPPORTED_KEY);
+      return;
+    }
+    if (captured.complete) completeRef.current = captured.tokens;
     setTokens(captured.tokens);
     setError("");
   }
@@ -77,14 +101,13 @@ export function ShortcutDialog({
   function onComboKeyUp(e: KeyboardEvent<HTMLInputElement>) {
     e.preventDefault();
     e.stopPropagation();
-    const mod = modifierTokenFromCode(e.code);
-    if (!mod) return;
-    const remaining = heldModsRef.current.filter((m) => m !== mod);
-    heldModsRef.current = remaining;
-    // 只按住了修饰键、还没按主键：松开时把「已按住的部分」留下当草稿。
-    if (remaining.length === 0 && tokens.length && !tokens.some((t) => t.length === 1)) {
-      setTokens([]);
-    }
+    const token = tokenFromEvent(e.nativeEvent);
+    if (!token) return;
+    heldRef.current = heldRef.current.filter((t) => t !== token);
+    // 还按着别的键就保持现状，让用户看到自己正按的组合。
+    if (heldRef.current.length) return;
+    // 全部松开了：录全了就留着，只按过修饰键就退回上一次的有效值。
+    setTokens(completeRef.current);
   }
 
   function submit() {
@@ -95,6 +118,10 @@ export function ShortcutDialog({
     }
     if (!tokens.length) {
       setError("请先录制快捷键");
+      return;
+    }
+    if (!hasMainKey(tokens)) {
+      setError("再按一个主键（字母、数字、F1–F12 或 Enter/Tab 等）");
       return;
     }
     const canonical = canonicalizeCombo(tokens);
@@ -135,8 +162,7 @@ export function ShortcutDialog({
             onKeyUp={onComboKeyUp}
           />
           <div className="tip">
-            左右修饰键是分开的（左Ctrl 和右Ctrl 不是同一个键）。
-            录制时先按住修饰键再按主键。
+            左右修饰键是分开的：左Ctrl 和右Ctrl 不是同一个键；修饰键和主键先按哪个都行。
           </div>
         </div>
 
