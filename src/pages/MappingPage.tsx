@@ -353,7 +353,6 @@ export function MappingPage() {
 
       <div className="mapping-wizard">
         <section className="card remote-card">
-          <div className="card-title">① 选择按键</div>
           <div className="remote-art" ref={remoteArtRef}>
             <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
           </div>
