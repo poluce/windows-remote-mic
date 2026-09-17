@@ -1109,27 +1109,6 @@ button:focus-visible,
   font-size: 12px;
 }
 
-.preview-box {
-  margin: 8px 0;
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.preview-label {
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.preview-value {
-  font-weight: 600;
-  color: var(--text);
-}
-
 .combo-capture {
   display: flex;
   flex-direction: column;

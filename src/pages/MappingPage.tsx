@@ -455,15 +455,8 @@ export function MappingPage() {
               </div>
               </div>
 
-              {/* 下半：预览与保存钉在这一栏底部，按钮墙再长也够得着 */}
+              {/* 下半：覆盖说明与保存钉在这一栏底部，按钮墙再长也够得着 */}
               <div className="wizard-foot">
-              <div className="preview-box">
-                <span className="preview-label">即将保存</span>
-                <span className="preview-value">
-                  {selectedName} · {TRIGGER_LABEL[trigger]} → {actionLabel}
-                </span>
-              </div>
-
               {selectedOverride && (
                 <p className="hint override-note">
                   这一格已改成「{selectedOverride.action}」，全局是「
