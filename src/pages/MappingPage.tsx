@@ -364,6 +364,8 @@ export function MappingPage() {
         <section className="card wizard-card merged-card">
           <div className="merged-cols">
             <div className="merged-col">
+              {/* 上半：按钮墙，窄了就在这里自己滚 */}
+              <div className="wizard-scroll">
               <div className="wizard-group">
                 <div className="wizard-label">② 触发方式</div>
                 <div className="trigger-options">
@@ -451,7 +453,10 @@ export function MappingPage() {
                   </div>
                 )}
               </div>
+              </div>
 
+              {/* 下半：预览与保存钉在这一栏底部，按钮墙再长也够得着 */}
+              <div className="wizard-foot">
               <div className="preview-box">
                 <span className="preview-label">即将保存</span>
                 <span className="preview-value">
@@ -477,6 +482,7 @@ export function MappingPage() {
                 )}
               </div>
               {saveMsg && <p className="hint">{saveMsg}</p>}
+              </div>
             </div>
 
             <div className="merged-col">
