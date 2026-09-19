@@ -103,6 +103,25 @@ fn config_store() -> Option<core_config::ConfigStore> {
     core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
 }
 
+/// 加载应用专属按键配置：**先播种，再读目录**。
+///
+/// 配置只有一个来源——`<配置目录>/app-profiles/*.json`。仓库根 `profiles/*.json`
+/// 是编译进来的种子，只在还没有同名文件时落地一次；落地之后磁盘上的文件就是
+/// 唯一事实来源，程序不再覆盖它（所以用户删掉的配置不会在下次启动时复活）。
+fn load_app_profiles() -> core_app_profile::ProfileRegistry {
+    let Some(store) = config_store() else {
+        core_log::log_warn("[app-profile] 拿不到配置目录，本次没有任何应用配置");
+        return core_app_profile::ProfileRegistry::default();
+    };
+    let written = core_app_profile::seed_user_dir(&store.dir);
+    if written > 0 {
+        core_log::log_line(&format!("[app-profile] 首次落地了 {written} 份种子配置"));
+    }
+    core_app_profile::ProfileRegistry::load(Some(
+        &store.dir.join(core_app_profile::USER_PROFILE_DIR),
+    ))
+}
+
 /// 来自设置界面的映射编辑数据。
 #[derive(serde::Deserialize)]
 struct MappingEdit {
@@ -163,6 +182,8 @@ fn parse_action(s: &str) -> Option<ActionKind> {
         "system_volume_mute" => A::SystemVolumeMute,
         "play_pause" => A::PlayPause,
         "voice" => A::Voice,
+        "focus_input" => A::FocusInput,
+        "focus_input_or_submit" => A::FocusInputOrSubmit,
         "toggle_quick_menu" => A::ToggleQuickMenu,
         _ => return None,
     })
@@ -205,6 +226,8 @@ fn action_key(action: &ActionKind) -> String {
         ActionKind::SystemVolumeMute => "system_volume_mute",
         ActionKind::PlayPause => "play_pause",
         ActionKind::Voice => "voice",
+        ActionKind::FocusInput => "focus_input",
+        ActionKind::FocusInputOrSubmit => "focus_input_or_submit",
         ActionKind::OpenApp(_) => "open_app",
         ActionKind::ToggleQuickMenu => "toggle_quick_menu",
     }
@@ -230,6 +253,8 @@ fn action_label(action: &ActionKind) -> String {
         ActionKind::SystemVolumeMute => "静音".into(),
         ActionKind::PlayPause => "播放/暂停".into(),
         ActionKind::Voice => "语音输入".into(),
+        ActionKind::FocusInput => "聚焦输入框".into(),
+        ActionKind::FocusInputOrSubmit => "聚焦输入框 / 回车".into(),
         ActionKind::OpenApp(name) => format!("打开应用：{name}"),
         ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
     }
@@ -334,6 +359,8 @@ pub fn run() {
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
                 // 语音识别目标随配置恢复（旧配置缺省为 Windows 语音）。
                 dispatcher.set_voice_target(cfg.voice_target);
+                // 应用专属配置：命中前台进程时覆盖对应按键，未覆盖的沿用全局映射。
+                dispatcher.set_profiles(load_app_profiles());
                 // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
                 // 统一交给 commands::quick_menu::handle_app_event 处理。
                 let app_for_events = app.handle().clone();
@@ -349,6 +376,69 @@ pub fn run() {
                 });
                 dispatcher
             };
+
+            // ---- 主线程看门狗（临时诊断，定位 AppHang）----
+            //
+            // 应用被 Windows 判成「无响应」时，从外面只能看到进程还活着、窗口
+            // 不再泵消息，看不出卡在哪一步。这个线程每 2 秒请主线程打个卡，
+            // 打不上就记一条 WARN——把「什么时候开始卡的」钉在日志里，
+            // 和上一条业务日志一对，就知道当时正卡在哪个操作上。
+            //
+            // 定位到问题后应当删掉这段。
+            {
+                let beat_handle = app.handle().clone();
+                let spawned = std::thread::Builder::new()
+                    .name("main-watchdog".into())
+                    .spawn(move || {
+                        use std::sync::mpsc;
+                        use std::time::{Duration, Instant};
+
+                        let start = Instant::now();
+                        let mut stalled_since: Option<u128> = None;
+                        let mut last_notice = 0u128;
+
+                        loop {
+                            std::thread::sleep(Duration::from_secs(2));
+
+                            let (tx, rx) = mpsc::channel();
+                            let posted = beat_handle
+                                .run_on_main_thread(move || {
+                                    let _ = tx.send(());
+                                })
+                                .is_ok();
+                            let alive = posted && rx.recv_timeout(Duration::from_secs(3)).is_ok();
+
+                            let now = start.elapsed().as_millis();
+                            if alive {
+                                if let Some(since) = stalled_since.take() {
+                                    core_log::log_warn(&format!(
+                                        "[watchdog] 主线程恢复响应（曾卡住约 {} 秒）",
+                                        (now - since) / 1000
+                                    ));
+                                }
+                                continue;
+                            }
+
+                            match stalled_since {
+                                None => {
+                                    stalled_since = Some(now);
+                                    last_notice = now;
+                                    core_log::log_warn(
+                                        "[watchdog] 主线程已超过 3 秒未响应，开始记录",
+                                    );
+                                }
+                                Some(_) if now - last_notice >= 10_000 => {
+                                    last_notice = now;
+                                    core_log::log_warn("[watchdog] 主线程仍无响应");
+                                }
+                                Some(_) => {}
+                            }
+                        }
+                    });
+                if let Err(e) = spawned {
+                    core_log::log_warn(&format!("[watchdog] 启动失败: {e}"));
+                }
+            }
 
             // 钩子与 Raw Input 可能对同一物理按键各投递一次；短窗口去重后
             // 只向前端发一条。调度器只吃 Raw Input（能辨设备），避免注入
@@ -431,6 +521,9 @@ pub fn run() {
             commands::mapping::set_dispatch_enabled,
             commands::mapping::get_trigger_timing,
             commands::mapping::set_trigger_timing,
+            commands::mapping::get_shortcuts,
+            commands::mapping::save_shortcut,
+            commands::mapping::delete_shortcut,
             commands::audio::start_voice_bridge,
             commands::audio::stop_voice_bridge,
             commands::audio::simulate_voice_chain,
@@ -440,6 +533,16 @@ pub fn run() {
             commands::audio::play_test_tone_loop,
             commands::audio::trigger_voice_typing,
             commands::diagnostics::run_self_test,
+            commands::app_profile::app_profile_status,
+            commands::app_profile::app_profile_catalog,
+            commands::app_profile::app_menu_apps,
+            commands::app_profile::open_app_profile,
+            commands::app_profile::reload_app_profiles,
+            commands::app_profile::create_app_profile,
+            commands::app_profile::save_profile_binding,
+            commands::app_profile::clear_profile_binding,
+            commands::app_profile::delete_app_profile,
+            commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
         ])
         .run(tauri::generate_context!())

@@ -1004,13 +1004,28 @@ button:focus-visible,
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  grid-template-columns: minmax(230px, 250px) 1fr;
+  /* 左列只有遥控器图形，而且它**没有卡片外壳**（见 .remote-card）。所以这一列
+     需要多宽就等于遥控器多宽：137px（定尺寸像素图，zoom 顶到 1.3 就是 136.5，
+     不再随窗口变）。底下那行键名「确定」28px 远比它窄，不参与决定。
+     145px = 137 + 8px 保险；140px 只剩 2px，135px 就开始裁掉图形了。
+     右边写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话窗口一窄
+     就会被里面两张卡的最小宽度顶出去。 */
+  grid-template-columns: minmax(0, 145px) minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
+     各占各的内容高度，遥控器那一列会明显比右边的向导 + 矩阵卡矮一截。 */
+  align-items: stretch;
 }
 
 .remote-card {
-  padding: 20px 14px;
+  /* 不要卡片外壳。这一列里只有遥控器图形和底下一行键名，都远比遥控器本身窄
+     ——白底、边框、阴影围出来的那一圈边框里并没有别的内容。
+     去掉之后这一列需要多宽就等于遥控器多宽，内边距也就不存在了。 */
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1021,21 +1036,26 @@ button:focus-visible,
   zoom: 1.3;
 }
 
+/* ---------- 映射向导：左栏的垂直间距 ----------
+ * 左栏收窄到 230px 后按钮多占一行（内容高 +32px）。下面这几处各让出
+ * 4–6px，把多出来的那行换回来——否则默认窗口 1000x700 下左栏会溢出
+ * 24px，「保存此键」被推到可视区外。都是 2–6px 的微调，观感不变。
+ */
 .wizard-group {
-  margin-bottom: 14px;
+  margin-bottom: 9px;
 }
 
 .wizard-label {
   font-weight: 600;
   font-size: 13px;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
 }
 
 .action-grid {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 5px;
 }
 
 .action-grid .btn {
@@ -1086,29 +1106,6 @@ button:focus-visible,
   font-size: 13px;
 }
 
-.timing-row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.timing-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.timing-label select {
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 4px 8px;
-  font-size: 13px;
-}
 
 .category-tabs {
   display: flex;
@@ -1122,37 +1119,102 @@ button:focus-visible,
   font-size: 12px;
 }
 
-.preview-box {
-  margin: 12px 0;
-  padding: 10px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+/* ---------- 自定义快捷键库 ---------- */
+.shortcut-grid {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.preview-label {
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.preview-value {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.combo-capture {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.combo-capture-row {
-  display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shortcut-item {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 两行：名字在上、按键在下。名字是给人记的，按键是给人核对的 */
+.shortcut-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.shortcut-btn:hover {
+  background: var(--surface-2);
+}
+
+.shortcut-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.shortcut-btn.add {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.shortcut-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.shortcut-keys {
+  font-size: 10.5px;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+.shortcut-btn.active .shortcut-keys {
+  opacity: 0.85;
+}
+
+/* 改名 / 删除。常驻但压暗，悬停才提亮——全隐藏会让人找不到入口 */
+.shortcut-edit {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--surface);
+  background: var(--text-3);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.shortcut-item:hover .shortcut-edit {
+  opacity: 1;
+}
+
+.shortcut-edit:hover {
+  background: var(--accent);
+}
+
+.shortcut-edit:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .combo-input {
@@ -1187,4 +1249,511 @@ button:focus-visible,
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- 通用设置页 ---------- */
+/* 复用已有的 .form-card / .form-row / .form-label（macOS 系统设置式），
+   这里只补「标题 + 说明」两行文字的主体列，以及行尾的窄下拉。 */
+.form-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-text .hint {
+  margin: 3px 0 0;
+}
+
+.form-text .hint.warn {
+  color: var(--warn);
+}
+
+.timing-select {
+  width: auto;
+  min-width: 104px;
+  flex: none;
+}
+
+/* ---------- 作用范围选择器 ---------- */
+.scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.scope-pill:hover {
+  border-color: var(--border-strong);
+}
+
+.scope-pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.scope-pill.new {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.scope-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+
+.scope-pill.active .scope-dot {
+  background: var(--accent);
+}
+
+/* 自建配置右上角的删除叉：只有它能删，所以只有它长这个 */
+.scope-item {
+  position: relative;
+  display: inline-flex;
+}
+
+.scope-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--surface);
+  background: var(--text-3);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.scope-remove:hover {
+  background: var(--err);
+}
+
+.scope-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
+.matrix-hint {
+  margin: 0 0 8px;
+}
+
+.matrix {
+  border-top: 1px solid var(--border);
+}
+
+.matrix-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 1fr 1fr;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  min-height: 31px;
+}
+
+.matrix-row.head {
+  min-height: 26px;
+}
+
+.matrix-row.head .matrix-cell {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.matrix-row.head .matrix-key {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.matrix-key {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  padding-right: 6px;
+}
+
+.matrix-cell {
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--border);
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 有绑定，但这一格是沿用全局的 */
+.matrix-cell.on {
+  color: var(--text);
+}
+
+/* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
+.matrix-cell.own {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.matrix-cell.sel {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 3px;
+}
+
+.matrix-cell.span {
+  grid-column: 2 / 5;
+  color: var(--warn);
+}
+
+.matrix-cell[data-cell] {
+  cursor: pointer;
+}
+
+.matrix-cell[data-cell]:hover {
+  background: var(--surface-2);
+}
+
+.matrix-row.mic .matrix-key {
+  color: var(--text-2);
+}
+
+.override-note {
+  margin: 8px 0 0;
+}
+
+/* ---------- 映射卡：向导与矩阵左右并排 ---------- */
+/*
+ * 两列的下限一律写 0，让它们**可以被压缩**。
+ *
+ * 原来写的是 minmax(270px, ...) / minmax(400px, ...)：窗口一窄，这两个下限
+ * 加起来（670 + 列间距 41 + 卡片内边距 44）超过容器，网格就横向撑破卡片，
+ * 整页出现横向滚动。下限在这里给不出任何好处——真正决定可用宽度的是窗口
+ * 自身的最小尺寸，而不是让内容硬撑。
+ *
+ * 左栏是按钮墙：越窄，按钮换行越多、栏越高。收到 170px 是量出来的下限——
+ * 再窄（160px）「系统 / 自定义 / 其他」那一行就折成两行，反而更高。
+ *
+ * 能收到这么窄，是因为预览与保存已钉在这一栏底部（见下面的 .wizard-foot）：
+ * 按钮墙再长也只是自己滚，不会把「保存此键」顶出可视区。在这之前，那个
+ * 「保存键够不够得着」才是真正的限制，每收窄一档都要先算一遍高度够不够。
+ *
+ * 这个宽度**不加高度条件**。加过一版 `@media (min-height: 780px)`，结果
+ * 默认窗口可视区只有 700、条件不成立，改动等于没做。
+ */
+.merged-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 170px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.merged-col + .merged-col {
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+  margin-left: 20px;
+}
+
+.merged-card .actions {
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.merged-card .matrix-cell {
+  padding: 4px 6px;
+}
+
+/* ---------- 铺满页（按键映射） ---------- */
+/*
+ * 这一页主体是一张矩阵，滚动一下就等于看不全——「哪些键还没绑」必须一屏可见，
+ * 所以整页不许出现滚动条。
+ *
+ * 做法：从 .page-fill 到最里层，**每一层都要显式允许被压缩**（min-height: 0）。
+ * flex 项的 min-height 默认是 auto，也就是「不许小于内容」；只要中间有一层没
+ * 放开，最里面那层就不会缩，而是反过来把整页顶高、逼出滚动条。
+ *
+ * 全页唯一「行数不定」的东西是矩阵，放不下时让它自己在卡片里滚——这是表格
+ * 天然的容器，也好过让整页滚到看不见表头。
+ */
+.content-fill {
+  padding-bottom: 26px;
+}
+
+.page-fill {
+  display: flex;
+  flex-direction: column;
+  /* 必须是 height 而不是 min-height。用 min-height 的话容器高度仍由内容决定，
+     下面那些 min-height: 0 就永远轮不到生效——内容说了算，压缩无从谈起。
+     给死高度之后，flex 才会把「不够」这件事往下传，最后落在矩阵自己滚动上。 */
+  height: 100%;
+}
+
+/* 分区标题和「作用范围」保持自然高度，剩下的全给向导 */
+.page-fill .mapping-wizard {
+  flex: 1;
+  min-height: 0;
+  /* 关键：grid 的隐式行默认是 auto，也就是「按内容定高」——那样子项根本
+     不会跟着容器缩，整页就有一条谁也压不下去的死底线。minmax(0, 1fr)
+     让这一行正好等于容器高度，并且允许被压到 0。 */
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* 卡片自带 margin-bottom；页面铺满时它会变成多出来的 16px，把页面顶出滚动条 */
+.page-fill .mapping-wizard > .card {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+/* 右卡：向导在上，矩阵吃掉剩余高度 */
+.page-fill .merged-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-fill .merged-cols {
+  flex: 1;
+  min-height: 0;
+  /* 同上：隐式行 auto 会让两栏顶着容器不肯缩 */
+  grid-template-rows: minmax(0, 1fr);
+  /* 基础规则里是 align-items: start（各占内容高度）。那样两栏会撑破自己
+     那一行——行被压到 348px，栏还是 458px，多出来的全变成整页的溢出。
+     铺满时必须 stretch，栏高才等于行高。 */
+  align-items: stretch;
+}
+
+.page-fill .merged-col:last-child {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 左边那栏（触发方式 / 动作分类 / 预览 / 保存）内容也是定高的，窗口一矮同样
+   会撑破卡片。拆成上下两段：上半按钮墙自己滚，下半（预览 + 保存）钉在底部。 */
+.page-fill .merged-col:first-child {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 按钮墙：窄了、矮了都只让它自己滚，绝不把「保存此键」顶出可视区 */
+.page-fill .wizard-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 预览 + 保存 + 提示：高度固定，永远露在外面 */
+.page-fill .wizard-foot {
+  flex: none;
+}
+
+.page-fill .matrix {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* 行分摊剩余高度；每行仍有 min-height，窗口太矮时不会把字压扁，
+   而是矩阵自己长出滚动条 */
+.page-fill .matrix-row {
+  flex: 1;
+}
+
+.page-fill .matrix-row.head {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+/* 遥控器图形：定尺寸像素图，高度由 MappingPage 里的 ResizeObserver 反推 zoom */
+.page-fill .remote-art {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.page-fill .remote-art .x2pro-remote {
+  zoom: var(--remote-zoom, 1.3);
+  /* 遥控器自带一圈外阴影（Xiaomi2ProRemote.css 里 box-shadow 的第三项
+     `0 10px 20px`）。在白卡片上它读作「立体」，可这一列的卡片外壳已经去掉、
+     改落在灰色页面上，同一层影子就变成一道像没擦干净的边。
+     只去掉外面那层，两条 inset 留着——机身还是圆润的，只是不再「浮起来」。
+     只作用于映射页：诊断页的按键测试里遥控器仍在 .card 内，影子在那里成立。 */
+  box-shadow:
+    inset 2px 2px 5px rgba(255, 255, 255, 0.9),
+    inset -2px -2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* ---------- 对话框 ---------- */
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.dialog-mask.open {
+  display: flex;
+}
+
+.dialog {
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 22px 24px;
+}
+
+.dialog h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.dialog-desc {
+  margin: 2px 0 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* 「删除」留在左边，其余按钮靠右——把不可逆的那个和「取消/保存」分开 */
+.dialog-spacer {
+  flex: 1;
+}
+
+.dialog-error {
+  margin: 10px 0 0;
+  color: var(--err);
+}
+
+.dialog .btn.danger {
+  background: var(--err);
+  border-color: var(--err);
+  color: #fff;
+}
+
+.dialog .btn.danger:hover:not(:disabled) {
+  background: #b80012;
+  border-color: #b80012;
+}
+
+.field {
+  margin-top: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field .row {
+  display: flex;
+  gap: 8px;
+}
+
+.field .row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field .tip {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+.field .tip code {
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.stage2 {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+/* ---------- 动作分类与具体动作之间的分隔 ---------- */
+/*
+ * 「方向 / 系统 / 音量 / 语音 / 快捷键 / 其他」是一级分类，
+ * 「回车 / 退格 / Esc / …」是该分类下的具体动作。
+ * 两组按钮字号、圆角、边框完全一样又紧挨着，很容易被当成同一排一起看，
+ * 于是一道细线把两级关系显出来。
+ */
+.category-tabs {
+  margin-bottom: 0; /* 间距交给下面那道线，别再叠一层 */
+}
+
+.category-tabs + .action-grid,
+.category-tabs + .shortcut-grid {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }

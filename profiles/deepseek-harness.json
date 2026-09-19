@@ -1,0 +1,13 @@
+{
+  "name": "DeepSeek Harness",
+  "window_title_contains": ["DeepSeek Harness"],
+  "icon": { "label": "DS", "color": "#4D6BFE" },
+  "launch": { "kind": "url", "value": "http://127.0.0.1:3088" },
+  "note": "DSH 装在 WSL 里，Windows 侧没有它的进程，因此只按窗口标题匹配（浏览器窗口标题形如「<会话名> ··· DeepSeek Harness」）。启动即用默认浏览器打开上面的地址；**前提是 WSL 里的服务已经在跑**，否则只会开出一个打不开的页面。只放通用键：网页应用的快捷键由网页自己决定，不要按桌面应用猜。",
+  "bindings": [
+    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
+    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
+    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
+  ]
+}

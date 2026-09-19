@@ -3,8 +3,10 @@
 pub mod error;
 pub mod hid_kbd;
 pub mod hook;
+pub mod uia;
 pub use error::{InputError, Result};
 pub use hook::{start_key_hook, RawKeyEvent};
+pub use uia::{focus_foreground_input, FocusOutcome};
 
 #[cfg(target_os = "windows")]
 mod vhid;

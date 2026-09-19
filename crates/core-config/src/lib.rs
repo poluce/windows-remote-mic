@@ -21,6 +21,21 @@ pub struct KeyCalibration {
     pub vkey: Option<u32>,
 }
 
+/// 用户命名的自定义快捷键。
+///
+/// **名字只是显示层**：映射绑定里存的仍然是 `combo:lctrl+k` 这种原始写法
+/// （见 `core_mapping::combo_action_key`），后端解析、调度器执行、应用专属
+/// 配置文件全都不认识这个名字。所以删掉或改掉一条命名，已有绑定照样能用，
+/// 只是显示时回退成原始按键。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamedShortcut {
+    /// 用户起的名字，例如「发送消息」。
+    pub name: String,
+    /// 规范化后的组合键 token，例如 `["lctrl", "enter"]`。
+    /// 也是这条记录的身份——同一个组合只留一条，再存就是改名。
+    pub keys: Vec<String>,
+}
+
 /// 顶层应用配置。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
@@ -43,6 +58,10 @@ pub struct Config {
     /// 默认 WindowsVoice（Win+H），向后兼容；第三方输入法待真机验证。
     #[serde(default)]
     pub voice_target: VoiceTarget,
+    /// 用户命名的自定义快捷键库。旧的 config.json 没有这一项，`serde(default)`
+    /// 让它读成空列表，不会因为加字段而丢掉整个配置。
+    #[serde(default)]
+    pub shortcuts: Vec<NamedShortcut>,
 }
 
 fn default_hid_tap_eat() -> bool {
@@ -67,6 +86,7 @@ impl Default for Config {
             long_press_ms: 550,
             double_click_ms: 300,
             voice_target: VoiceTarget::default(),
+            shortcuts: Vec::new(),
         }
     }
 }

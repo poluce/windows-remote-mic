@@ -1,3 +1,4 @@
+pub mod app_profile;
 pub mod audio;
 pub mod connection;
 pub mod diagnostics;

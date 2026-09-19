@@ -559,6 +559,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-app-profile"
+version = "0.4.2"
+dependencies = [
+ "core-log",
+ "core-mapping",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "core-atvv"
 version = "0.4.2"
 dependencies = [
@@ -605,12 +618,14 @@ dependencies = [
 name = "core-dispatch"
 version = "0.4.2"
 dependencies = [
+ "core-app-profile",
  "core-config",
  "core-hid",
  "core-input",
  "core-log",
  "core-mapping",
  "core-stats",
+ "serde",
 ]
 
 [[package]]
@@ -3159,6 +3174,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "remote-mic"
 version = "0.4.2"
 dependencies = [
+ "core-app-profile",
  "core-atvv",
  "core-audio",
  "core-ble",

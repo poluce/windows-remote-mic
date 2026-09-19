@@ -1,0 +1,13 @@
+{
+  "process": ["Claude.exe"],
+  "name": "Claude Code 桌面版",
+  "icon": { "label": "CC", "color": "#D97757" },
+  "launch": { "kind": "appid", "value": "Claude_pzs8sxrjxfjjc!Claude" },
+  "note": "Electron 应用，以 MSIX 包安装，进程名 Claude.exe、启动走 shell:AppsFolder（AppID 因安装来源不同可能不同，可用 Get-StartApps 查询后改成本机实际值）。这里只放通用键（翻页/Enter/Esc）——应用专属快捷键待实测后补充，不要凭猜测填写。",
+  "bindings": [
+    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
+    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
+    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
+    { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
+  ]
+}

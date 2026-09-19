@@ -93,3 +93,17 @@ export function IconSearch(props: IconProps) {
     </Svg>
   );
 }
+
+/** 通用设置：两条带滑块的推杆，和稿子里侧栏的图标一致。 */
+export function IconSliders(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h8" />
+      <path d="M18 7h2" />
+      <path d="M4 17h4" />
+      <path d="M14 17h6" />
+      <circle cx="15" cy="7" r="2.5" />
+      <circle cx="11" cy="17" r="2.5" />
+    </Svg>
+  );
+}

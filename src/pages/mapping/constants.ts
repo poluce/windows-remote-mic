@@ -56,16 +56,13 @@ export function triggersFor(button: string): TriggerOption[] {
 
 export const ACTION_CATEGORIES: ActionCategory[] = [
   {
-    key: "dir",
-    title: "方向",
-    actions: [
-      { key: "arrow_up", label: "上" },
-      { key: "arrow_down", label: "下" },
-      { key: "arrow_left", label: "左" },
-      { key: "arrow_right", label: "右" },
-    ],
-  },
-  {
+    // 方向、音量 / 播放、语音都并进了这里：它们本来就是「按一个键让系统做件事」，
+    // 分成四个分类只是多三次点击。
+    //
+    // **顺序有讲究**：原来「系统」那几项排在最前不改动。界面上点一个分类会
+    // 把动作默认选中该分类的第一项，把方向键挪到前面的话，点「系统」默认就
+    // 从「回车」变成「上」了。其余各组按原来分类的先后接在后面，每一组内部
+    // 的顺序也照旧——合并前后相对次序不变，肌肉记忆才不会白费。
     key: "system",
     title: "系统",
     actions: [
@@ -73,29 +70,29 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "delete_backward", label: "退格" },
       { key: "escape", label: "Esc" },
       { key: "show_desktop", label: "显示桌面" },
+      { key: "focus_input", label: "聚焦输入框" },
+      { key: "focus_input_or_submit", label: "聚焦输入框 / 回车" },
       { key: "context_menu", label: "右键菜单" },
       { key: "app_switcher", label: "切换应用" },
       { key: "toggle_quick_menu", label: "快捷菜单（开/关）" },
-    ],
-  },
-  {
-    key: "media",
-    title: "音量 / 播放",
-    actions: [
+      { key: "arrow_up", label: "上" },
+      { key: "arrow_down", label: "下" },
+      { key: "arrow_left", label: "左" },
+      { key: "arrow_right", label: "右" },
       { key: "system_volume_up", label: "音量 +" },
       { key: "system_volume_down", label: "音量 −" },
       { key: "system_volume_mute", label: "静音" },
       { key: "play_pause", label: "播放 / 暂停" },
+      { key: "voice", label: "语音输入（Win+H）" },
     ],
   },
   {
-    key: "voice",
-    title: "语音",
-    actions: [{ key: "voice", label: "语音输入（Win+H）" }],
-  },
-  {
+    // 这一栏的按钮不来自下面的 actions，而是**用户在界面上建的快捷键库**
+    // （见 mapping/shortcuts.ts）。这里的 `custom_combo` 只是个哨兵值：
+    // 选中一个组合键动作时把 category 设成 combo、action 设成它，
+    // 真正要保存的 action_key 由 comboTokens 现算。
     key: "combo",
-    title: "快捷键",
+    title: "自定义",
     actions: [{ key: "custom_combo", label: "自定义快捷键" }],
   },
   {
