@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "core-app-profile"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-log",
  "core-mapping",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "core-atvv"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "core-audio"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-log",
  "cpal",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "core-ble"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-log",
  "pollster",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "core-config"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-mapping",
  "serde",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "core-dispatch"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-app-profile",
  "core-config",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "core-hid"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-log",
  "core-mapping",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "core-input"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-log",
  "core-mapping",
@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "core-log"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "serde",
@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "core-mapping"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "core-stats"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "core-voice"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-atvv",
  "core-audio",
@@ -3172,7 +3172,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "remote-mic"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-app-profile",
  "core-atvv",
