@@ -370,6 +370,17 @@ where
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 idle_ticks = idle_ticks.saturating_add(1);
+                // 事件兜底：WinRT 的 ConnectionStatusChanged 偶尔不送达
+                // （蓝牙无线电被关、驱动卡住等）。每 30s 主动读一次链路状态，
+                // 避免会话永远挂在「以为还连着」的状态里。
+                if idle_ticks.is_multiple_of(15) && !link.is_connected() {
+                    exit_reason = "winrt_status_poll_disconnected";
+                    core_log::log_warn(
+                        "[bridge] 链路状态轮询发现已断开（未收到状态事件），停止会话",
+                    );
+                    core_log::log_info(&diag.summary(exit_reason));
+                    break;
+                }
                 // 15 * 2s = 30s：DEBUG 级别每 30s 一条，INFO 每 5 分钟一条。
                 // 之前每 30s 一条 INFO 占了日志的大头，把真正的异常淹没了。
                 if idle_ticks > 0 && idle_ticks.is_multiple_of(15) {

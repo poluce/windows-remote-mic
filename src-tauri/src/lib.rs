@@ -627,6 +627,7 @@ pub fn run() {
             commands::mapping::delete_shortcut,
             commands::audio::start_voice_bridge,
             commands::audio::stop_voice_bridge,
+            commands::audio::retry_voice_bridge,
             commands::audio::simulate_voice_chain,
             commands::audio::vb_cable_status,
             commands::audio::install_vb_cable,

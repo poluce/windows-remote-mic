@@ -11,6 +11,7 @@ export type BridgeState =
   | "starting"
   | "running"
   | "retrying"
+  | "waiting"
   | "failed"
   | "stopped";
 
@@ -204,7 +205,9 @@ export function bridgeStateLabel(state: BridgeState, attempt: number): string {
     case "running":
       return "ATVV 语音桥";
     case "retrying":
-      return `语音桥重连中（第 ${attempt} 次）`;
+      return `语音桥重试中（第 ${attempt} 次）`;
+    case "waiting":
+      return "等待遥控器上线";
     case "failed":
       return "语音桥连接失败";
     case "stopped":

@@ -1,5 +1,6 @@
 //! Windows GATT 发现 + ATVV 传输（仅 Windows）。
 
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -353,6 +354,17 @@ impl AtvvLink {
         connect_atvv(device_id)
     }
 
+    /// 当前链路是否仍处于已连接状态（直接读系统状态）。
+    ///
+    /// 用于兜底：偶尔 WinRT 的 `ConnectionStatusChanged` 事件不会及时送达
+    /// （例如蓝牙无线电被关闭/驱动卡住），会话循环需要能主动发现断链。
+    pub fn is_connected(&self) -> bool {
+        matches!(
+            self._device.ConnectionStatus(),
+            Ok(BluetoothConnectionStatus::Connected)
+        )
+    }
+
     /// 启用 Audio 特征的通知，使语音数据可以流动。
     pub fn enable_audio_notifications(&self) -> Result<()> {
         core_log::log_info("[ble/gatt] 正在启用音频通知（CCCD Notify）…");
@@ -571,6 +583,59 @@ impl Drop for AtvvLink {
         core_log::log_info(&format!(
             "[ble/gatt] AtvvLink Drop：释放 GATT 句柄，此刻 ConnectionStatus={status}"
         ));
+    }
+}
+
+/// 轻量链路监视器：**只持有蓝牙设备句柄并监听连接状态**，
+/// 不打开任何 GATT 服务，因此不会主动触发连接、也不会和别的电脑抢设备。
+///
+/// 用途：语音桥不再「每 N 秒盲试连接」，而是等 Windows 把 HOGP 链路连上后
+/// （遥控器回到本机、或本机是当前主机）再按需建立 ATVV 会话。
+pub struct LinkWatcher {
+    device: BluetoothLEDevice,
+    /// 连接状态变化事件（true=已连接）。
+    changes: Receiver<bool>,
+}
+
+impl LinkWatcher {
+    /// 打开设备句柄并开始监听连接状态。
+    ///
+    /// 只做 `FromIdAsync`，不会建立连接；设备不存在/未配对时返回错误。
+    pub fn open(device_id: &str) -> Result<Self> {
+        let device = open_ble_device(device_id)?;
+        let (tx, changes) = mpsc::channel::<bool>();
+        let handler = TypedEventHandler::<BluetoothLEDevice, IInspectable>::new(
+            move |sender: windows::core::Ref<BluetoothLEDevice>,
+                  _args: windows::core::Ref<IInspectable>| {
+                if let Some(dev) = sender.as_ref() {
+                    if let Ok(status) = dev.ConnectionStatus() {
+                        let _ = tx.send(status == BluetoothConnectionStatus::Connected);
+                    }
+                }
+                Ok(())
+            },
+        );
+        device
+            .ConnectionStatusChanged(&handler)
+            .map_err(|e| BleError::Windows(format!("监听蓝牙连接状态失败: {e}")))?;
+        core_log::log_info("[ble/gatt] 已开始监听遥控器链路状态（不主动连接）");
+        Ok(Self { device, changes })
+    }
+
+    /// 当前链路是否已连接（直接查询系统状态，不走缓存）。
+    pub fn is_connected(&self) -> bool {
+        matches!(
+            self.device.ConnectionStatus(),
+            Ok(BluetoothConnectionStatus::Connected)
+        )
+    }
+
+    /// 等待下一次连接状态变化。
+    ///
+    /// 返回 `Some(true)`=已连接、`Some(false)`=已断开、`None`=超时（调用方可借机
+    /// 检查停止标志，避免忙等）。
+    pub fn wait_change(&self, timeout: Duration) -> Option<bool> {
+        self.changes.recv_timeout(timeout).ok()
     }
 }
 

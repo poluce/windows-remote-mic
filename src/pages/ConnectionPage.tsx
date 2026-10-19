@@ -153,11 +153,58 @@ export function ConnectionPage() {
         setFeedback(`语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
+      // 设备当前不可达（休眠 / 被另一台电脑占用 / 蓝牙未开）：
+      // 只要本机还留着配对信息，就进入「等待遥控器上线」模式——
+      // 监督线程只监听链路事件，系统连上后会自动恢复语音，不再定时盲试。
+      const savedId = await invoke<string | null>("get_saved_device_id").catch(
+        () => null,
+      );
+      if (savedId) {
+        try {
+          await invoke<string>("start_voice_bridge", {
+            deviceId: savedId,
+            outputDevice: "CABLE Input",
+          });
+          setFeedback(
+            options?.auto
+              ? "遥控器当前不在线，已进入等待（系统连上后自动恢复）"
+              : "遥控器当前不在线，已进入等待：请唤醒遥控器，系统连接后会自动恢复语音",
+          );
+          return;
+        } catch (bridgeErr) {
+          setFeedback(`语音桥启动失败：${bridgeErr}`);
+          return;
+        }
+      }
       setFeedback(
         options?.auto
           ? "自动连接未成功，请唤醒遥控器后点「连接」重试"
           : `连接失败：${err}`,
       );
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  /** 失败状态下重试：先停旧监督线程，再重新启动。 */
+  async function retryBridge() {
+    const savedId = await invoke<string | null>("get_saved_device_id").catch(
+      () => null,
+    );
+    if (!savedId) {
+      setFeedback("没有已保存的遥控器，请先重新配对后再连接");
+      return;
+    }
+    setConnecting(true);
+    setFeedback("正在重试连接…");
+    try {
+      const message = await invoke<string>("retry_voice_bridge", {
+        deviceId: savedId,
+        outputDevice: "CABLE Input",
+      });
+      setFeedback(message);
+    } catch (err) {
+      setFeedback(`重试失败：${err}`);
     } finally {
       setConnecting(false);
     }
@@ -224,16 +271,29 @@ export function ConnectionPage() {
       : bridgeState === "failed" || bridgeStatus === "failed"
         ? "err"
         : "warn";
+  const bridgeLabel =
+    bridgeState === "waiting"
+      ? "等待遥控器上线"
+      : bridgeStateLabel(bridgeState, bridgeAttempt);
   // 遥控器语音固件挂起的专属提示（后端在连续零数据会话后给出该文案）。
   const silentSessionHint = bridgeLastError.includes("语音固件可能挂起");
+  // 监督线程活着（等待链路/建会话/运行/重试）→ 按钮显示「停止」而不是「连接」。
+  const bridgeActive =
+    bridgeState === "starting" ||
+    bridgeState === "running" ||
+    bridgeState === "retrying" ||
+    bridgeState === "waiting";
   const showBridgeHint =
-    (bridgeState === "retrying" || bridgeState === "failed" || bridgeState === "starting") &&
+    (bridgeState === "retrying" ||
+      bridgeState === "failed" ||
+      bridgeState === "starting" ||
+      bridgeState === "waiting") &&
     !silentSessionHint;
 
   const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
       key: "bridge",
-      label: bridgeStateLabel(bridgeState, bridgeAttempt),
+      label: bridgeLabel,
       tone: bridgeTone,
       title: bridgeLastError || undefined,
     },
@@ -277,13 +337,17 @@ export function ConnectionPage() {
               >
                 {scanning ? "扫描中…" : "扫描"}
               </button>
-              {connected ? (
+              {connected || bridgeActive ? (
                 <button
                   className="btn"
                   onClick={disconnect}
                   disabled={!isTauri() || disconnecting}
                 >
-                  {disconnecting ? "断开中…" : "断开"}
+                  {disconnecting
+                    ? "停止中…"
+                    : connected
+                      ? "断开"
+                      : "停止等待"}
                 </button>
               ) : (
                 <button
@@ -325,25 +389,44 @@ export function ConnectionPage() {
           </div>
         )}
         {showBridgeHint && (
-          <div className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}>
+          <div
+            className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}
+          >
             <span className="bridge-hint-title">
               {bridgeState === "failed"
-                ? "语音桥连续重连失败"
-                : bridgeState === "starting"
-                  ? "正在启动语音桥…"
-                  : "语音桥正在自动重连"}
+                ? "语音桥连接失败"
+                : bridgeState === "waiting"
+                  ? "等待遥控器上线"
+                  : bridgeState === "starting"
+                    ? "正在建立语音链路…"
+                    : "语音桥正在重试"}
             </span>
             <span className="bridge-hint-body">
-              {bridgeState === "starting"
-                ? "正在建立蓝牙语音链路，请稍候…"
-                : bridgeLastError
-                  ? `最近错误：${bridgeLastError}`
-                  : "等待遥控器恢复连接（可尝试唤醒遥控器或重新配对）"}
+              {bridgeState === "waiting"
+                ? bridgeLastError
+                  ? `${bridgeLastError}（系统连上后会自动恢复；若已在系统里删除配对，请重新配对）`
+                  : "遥控器当前不在本机（可能休眠，或正在被另一台电脑使用）。系统连上它之后会自动恢复语音，无需重复点击；点「停止等待」可退出。"
+                : bridgeState === "starting"
+                  ? "正在建立蓝牙语音链路，请稍候…"
+                  : bridgeLastError
+                    ? `最近错误：${bridgeLastError}`
+                    : "语音会话中断，正在有限次重试"}
               {bridgeFailures > 0 && ` · 连续失败 ${bridgeFailures} 次`}
               {bridgeState === "retrying" &&
                 bridgeNextRetrySecs > 0 &&
                 ` · 约 ${bridgeNextRetrySecs} 秒后重试`}
             </span>
+            {bridgeState === "failed" && (
+              <div className="bridge-hint-actions">
+                <button
+                  className="btn"
+                  onClick={retryBridge}
+                  disabled={!isTauri() || connecting}
+                >
+                  {connecting ? "重试中…" : "重试连接"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -404,13 +487,15 @@ export function ConnectionPage() {
                   ? "ready"
                   : bridgeState === "failed"
                     ? "missing"
-                    : bridgeState === "retrying" || bridgeState === "starting"
+                    : bridgeState === "retrying" ||
+                        bridgeState === "starting" ||
+                        bridgeState === "waiting"
                       ? "warn"
                       : "preview"
               }`}
             />
             <span className="bridge-inline-text">
-              {bridgeStateLabel(bridgeState, bridgeAttempt)}
+              {bridgeLabel}
               {bridgeState === "retrying" && bridgeNextRetrySecs > 0
                 ? ` · 约 ${bridgeNextRetrySecs} 秒后重试`
                 : ""}

@@ -90,8 +90,17 @@ fn retry_delay_secs(failures: u64) -> u64 {
     base + nanos % (jitter_window + 1)
 }
 
-/// 启动真实设备的语音桥（仅 Windows）。在工作线程中运行。
-/// 互斥：已有重连循环在跑时拒绝新请求，避免并发双桥争用同一 GATT 会话。
+/// 启动真实设备的语音桥（仅 Windows）。
+///
+/// 采用**事件驱动**而不是定时盲重试：
+/// 1. 先打开一个轻量链路监视器（只监听 BLE 连接状态，不打开任何 GATT 服务）；
+/// 2. 等 Windows 把遥控器链路连上（遥控器回到本机、或本机是当前主机）后，
+///    才按需建立一次 ATVV 会话；
+/// 3. 会话随链路断开而结束 → 回到「等待链路」，系统重连后自动恢复；
+/// 4. 只有「链路仍在但会话失败」才做有限次重试，连续失败进入 failed 等待，
+///    不再无限空转。
+///
+/// 这样遥控器被另一台电脑占用时，本机收不到链路事件，也就不会去抢设备。
 #[tauri::command]
 pub fn start_voice_bridge(
     app: tauri::AppHandle,
@@ -101,7 +110,7 @@ pub fn start_voice_bridge(
     #[cfg(target_os = "windows")]
     {
         if BRIDGE_RUNNING.swap(true, Ordering::SeqCst) {
-            core_log::log_warn("[commands/audio] 拒绝重复启动：语音桥循环已在运行");
+            core_log::log_warn("[commands/audio] 拒绝重复启动：语音桥已在运行");
             return "语音桥已在运行（请勿重复启动）".to_string();
         }
         BRIDGE_STOP_REQUESTED.store(false, Ordering::SeqCst);
@@ -110,154 +119,308 @@ pub fn start_voice_bridge(
         core_log::log_info(&format!(
             "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, 设备 ID='{device_id}'，输出='{output_device}'"
         ));
-        set_bridge_status(&app, BridgeStatus::new("starting", 1, 0, 0, String::new()));
+        set_bridge_status(&app, BridgeStatus::new("starting", 0, 0, 0, String::new()));
 
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
-            let mut attempt: u64 = 0;
-            let mut failures: u64 = 0;
-            // 连续「会话正常但一个控制包都没有」的次数。
-            // 实测遥控器语音固件挂起时，链路能连上、CCCD 能订阅，
-            // 但 CAPS 响应/音频全部收不到，且会持续数小时——必须能识别并提示用户。
-            let mut silent_sessions: u64 = 0;
-            loop {
-                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
-                    break;
-                }
-                attempt += 1;
-                let app_cb = app_for_thread.clone();
-                let attempt_cb = attempt;
-                let failures_cb = failures;
-                let on_status = move |connected: bool| {
-                    let _ = app_cb.emit("ble-connection-status", connected);
-                    if connected {
-                        set_bridge_status(
-                            &app_cb,
-                            BridgeStatus::new("running", attempt_cb, failures_cb, 0, String::new()),
-                        );
-                    }
-                };
-
-                core_log::log_line(&format!(
-                    "[commands/audio] 语音桥启动: loop_id={loop_id}, attempt={attempt}"
-                ));
-                // 单次会话 panic 不能带走重连循环（否则 BRIDGE_RUNNING 永远为 true，
-                // 用户只能重启应用才能恢复）。
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    core_voice::run_bridge(&device_id, &output_device, on_status)
-                }));
-
-                let last_error = match result {
-                    Ok(Ok(())) => {
-                        core_log::log_line(&format!(
-                            "[commands/audio] 语音桥已停止，准备重连: loop_id={loop_id}, attempt={attempt}"
-                        ));
-                        None
-                    }
-                    Ok(Err(e)) => {
-                        core_log::log_error(&format!(
-                            "[commands/audio] 语音桥错误: loop_id={loop_id}, attempt={attempt}, err={e}"
-                        ));
-                        Some(e)
-                    }
-                    Err(payload) => {
-                        let detail = core_hid::panic_payload_text(payload.as_ref());
-                        core_log::log_error(&format!(
-                            "[commands/audio] 语音桥线程 panic 已隔离: loop_id={loop_id}, attempt={attempt}, {detail}"
-                        ));
-                        Some(format!("语音桥异常：{detail}"))
-                    }
-                };
-
-                // 本次语音桥会话结束（BLE 断链 / 用户断开 / 音频通道断开）：
-                // 遥控器已经不在链路上了，物理松开事件永远不会到达，必须先把
-                // 映射层按住的动作和虚拟 HID 的残留按住状态一起松开，否则修饰键
-                // 会一直卡在系统里（实测遥控器断链后 rctrl 卡死，物理键盘失灵）。
-                crate::force_release_held_keys(
-                    &app_for_thread,
-                    &format!("语音桥会话结束（loop_id={loop_id}, attempt={attempt}）"),
-                );
-
-                // 区分「正常会话自然结束」与「连接失败」：前者重置失败计数，
-                // 后者累计用于退避与 failed 状态判定。
-                let session_ok = last_error.is_none();
-                if session_ok {
-                    failures = 0;
-                } else {
-                    failures = failures.saturating_add(1);
-                }
-
-                // 链路健康检查：会话存活够久却一个控制通知都没收到
-                // → 链路通、遥控器不说话（CAPS 都未回应），累计连续次数。
-                if session_ok {
-                    if let Some(report) = core_voice::last_session_report() {
-                        let silent = is_silent_session(report.duration_secs, report.control_pkts);
-                        if silent {
-                            silent_sessions = silent_sessions.saturating_add(1);
-                            SILENT_SESSIONS.store(silent_sessions, Ordering::Relaxed);
-                            core_log::log_warn(&format!(
-                                "[commands/audio] 链路健康告警：会话存活 {:.0}s 却未收到任何控制通知（连续 {silent_sessions} 次），遥控器语音服务可能挂起",
-                                report.duration_secs
-                            ));
-                        } else {
-                            silent_sessions = 0;
-                            SILENT_SESSIONS.store(0, Ordering::Relaxed);
-                        }
-                    }
-                }
-
-                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let delay = retry_delay_secs(failures);
-                // 连续「零数据会话」优先给出可操作提示（实测故障：需重启遥控器）。
-                let (state, status_error) = if silent_sessions >= 3 {
-                    (
-                        "failed",
-                        "链路已连接但遥控器连续多次没有任何语音数据（语音固件可能挂起）：请给遥控器断电重启（抠电池 10 秒）后重试".to_string(),
-                    )
-                } else if failures >= FAILED_AFTER_FAILURES {
-                    ("failed", last_error.clone().unwrap_or_default())
-                } else {
-                    ("retrying", last_error.clone().unwrap_or_default())
-                };
-                set_bridge_status(
-                    &app_for_thread,
-                    BridgeStatus::new(state, attempt, failures, delay, status_error),
-                );
-                core_log::log_line(&format!(
-                    "[commands/audio] 将在 {delay} 秒后重连（loop_id={loop_id}, 第 {attempt} 次尝试，连续失败 {failures} 次）"
-                ));
-
-                // 分秒睡眠，期间响应停止请求（最迟 1 秒内退出）。
-                let mut slept: u64 = 0;
-                while slept < delay {
-                    if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_secs(1));
-                    slept += 1;
-                }
-                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
-            BRIDGE_RUNNING.store(false, Ordering::SeqCst);
-            set_bridge_status(
-                &app_for_thread,
-                BridgeStatus::new("stopped", attempt, failures, 0, String::new()),
-            );
-            core_log::log_line(&format!(
-                "[commands/audio] 语音桥循环已停止（loop_id={loop_id}），可重新启动"
-            ));
+            run_bridge_supervisor(app_for_thread, loop_id, &device_id, &output_device);
         });
-        "语音桥已启动（断线后自动重连）".to_string()
+        "语音桥已启动（系统连上遥控器后会自动接续）".to_string()
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (app, device_id, output_device);
         "语音桥仅在 Windows 可用".to_string()
+    }
+}
+
+/// 重试启动（失败/等待状态下用户点「重试」）：先停旧监督线程，再重新启动。
+#[tauri::command]
+pub fn retry_voice_bridge(
+    app: tauri::AppHandle,
+    device_id: String,
+    output_device: String,
+) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        if BRIDGE_RUNNING.load(Ordering::SeqCst) {
+            BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
+            core_voice::request_bridge_stop();
+            for _ in 0..50 {
+                if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            if BRIDGE_RUNNING.load(Ordering::SeqCst) {
+                return "语音桥仍在停止中，请稍后重试".to_string();
+            }
+        }
+        start_voice_bridge(app, device_id, output_device)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, device_id, output_device);
+        "语音桥仅在 Windows 可用".to_string()
+    }
+}
+
+/// 语音桥监督线程：等链路 → 建会话 → 会话结束 → 回到等待 / 有限重试。
+#[cfg(target_os = "windows")]
+fn run_bridge_supervisor(
+    app: tauri::AppHandle,
+    loop_id: u64,
+    device_id: &str,
+    output_device: &str,
+) {
+    let mut attempt: u64 = 0;
+    let mut failures: u64 = 0;
+    // 连续「会话正常但一个控制包都没有」的次数（遥控器语音固件挂起特征）。
+    let mut silent_sessions: u64 = 0;
+    let mut last_error = String::new();
+
+    // 只监听链路，不打开 GATT：不会主动触发连接，也就不会和别的电脑抢设备。
+    //
+    // 打开监视器可能失败（蓝牙无线电被关、设备被删除、驱动异常）：这类失败
+    // 多为可恢复，不能直接判死。这里每 5 秒重试，期间保持「等待遥控器上线」。
+    let mut open_attempts: u64 = 0;
+    let watcher = loop {
+        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            core_voice::set_connection_active(false);
+            BRIDGE_RUNNING.store(false, Ordering::SeqCst);
+            set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
+            core_log::log_line(&format!(
+                "[commands/audio] 语音桥监督线程已停止（loop_id={loop_id}，启动阶段被取消）"
+            ));
+            return;
+        }
+        match core_ble::LinkWatcher::open(device_id) {
+            Ok(w) => break w,
+            Err(e) => {
+                open_attempts += 1;
+                let message =
+                    format!("暂时无法访问遥控器（蓝牙可能未开启，或已在系统设置中删除配对）：{e}");
+                if open_attempts == 1 || open_attempts.is_multiple_of(12) {
+                    core_log::log_warn(&format!("[commands/audio] {message}"));
+                }
+                set_bridge_status(&app, BridgeStatus::new("waiting", 0, 0, 0, message));
+                for _ in 0..5 {
+                    if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            }
+        }
+    };
+
+    core_log::log_info("[commands/audio] 语音桥监督已就绪：等待遥控器链路（不再定时盲试）");
+    set_bridge_status(&app, BridgeStatus::new("waiting", 0, 0, 0, String::new()));
+    // 把真实链路状态同步给 UI：连接页之前可能因「缓存发现成功」把设备显示成已连接，
+    // 但此刻链路其实没连上（例如遥控器在另一台电脑上）。以系统状态为准。
+    let initial_connected = watcher.is_connected();
+    let _ = app.emit("ble-connection-status", initial_connected);
+    core_log::log_info(&format!(
+        "[commands/audio] 启动时链路状态: connected={initial_connected}"
+    ));
+
+    'supervisor: loop {
+        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // 1) 等链路连接：Windows 负责 HOGP 自动重连，这里只等事件/每 500ms 查一次停止标志。
+        if !watcher.is_connected() {
+            core_log::log_line(
+                "[commands/audio] 遥控器当前不在本机链路上，等待系统连接（期间不会抢占设备）",
+            );
+            loop {
+                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    break 'supervisor;
+                }
+                // 事件 + 轮询双保险：蓝牙无线电被关/事件丢失时，链路状态
+                // 变化事件可能不送达，这里每 500ms 主动查一次。
+                if watcher.is_connected() {
+                    break;
+                }
+                if watcher.wait_change(Duration::from_millis(500)) == Some(true) {
+                    break;
+                }
+            }
+        }
+        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // 2) 链路已连接：建立一次 ATVV 会话
+        attempt += 1;
+        set_bridge_status(
+            &app,
+            BridgeStatus::new("starting", attempt, failures, 0, last_error.clone()),
+        );
+        core_log::log_line(&format!(
+            "[commands/audio] 链路已连接，开始建立 ATVV 语音会话（loop_id={loop_id}, attempt={attempt}）"
+        ));
+
+        let app_cb = app.clone();
+        let attempt_cb = attempt;
+        let failures_cb = failures;
+        let on_status = move |connected: bool| {
+            let _ = app_cb.emit("ble-connection-status", connected);
+            if connected {
+                set_bridge_status(
+                    &app_cb,
+                    BridgeStatus::new("running", attempt_cb, failures_cb, 0, String::new()),
+                );
+            }
+        };
+
+        // 单次会话 panic 不能带走监督线程。
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            core_voice::run_bridge(device_id, output_device, on_status)
+        }));
+        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // 会话结束兜底释放（防卡键）：链路已断时物理松开事件永远到不了。
+        crate::force_release_held_keys(
+            &app,
+            &format!("语音桥会话结束（loop_id={loop_id}, attempt={attempt}）"),
+        );
+
+        let session_err = match result {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => {
+                core_log::log_error(&format!(
+                    "[commands/audio] 语音桥会话出错（attempt={attempt}）：{e}"
+                ));
+                Some(e)
+            }
+            Err(payload) => {
+                let detail = core_hid::panic_payload_text(payload.as_ref());
+                core_log::log_error(&format!(
+                    "[commands/audio] 语音桥会话 panic 已隔离（attempt={attempt}）：{detail}"
+                ));
+                Some(format!("语音桥异常：{detail}"))
+            }
+        };
+
+        // 会话健康检查（仅正常结束判断「链路通但零数据」）。
+        if session_err.is_none() {
+            if let Some(report) = core_voice::last_session_report() {
+                if is_silent_session(report.duration_secs, report.control_pkts) {
+                    silent_sessions = silent_sessions.saturating_add(1);
+                    SILENT_SESSIONS.store(silent_sessions, Ordering::Relaxed);
+                    core_log::log_warn(&format!(
+                        "[commands/audio] 链路健康告警：会话存活 {:.0}s 却未收到任何控制通知（连续 {silent_sessions} 次），遥控器语音服务可能挂起",
+                        report.duration_secs
+                    ));
+                } else {
+                    silent_sessions = 0;
+                    SILENT_SESSIONS.store(0, Ordering::Relaxed);
+                }
+            }
+        }
+
+        // 3a) 链路已断开（或用户断开）→ 正常路径：回到等待，不盲重试。
+        if !watcher.is_connected() {
+            failures = 0;
+            last_error.clear();
+            set_bridge_status(
+                &app,
+                BridgeStatus::new("waiting", attempt, 0, 0, String::new()),
+            );
+            core_log::log_line(
+                "[commands/audio] 会话随链路断开结束，回到等待状态（系统重连后自动恢复）",
+            );
+            continue;
+        }
+
+        // 3b) 链路仍在但会话失败 → 有限重试 / 失败等待。
+        if let Some(e) = session_err {
+            last_error = e;
+        }
+        failures = failures.saturating_add(1);
+
+        // 「链路通但零数据」连续 3 次：不再空转，提示用户重启遥控器，
+        // 等链路变化（掉线/重连）或用户操作后再继续。
+        if silent_sessions >= 3 {
+            set_bridge_status(
+                &app,
+                BridgeStatus::new(
+                    "failed",
+                    attempt,
+                    failures,
+                    0,
+                    "链路已连接但遥控器连续多次没有任何语音数据（语音固件可能挂起）：请给遥控器断电重启（抠电池 10 秒）后重试".to_string(),
+                ),
+            );
+            core_log::log_error(
+                "[commands/audio] 连续多次零数据会话，进入失败等待（不再主动重试）",
+            );
+            wait_for_link_change_or_stop(&watcher);
+            silent_sessions = 0;
+            SILENT_SESSIONS.store(0, Ordering::Relaxed);
+            failures = 0;
+            last_error.clear();
+            continue;
+        }
+
+        if failures >= FAILED_AFTER_FAILURES {
+            set_bridge_status(
+                &app,
+                BridgeStatus::new("failed", attempt, failures, 0, last_error.clone()),
+            );
+            core_log::log_error(&format!(
+                "[commands/audio] 语音会话连续失败 {failures} 次，进入失败等待（等链路变化或用户操作）：{last_error}"
+            ));
+            wait_for_link_change_or_stop(&watcher);
+            failures = 0;
+            continue;
+        }
+
+        let delay = retry_delay_secs(failures);
+        set_bridge_status(
+            &app,
+            BridgeStatus::new("retrying", attempt, failures, delay, last_error.clone()),
+        );
+        core_log::log_line(&format!(
+            "[commands/audio] {delay} 秒后重试建立语音会话（连续失败 {failures} 次）"
+        ));
+        let mut slept = 0u64;
+        while slept < delay {
+            if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_secs(1));
+            slept += 1;
+        }
+    }
+
+    core_voice::set_connection_active(false);
+    BRIDGE_RUNNING.store(false, Ordering::SeqCst);
+    set_bridge_status(
+        &app,
+        BridgeStatus::new("stopped", attempt, failures, 0, String::new()),
+    );
+    core_log::log_line(&format!(
+        "[commands/audio] 语音桥监督线程已停止（loop_id={loop_id}），可重新启动"
+    ));
+}
+
+/// 阻塞到链路状态变化或用户请求停止。
+///
+/// 用于 failed / 零数据会话后的「失败等待」：不主动重试，避免无限空转与抢占。
+#[cfg(target_os = "windows")]
+fn wait_for_link_change_or_stop(watcher: &core_ble::LinkWatcher) {
+    loop {
+        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            return;
+        }
+        if watcher.wait_change(Duration::from_millis(500)).is_some() {
+            return;
+        }
     }
 }
 

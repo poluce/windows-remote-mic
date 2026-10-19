@@ -544,6 +544,12 @@ button:focus-visible,
   word-break: break-all;
 }
 
+.bridge-hint-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+}
+
 /* ---------- VB-CABLE 紧凑行 ---------- */
 .vbcable-card {
   display: flex;
