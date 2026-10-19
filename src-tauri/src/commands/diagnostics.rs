@@ -108,7 +108,59 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 5) 测试音播放（仅 Windows）
+    // 5) VB-CABLE 输入/输出端点是否配对齐全
+    #[cfg(target_os = "windows")]
+    {
+        let d = core_audio::diagnostics::run();
+        items.push(SelfTestItem {
+            name: "VB-CABLE 虚拟声卡".into(),
+            status: if d.has_vb_cable { "pass" } else { "fail" }.into(),
+            detail: format!(
+                "CABLE Input（输出端点）={}，CABLE Output（输入端点）={}；语音输出需要两者都存在",
+                if d.cable_input_present {
+                    "存在"
+                } else {
+                    "缺失"
+                },
+                if d.cable_output_present {
+                    "存在"
+                } else {
+                    "缺失"
+                },
+            ),
+        });
+    }
+
+    // 6) 配置目录可写（写不进去会导致映射/校准无法保存）
+    {
+        let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let dir = std::path::Path::new(&base).join("RemoteMic/RC003");
+        let probe = dir.join(".write-probe");
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && std::fs::write(&probe, b"ok").is_ok()
+            && std::fs::remove_file(&probe).is_ok();
+        items.push(SelfTestItem {
+            name: "配置目录可写".into(),
+            status: if ok { "pass" } else { "fail" }.into(),
+            detail: dir.display().to_string(),
+        });
+    }
+
+    // 7) 日志目录可写（日志写不进去会失去排障能力）
+    {
+        let dir = core_log::log_dir();
+        let probe = dir.join(".write-probe");
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && std::fs::write(&probe, b"ok").is_ok()
+            && std::fs::remove_file(&probe).is_ok();
+        items.push(SelfTestItem {
+            name: "日志目录可写".into(),
+            status: if ok { "pass" } else { "fail" }.into(),
+            detail: dir.display().to_string(),
+        });
+    }
+
+    // 8) 测试音播放（仅 Windows）
     #[cfg(target_os = "windows")]
     {
         match core_audio::playback::play_test_tone(None) {

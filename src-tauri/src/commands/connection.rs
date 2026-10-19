@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::commands::audio::{current_bridge_status, BridgeStatus};
 use crate::{config_store, AppState};
 
 /// 连接页需要恢复的运行时状态快照。
@@ -10,6 +11,8 @@ pub struct RuntimeStatus {
     pub bridge_running: bool,
     pub tap_status: Option<core_hid::tap::TapStatusEvent>,
     pub endpoints_ready: bool,
+    /// 最近一次语音桥状态（连接页恢复「重连中/失败」展示用）。
+    pub bridge_status: Option<BridgeStatus>,
 }
 
 #[tauri::command]
@@ -19,6 +22,7 @@ pub fn get_runtime_status() -> RuntimeStatus {
         bridge_running: core_voice::bridge_running(),
         tap_status: core_hid::tap::last_status(),
         endpoints_ready: core_voice::atvv_endpoints_ready(),
+        bridge_status: current_bridge_status(),
     }
 }
 

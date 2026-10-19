@@ -49,6 +49,9 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
 }
 
 #[cfg(target_os = "windows")]
+mod async_wait;
+
+#[cfg(target_os = "windows")]
 pub mod gatt;
 
 #[cfg(target_os = "windows")]

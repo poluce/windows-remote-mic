@@ -61,6 +61,29 @@ pub struct AppState {
     pub dispatcher: Arc<KeyDispatcher>,
 }
 
+/// 兜底释放：先让调度器补发「按住未松开」的快捷键松开事件，
+/// 再清空虚拟 HID 里所有残留的按住状态。
+///
+/// 用于任何「松开事件再也到不了」的路径：语音桥会话结束（BLE 断链）、应用退出。
+/// 虚拟 HID（WinUHid）的按住状态只活在进程内，一旦没人松开就会一直按在系统上，
+/// 用户的**物理键盘**会跟着变成 Ctrl+ 组合键（实测卡死过 rctrl）。
+/// 多松一次只是无害的冗余报告，少松一次就是全局卡键，所以这里宁可过度释放。
+pub(crate) fn force_release_held_keys(app: &tauri::AppHandle, reason: &str) -> usize {
+    #[cfg(target_os = "windows")]
+    core_hid::tap::clear_active_usages();
+    let released = match app.try_state::<AppState>() {
+        Some(state) => state.dispatcher.release_all_held(reason),
+        None => 0,
+    };
+    let cleared = core_input::release_all_keys();
+    if released > 0 || cleared {
+        core_log::log_warn(&format!(
+            "[app] 兜底释放按键（{reason}）：补发松开 {released} 个，虚拟 HID 残留={cleared}"
+        ));
+    }
+    released + usize::from(cleared)
+}
+
 /// 短窗口去重：同一虚拟键的按下/松开若在 40ms 内被钩子与 Raw Input
 /// 各投递一次，只向前端发一条，避免测试器矩阵翻倍计数。
 struct KeyEmitDedup {
@@ -75,7 +98,7 @@ impl KeyEmitDedup {
     }
 
     fn take(&self, vkey: u32, pressed: bool) -> bool {
-        let mut last = self.last.lock().unwrap();
+        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         if let Some((vk, p, t)) = *last {
             if vk == vkey && p == pressed && now.duration_since(t) < Duration::from_millis(40) {
@@ -260,10 +283,73 @@ fn action_label(action: &ActionKind) -> String {
     }
 }
 
+/// 直接把崩溃信息追加到 `panic.log`。
+///
+/// 这里刻意不走 `core_log`：如果 panic 恰好发生在日志锁内部，再调日志会死锁，
+/// 崩溃现场就永远写不出来了。
+fn write_panic_log(text: &str) {
+    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let dir = std::path::Path::new(&base).join("RemoteMic/RC003");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("panic.log");
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "[{ts}] {text}");
+    }
+}
+
+/// 全局 panic 兜底：
+/// 1. 记录崩溃位置与原因（panic.log）；
+/// 2. 异步补发一次「全部松开」，避免 panic 时按住的虚拟键残留（应用被 abort /
+///    退出兜底路径来不及执行时，这是最后一道保险）。
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload();
+        let text = payload
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "未知 panic".to_string());
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_string());
+        write_panic_log(&format!("panic at {location}: {text}"));
+
+        // 独立线程里做释放：panic 现场可能正持有某把锁，重入会死锁。
+        std::thread::spawn(|| {
+            core_hid::tap::clear_active_usages();
+            core_input::release_all_keys();
+        });
+
+        default_hook(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "windows")]
     if core_hid::tap::maybe_run_injector() {
+        return;
+    }
+
+    install_panic_hook();
+
+    // 单实例保护：两个实例会各自开 GATT 会话、挂键盘钩子、注入 Frida，
+    // 互相争用同一条 BLE 链路（实测会出现双桥/双注入的错乱）。
+    #[cfg(target_os = "windows")]
+    if !core_input::acquire_single_instance() {
+        core_log::log_warn("[app] 检测到已有实例在运行，本次启动直接退出");
+        core_input::notify_already_running();
         return;
     }
 
@@ -396,6 +482,9 @@ pub fn run() {
                         let start = Instant::now();
                         let mut stalled_since: Option<u128> = None;
                         let mut last_notice = 0u128;
+                        // 主线程卡死时按键松开路径可能永远不会执行：
+                        // 卡住超过 15s 就补一次强制释放（只补一次，避免刷屏）。
+                        let mut released_for_stall = false;
 
                         loop {
                             std::thread::sleep(Duration::from_secs(2));
@@ -410,6 +499,7 @@ pub fn run() {
 
                             let now = start.elapsed().as_millis();
                             if alive {
+                                released_for_stall = false;
                                 if let Some(since) = stalled_since.take() {
                                     core_log::log_warn(&format!(
                                         "[watchdog] 主线程恢复响应（曾卡住约 {} 秒）",
@@ -426,6 +516,16 @@ pub fn run() {
                                     core_log::log_warn(
                                         "[watchdog] 主线程已超过 3 秒未响应，开始记录",
                                     );
+                                }
+                                Some(since) if !released_for_stall && now - since >= 15_000 => {
+                                    released_for_stall = true;
+                                    core_log::log_warn(
+                                        "[watchdog] 主线程卡住超过 15s，补发一次强制释放按键（防卡键）",
+                                    );
+                                    std::thread::spawn(|| {
+                                        core_hid::tap::clear_active_usages();
+                                        core_input::release_all_keys();
+                                    });
                                 }
                                 Some(_) if now - last_notice >= 10_000 => {
                                     last_notice = now;
@@ -545,6 +645,13 @@ pub fn run() {
             commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // 退出是最后一个还能执行代码的时机：此后没人能补发松开事件，
+            // 虚拟 HID 上残留的按住状态会一直卡在系统里（物理键盘跟着失灵）。
+            if let tauri::RunEvent::Exit = event {
+                force_release_held_keys(app, "应用退出");
+            }
+        });
 }

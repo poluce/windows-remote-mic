@@ -34,7 +34,7 @@ static HOOK_HANDLE: Mutex<Option<SendHhook>> = Mutex::new(None);
 
 /// 通过 WH_KEYBOARD_LL 开始监听全局键盘事件。
 pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result<(), String> {
-    *HOOK_CALLBACK.lock().unwrap() = Some(Box::new(callback));
+    *HOOK_CALLBACK.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
 
     #[cfg(target_os = "windows")]
     {
@@ -43,7 +43,7 @@ pub fn start_key_hook(callback: impl Fn(RawKeyEvent) + Send + 'static) -> Result
 
             match hook {
                 Ok(h) => {
-                    *HOOK_HANDLE.lock().unwrap() = Some(SendHhook(h));
+                    *HOOK_HANDLE.lock().unwrap_or_else(|e| e.into_inner()) = Some(SendHhook(h));
                     crate::log_line("[hook] 全局键盘钩子（WH_KEYBOARD_LL）注册成功");
                     let mut msg: MSG = std::mem::zeroed();
                     while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
@@ -110,9 +110,13 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 vkey: vk,
                 pressed: is_down,
             };
-            if let Ok(guard) = HOOK_CALLBACK.lock() {
-                if let Some(cb) = guard.as_ref() {
-                    cb(event);
+            let guard = HOOK_CALLBACK.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(cb) = guard.as_ref() {
+                // 钩子回调里绝不能把 panic 展开回系统：跨 FFI 边界是 UB，
+                // 而且一次 panic 会让整条键盘监听线程失效。
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cb(event)));
+                if outcome.is_err() {
+                    crate::log_error("[hook] 键盘钩子回调 panic 已隔离（监听继续）");
                 }
             }
         }

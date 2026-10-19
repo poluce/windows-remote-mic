@@ -372,6 +372,61 @@ pub fn press_escape() -> Result<()> {
     key_tap(&["esc"])
 }
 
+/// 清空一个**已存在**设备的按键状态，需要时提交全零报告。
+///
+/// 设备没创建过时是空操作——**绝不为了「释放」去创建设备**，否则每次
+/// BLE 断链都会凭空多插一把虚拟键盘。
+///
+/// 返回「清空前是否真的有键被按住」，用来判断要不要记一条日志。
+fn clear_existing_device(slot: &'static Mutex<Option<Device>>, keyboard: bool, name: &str) -> bool {
+    let mut guard = match slot.lock() {
+        Ok(g) => g,
+        Err(_) => {
+            crate::log_warn("[vhid] 强制释放失败：虚拟 HID 锁损坏");
+            return false;
+        }
+    };
+    let Some(dev) = guard.as_mut() else {
+        return false;
+    };
+    let dirty = if keyboard {
+        !dev.keyboard.is_empty()
+    } else {
+        !dev.consumer.is_empty()
+    };
+    let report: Vec<u8> = if keyboard {
+        dev.keyboard.release_all();
+        dev.keyboard.report().to_vec()
+    } else {
+        dev.consumer.release_all();
+        dev.consumer.report().to_vec()
+    };
+    if dirty {
+        crate::log_warn(&format!(
+            "[vhid] 强制释放全部{name}按键（松开事件丢失兜底）  report={report:02X?}"
+        ));
+    }
+    // 即使内存状态显示当前无按键，也无条件向驱动提交全零报告，
+    // 彻底清除 Windows 操作系统与 WinUHid 驱动层可能残留的按住状态。
+    if let Err(e) = submit_report(dev, &report) {
+        crate::log_error(&format!("[vhid] 强制释放{name}报告提交失败: {e}"));
+    }
+    dirty
+}
+
+/// 强制释放全部虚拟键（键盘 + 媒体键），回到「什么都没按」。
+///
+/// 兜底路径专用：物理按键的松开事件可能永远到不了（BLE 断链、调度暂停、
+/// 映射热更新、应用退出），而已注入的修饰键会一直按住——用户的**物理键盘**
+/// 因此被拖成 Ctrl+ 快捷键，直到本进程退出才恢复。
+///
+/// 只处理已经创建过的设备；返回是否真的清理过处于按下状态的键。
+pub fn release_all() -> bool {
+    let keyboard = clear_existing_device(&KEYBOARD, true, "键盘");
+    let consumer = clear_existing_device(&CONSUMER, false, "媒体键");
+    keyboard || consumer
+}
+
 fn control_device_present() -> bool {
     let handle = unsafe {
         CreateFileW(

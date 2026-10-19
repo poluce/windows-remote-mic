@@ -439,6 +439,63 @@ button:focus-visible,
   color: var(--warn);
 }
 
+.device-status-pill.err {
+  background: var(--err-bg);
+  color: var(--err);
+}
+
+/* ---------- 语音桥状态行 ---------- */
+.bridge-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.bridge-inline-text {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bridge-last-error {
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+/* ---------- 语音桥重连 / 失败提示 ---------- */
+.bridge-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bridge-hint.err {
+  border-left-color: var(--err);
+  background: var(--err-bg);
+}
+
+.bridge-hint-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.bridge-hint.err .bridge-hint-title {
+  color: var(--err);
+}
+
+.bridge-hint-body {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
 /* ---------- VB-CABLE 紧凑行 ---------- */
 .vbcable-card {
   display: flex;

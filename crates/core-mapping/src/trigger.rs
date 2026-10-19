@@ -134,6 +134,19 @@ impl TriggerDetector {
         *self = Self::default();
     }
 
+    /// 只丢弃「当前这次手势」的中间状态，**保留已配置的判定时间**。
+    ///
+    /// 用于强制中断一次按住（暂停调度、切换输入模式、兜底释放）：清掉
+    /// `pressed_at/长按已触发/双击窗口`，但不动 `long_press_ms` 与
+    /// `double_click_window_ms`——`reset()` 会把这两项打回默认值，用它清状态
+    /// 会悄悄丢掉用户设置的长按阈值。
+    pub fn abort(&mut self) {
+        self.pressed_at = None;
+        self.released_at = None;
+        self.last_single_at = None;
+        self.long_fired = false;
+    }
+
     /// 设置长按判定阈值（毫秒）。
     pub fn set_long_press_ms(&mut self, ms: u64) {
         self.long_press_ms = ms;
@@ -172,5 +185,31 @@ mod tests {
         d.press(0);
         assert_eq!(d.release(50), FeedOutcome::Pending);
         d.press(100);
+    }
+
+    #[test]
+    fn abort_clears_hold_state_but_keeps_configured_timing() {
+        let mut d = TriggerDetector::new();
+        d.set_long_press_ms(900);
+        d.set_double_click_window_ms(400);
+        // 按住 950ms 后松开：长按阈值 900ms 生效，long_fired 置位。
+        d.press(0);
+        assert_eq!(
+            d.release(950),
+            FeedOutcome::Fire(TriggerEvent {
+                trigger: Trigger::LongPress
+            })
+        );
+        assert!(d.is_long_held());
+
+        // 强制中断一次按住：手势状态清空，但阈值必须保留。
+        d.abort();
+        assert!(!d.is_long_held(), "中断后不应还认为处于长按");
+        d.press(1000);
+        assert_eq!(
+            d.release(1500),
+            FeedOutcome::Pending,
+            "500ms < 900ms：说明 abort 把长按阈值打回了默认 550ms"
+        );
     }
 }

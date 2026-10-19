@@ -1,6 +1,7 @@
 //! Windows GATT 发现 + ATVV 传输（仅 Windows）。
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use windows::core::{IInspectable, GUID, HSTRING};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
@@ -14,7 +15,15 @@ use windows::Devices::Bluetooth::{
 use windows::Foundation::TypedEventHandler;
 use windows::Storage::Streams::{DataReader, DataWriter, IBuffer};
 
+use crate::async_wait::wait_op;
 use crate::{BleError, Result};
+
+/// 常规 GATT 操作超时（发现服务/特征、读写等）。
+const OP_TIMEOUT: Duration = Duration::from_secs(15);
+/// 打开设备/服务等相对更重的操作超时。
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+/// 权限/订阅等轻量操作超时。
+const LIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// ATVV 服务/特征 UUID（与 core-atvv 常量一致）。
 const ATVV_SERVICE_GUID: GUID = GUID::from_u128(0xAB5E0001_5A21_4F05_BC7D_AF01F617B664);
@@ -149,15 +158,12 @@ fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
         "[ble/gatt] 正在从设备 ID 打开蓝牙设备: '{device_id}'"
     ));
     let hstr = HSTRING::from(device_id);
-    let device = pollster::block_on(async {
-        let op =
-            BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
-        op.await.map_err(|e| BleError::Windows(e.to_string()))
-    })?;
+    let op = BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
+    let device = wait_op(&op, CONNECT_TIMEOUT, "打开蓝牙设备")?;
     core_log::log_info("[ble/gatt] 已获取蓝牙设备实例");
 
     if let Ok(op) = device.RequestAccessAsync() {
-        match pollster::block_on(async { op.await }) {
+        match wait_op(&op, LIGHT_TIMEOUT, "请求蓝牙访问权限") {
             Ok(status) => core_log::log_info(&format!("[ble/gatt] 蓝牙访问请求状态={status:?}")),
             Err(e) => core_log::log_warn(&format!("[ble/gatt] 蓝牙访问请求失败: {e}")),
         }
@@ -175,12 +181,10 @@ fn try_open_atvv(
     ));
     let device = open_ble_device(device_id)?;
 
-    let services_result = pollster::block_on(async {
-        let op = device
-            .GetGattServicesWithCacheModeAsync(mode)
-            .map_err(|e| BleError::Windows(e.to_string()))?;
-        op.await.map_err(|e| BleError::Windows(e.to_string()))
-    })?;
+    let op = device
+        .GetGattServicesWithCacheModeAsync(mode)
+        .map_err(|e| BleError::Windows(e.to_string()))?;
+    let services_result = wait_op(&op, OP_TIMEOUT, "获取 GATT 服务")?;
     let svc_status = services_result
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
@@ -224,13 +228,14 @@ fn open_atvv_service(service: &GattDeviceService) -> Result<()> {
         GattSharingMode::SharedReadOnly,
         GattSharingMode::Unspecified,
     ] {
-        let status = pollster::block_on(async {
-            let op = service
-                .OpenAsync(mode)
-                .map_err(|e| BleError::Windows(e.to_string()))?;
-            op.await.map_err(|e| BleError::Windows(e.to_string()))
-        });
-        match status {
+        let op = match service.OpenAsync(mode) {
+            Ok(op) => op,
+            Err(e) => {
+                core_log::log_warn(&format!("[ble/gatt] ATVV 打开（{mode:?}）调用失败: {e}"));
+                continue;
+            }
+        };
+        match wait_op(&op, LIGHT_TIMEOUT, "打开 ATVV 服务") {
             Ok(s) if s == GattOpenStatus::Success || s == GattOpenStatus::AlreadyOpened => {
                 core_log::log_info(&format!("[ble/gatt] ATVV 打开（{mode:?}）-> {s:?}"));
                 return Ok(());
@@ -243,19 +248,20 @@ fn open_atvv_service(service: &GattDeviceService) -> Result<()> {
             }
         }
     }
-    Ok(())
+    // 三种共享模式都打不开：必须显式失败，避免后续读特征“看起来成功、实际无数据”。
+    Err(BleError::Windows(
+        "ATVV 服务打开失败：共享读写/只读/未指定三种模式均不可用".into(),
+    ))
 }
 
 fn read_atvv_characteristics(
     service: &GattDeviceService,
     mode: BluetoothCacheMode,
 ) -> Result<FoundChars> {
-    let char_result = pollster::block_on(async {
-        let op = service
-            .GetCharacteristicsWithCacheModeAsync(mode)
-            .map_err(|e| BleError::Windows(e.to_string()))?;
-        op.await.map_err(|e| BleError::Windows(e.to_string()))
-    })?;
+    let op = service
+        .GetCharacteristicsWithCacheModeAsync(mode)
+        .map_err(|e| BleError::Windows(e.to_string()))?;
+    let char_result = wait_op(&op, OP_TIMEOUT, "获取 ATVV 特征")?;
     let char_status = char_result
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
@@ -305,12 +311,10 @@ fn read_atvv_characteristics_by_uuid(
 ) -> Result<FoundChars> {
     let mut found = Vec::new();
     for uuid in [ATVV_TX_GUID, ATVV_AUDIO_GUID, ATVV_CONTROL_GUID] {
-        let result = pollster::block_on(async {
-            let op = service
-                .GetCharacteristicsForUuidWithCacheModeAsync(uuid, mode)
-                .map_err(|e| BleError::Windows(e.to_string()))?;
-            op.await.map_err(|e| BleError::Windows(e.to_string()))
-        });
+        let result = match service.GetCharacteristicsForUuidWithCacheModeAsync(uuid, mode) {
+            Ok(op) => wait_op(&op, LIGHT_TIMEOUT, "按 UUID 获取特征"),
+            Err(e) => Err(BleError::Windows(e.to_string())),
+        };
         let Ok(char_result) = result else {
             core_log::log_warn(&format!("[ble/gatt] 按 UUID 获取特征失败: {uuid:?}"));
             continue;
@@ -366,15 +370,22 @@ impl AtvvLink {
     }
 
     fn enable_notifications(&self, characteristic: &GattCharacteristic) -> Result<()> {
-        let status = pollster::block_on(async {
-            characteristic
-                .WriteClientCharacteristicConfigurationDescriptorAsync(
-                    GattClientCharacteristicConfigurationDescriptorValue::Notify,
-                )
-                .map_err(|e| BleError::Windows(e.to_string()))?
-                .await
-                .map_err(|e| BleError::Windows(e.to_string()))
-        })?;
+        let op = characteristic
+            .WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue::Notify,
+            )
+            .map_err(|e| BleError::Windows(e.to_string()))?;
+        let status = wait_op(&op, LIGHT_TIMEOUT, "写 CCCD 启用通知")?;
+        if status != GattCommunicationStatus::Success {
+            // 之前这里只打 DEBUG 日志就当作成功，导致“链路看着正常、永远收不到通知”
+            // 的半死状态无法被发现（实测曾空转数小时）。必须显式失败。
+            core_log::log_error(&format!(
+                "[ble/gatt] 启用通知失败: CCCD 写入状态={status:?}"
+            ));
+            return Err(BleError::Windows(format!(
+                "写 CCCD 启用通知失败: {status:?}"
+            )));
+        }
         core_log::log_debug(&format!(
             "[ble/gatt] 写入客户端特征配置描述符状态: {:?}",
             status
@@ -397,14 +408,16 @@ impl AtvvLink {
             .DetachBuffer()
             .map_err(|e| BleError::Windows(e.to_string()))?;
 
-        let status = pollster::block_on(async {
-            self._tx
-                .WriteValueAsync(&buffer)
-                .map_err(|e| BleError::Windows(e.to_string()))?
-                .await
-                .map_err(|e| BleError::Windows(e.to_string()))
-        })?;
-        core_log::log_info(&format!("[ble/gatt] TX 写入完成，状态: {:?}", status));
+        let op = self
+            ._tx
+            .WriteValueAsync(&buffer)
+            .map_err(|e| BleError::Windows(e.to_string()))?;
+        let status = wait_op(&op, LIGHT_TIMEOUT, "写 TX 特征")?;
+        if status != GattCommunicationStatus::Success {
+            core_log::log_error(&format!("[ble/gatt] TX 写入失败，状态: {status:?}"));
+            return Err(BleError::Windows(format!("TX 写入失败: {status:?}")));
+        }
+        core_log::log_info(&format!("[ble/gatt] TX 写入完成，状态: {status:?}"));
         Ok(())
     }
 

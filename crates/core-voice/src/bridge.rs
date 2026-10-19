@@ -108,6 +108,9 @@ where
     core_log::log_info("[bridge] ATVV 链路已连接");
     crate::set_connection_active(true);
     crate::set_bridge_running(true);
+    // 连接建立时连接状态事件不一定再触发（注册回调前链路已是 Connected），
+    // 这里主动回调一次，保证 UI 能从「启动中」切换到「运行中」。
+    on_status(true);
     // ATVV 端点已由 connect_rc003 发现并传入，这里标记为就绪。
     crate::set_atvv_endpoints_ready(true);
 
@@ -127,6 +130,9 @@ where
             // 先打诊断再置位，确保主循环退出日志能读到同一快照语境。
             core_log::log_info(&diag_cb.summary("winrt_ConnectionStatusChanged"));
             disconnected_cb.store(true, Ordering::SeqCst);
+            // 蓝牙断链瞬间立即清空驱动层活跃按键并重置虚拟 HID，防止修饰键残留
+            core_hid::tap::clear_active_usages();
+            core_input::release_all_keys();
         }
         on_status(connected);
     })
@@ -176,6 +182,10 @@ where
     let engine_cb = engine.clone();
     let capture_audio = capture.clone();
     let diag_audio = diag.clone();
+    // 逻辑时钟：VoiceEngine 的时间语义（STOP_TAIL_DROP 等）依赖它。
+    // 之前从不推进，导致所有基于时间的门控实际失效。
+    let feed_clock = Arc::new(Mutex::new(Instant::now()));
+    let feed_clock_audio = feed_clock.clone();
     let _audio_cookie = link
         .register_audio_handler(move |bytes| {
             diag_audio.touch_audio();
@@ -184,6 +194,13 @@ where
                 Ok(g) => g,
                 Err(_) => return,
             };
+            if let Ok(mut clock) = feed_clock_audio.lock() {
+                let now = Instant::now();
+                let elapsed_ms = now.duration_since(*clock).as_millis() as u64;
+                *clock = now;
+                // 限制单次推进量，避免长时间空闲后一次跳太多导致时序误判。
+                eng.advance(elapsed_ms.min(1000));
+            }
             let chunk = eng.feed(&bytes);
             if !chunk.output.is_empty() {
                 core_log::log_debug(&format!(
@@ -255,6 +272,9 @@ where
                             let _ = eng.on_control(ControlEvent::StreamStop);
                         }
                     }
+                    // 联动释放麦克风按键：遥控器已停止推流（硬件已松手）。
+                    // 若真实 HID 松开报告因无线丢包丢失，AudioStopped 兜底补发释放。
+                    core_hid::tap::release_mic_on_audio_stop();
                 }
                 RawControlEvent::AudioSynced { .. } => {
                     // TODO: 将 predictor/step_index 提供给解码器以重新同步。
@@ -267,6 +287,7 @@ where
     // 主循环：保持链路存活，并将解码后的帧推送到 sink。
     // 每 2s timeout 计一次空闲心跳；满 30s 打一条 INFO，便于对照“空闲多久后断链”。
     let mut idle_ticks: u32 = 0;
+    let mut audio_stream_warned = false;
     let exit_reason;
     loop {
         if crate::bridge_stop_requested() {
@@ -285,21 +306,35 @@ where
             Ok(frames) => {
                 idle_ticks = 0;
                 sink.push(&frames);
+                // 输出流报错（CABLE Input 被禁用/拔出等）时提示一次，
+                // 否则用户会以为“语音没反应”却没有任何线索。
+                if sink.is_failed() && !audio_stream_warned {
+                    audio_stream_warned = true;
+                    core_log::log_error(
+                        "[bridge] 音频输出流已报错：CABLE Input 可能被禁用/拔出，语音可能无法送达；请检查虚拟声卡",
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 idle_ticks = idle_ticks.saturating_add(1);
-                // 15 * 2s = 30s
+                // 15 * 2s = 30s：DEBUG 级别每 30s 一条，INFO 每 5 分钟一条。
+                // 之前每 30s 一条 INFO 占了日志的大头，把真正的异常淹没了。
                 if idle_ticks > 0 && idle_ticks.is_multiple_of(15) {
                     let last_ctrl = diag.last_control_at.lock().ok().and_then(|g| *g);
                     let last_aud = diag.last_audio_at.lock().ok().and_then(|g| *g);
-                    core_log::log_info(&format!(
+                    let message = format!(
                         "[bridge] 链路空闲心跳: 主循环已空闲 {}s, 距上次控制={}, 距上次音频={}, 语音输入中={}, ConnectionActive={}",
                         idle_ticks * 2,
                         BridgeDiag::age_label(last_ctrl),
                         BridgeDiag::age_label(last_aud),
                         diag.voice_active.load(Ordering::Relaxed),
                         crate::connection_active(),
-                    ));
+                    );
+                    if idle_ticks.is_multiple_of(150) {
+                        core_log::log_info(&message);
+                    } else {
+                        core_log::log_debug(&message);
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {

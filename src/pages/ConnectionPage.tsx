@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  bridgeStateLabel,
   markConnected,
   markDisconnected,
   tapStatusLabel,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
+
+/** `stop_voice_bridge` 的返回：是否真的停下 + 提示文案。 */
+type BridgeStopResult = {
+  stopped: boolean;
+  message: string;
+};
 import { IconBluetooth } from "../components/icons";
 
 type Rc003Device = {
@@ -44,7 +51,18 @@ function tapStatusTone(status: string): string {
 
 export function ConnectionPage() {
   const runtime = useRuntimeStatus();
-  const { connected, bridgeStatus, tapStatus, tapMessage, endpointsReady } = runtime;
+  const {
+    connected,
+    bridgeStatus,
+    tapStatus,
+    tapMessage,
+    endpointsReady,
+    bridgeState,
+    bridgeAttempt,
+    bridgeFailures,
+    bridgeNextRetrySecs,
+    bridgeLastError,
+  } = runtime;
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -145,8 +163,14 @@ export function ConnectionPage() {
     setDisconnecting(true);
     setFeedback("");
     try {
-      await invoke<string>("stop_voice_bridge");
-      markDisconnected();
+      const result = await invoke<BridgeStopResult>("stop_voice_bridge");
+      if (result.stopped) {
+        markDisconnected();
+        setFeedback(result.message);
+      } else {
+        // 后端没真正停下：不要假装断开，否则用户会以为已经停止而实际仍在重连。
+        setFeedback(result.message);
+      }
     } catch (err) {
       setFeedback(`断开失败：${err}`);
     } finally {
@@ -154,11 +178,21 @@ export function ConnectionPage() {
     }
   }
 
+  const bridgeTone =
+    bridgeState === "running"
+      ? "ok"
+      : bridgeState === "failed" || bridgeStatus === "failed"
+        ? "err"
+        : "warn";
+  const showBridgeHint =
+    bridgeState === "retrying" || bridgeState === "failed" || bridgeState === "starting";
+
   const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
       key: "bridge",
-      label: "ATVV 语音桥",
-      tone: bridgeStatus === "running" ? "ok" : "warn",
+      label: bridgeStateLabel(bridgeState, bridgeAttempt),
+      tone: bridgeTone,
+      title: bridgeLastError || undefined,
     },
     {
       key: "tap",
@@ -233,6 +267,28 @@ export function ConnectionPage() {
             </span>
           ))}
         </div>
+        {showBridgeHint && (
+          <div className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}>
+            <span className="bridge-hint-title">
+              {bridgeState === "failed"
+                ? "语音桥连续重连失败"
+                : bridgeState === "starting"
+                  ? "正在启动语音桥…"
+                  : "语音桥正在自动重连"}
+            </span>
+            <span className="bridge-hint-body">
+              {bridgeState === "starting"
+                ? "正在建立蓝牙语音链路，请稍候…"
+                : bridgeLastError
+                  ? `最近错误：${bridgeLastError}`
+                  : "等待遥控器恢复连接（可尝试唤醒遥控器或重新配对）"}
+              {bridgeFailures > 0 && ` · 连续失败 ${bridgeFailures} 次`}
+              {bridgeState === "retrying" &&
+                bridgeNextRetrySecs > 0 &&
+                ` · 约 ${bridgeNextRetrySecs} 秒后重试`}
+            </span>
+          </div>
+        )}
       </section>
       </div>
 
@@ -282,6 +338,34 @@ export function ConnectionPage() {
             )}
           </div>
         </div>
+        <div className="form-row">
+          <span className="form-label">语音桥</span>
+          <div className="form-control bridge-inline">
+            <span
+              className={`status-dot ${
+                bridgeState === "running"
+                  ? "ready"
+                  : bridgeState === "failed"
+                    ? "missing"
+                    : bridgeState === "retrying" || bridgeState === "starting"
+                      ? "warn"
+                      : "preview"
+              }`}
+            />
+            <span className="bridge-inline-text">
+              {bridgeStateLabel(bridgeState, bridgeAttempt)}
+              {bridgeState === "retrying" && bridgeNextRetrySecs > 0
+                ? ` · 约 ${bridgeNextRetrySecs} 秒后重试`
+                : ""}
+              {bridgeState === "failed" && bridgeFailures > 0
+                ? ` · 已连续失败 ${bridgeFailures} 次`
+                : ""}
+            </span>
+          </div>
+        </div>
+        {bridgeLastError && (
+          <p className="hint bridge-last-error">最近错误：{bridgeLastError}</p>
+        )}
       </section>
       </div>
     </div>

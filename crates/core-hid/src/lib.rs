@@ -2,6 +2,25 @@
 
 use core_mapping::ButtonId;
 
+/// 取互斥锁并在「锁中毒」时继续使用内部值。
+///
+/// 这些锁大多在 Win32 回调/看门狗线程里使用：任何一次 panic 都会让
+/// `Mutex` 永久中毒，若继续 `unwrap()` 就会把 panic 变成「后续全部失效」。
+/// 我们的状态都是「可重建的缓存」，中毒后继续用比整体瘫痪安全。
+#[inline]
+pub(crate) fn lock_or_recover<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 把 panic 载荷转成可读文本（用于日志）。
+pub fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "未知 panic".to_string())
+}
+
 /// 遥控器普通按键使用的键盘 usage page。
 pub const HID_USAGE_PAGE_KEYBOARD: u16 = 0x07;
 

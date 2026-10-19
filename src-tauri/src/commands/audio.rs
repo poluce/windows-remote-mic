@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Emitter;
 
@@ -11,6 +12,76 @@ static BRIDGE_LOOP_SEQ: AtomicU64 = AtomicU64::new(0);
 static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
 /// 请求停止当前语音桥循环（stop_voice_bridge 置位，循环在安全点检查后退出）。
 static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+/// 最近一次语音桥状态快照（供前端恢复状态 / 事件推送）。
+static BRIDGE_STATE: Mutex<Option<BridgeStatus>> = Mutex::new(None);
+
+/// 连续失败多少次后把状态标为 `failed`（仍会按 30s 上限继续重试，用户可手动断开）。
+const FAILED_AFTER_FAILURES: u64 = 5;
+
+/// 语音桥状态（「连接」页用来展示重连进度与失败原因）。
+#[derive(Debug, Clone, Serialize)]
+pub struct BridgeStatus {
+    /// `idle` / `starting` / `running` / `retrying` / `failed` / `stopped`
+    pub state: String,
+    /// 累计第几次会话尝试（从 1 开始）。
+    pub attempt: u64,
+    /// 连续失败次数（成功建立会话后清零）。
+    pub failures: u64,
+    /// 下一次重连等待秒数（非重试状态为 0）。
+    pub next_retry_secs: u64,
+    /// 最近一次失败原因（无则空串）。
+    pub last_error: String,
+}
+
+impl BridgeStatus {
+    fn new(
+        state: &str,
+        attempt: u64,
+        failures: u64,
+        next_retry_secs: u64,
+        last_error: String,
+    ) -> Self {
+        Self {
+            state: state.into(),
+            attempt,
+            failures,
+            next_retry_secs,
+            last_error,
+        }
+    }
+}
+
+fn set_bridge_status(app: &tauri::AppHandle, status: BridgeStatus) {
+    if let Ok(mut guard) = BRIDGE_STATE.lock() {
+        *guard = Some(status.clone());
+    }
+    let _ = app.emit("bridge-status", &status);
+}
+
+/// 读取最近一次语音桥状态（供 `get_runtime_status` 快照）。
+pub fn current_bridge_status() -> Option<BridgeStatus> {
+    BRIDGE_STATE.lock().ok().and_then(|g| g.clone())
+}
+
+/// 指数退避重连间隔（秒）：2/4/8/15，之后 30 封顶，带 ±25% 抖动。
+///
+/// 旧实现是「每 10 秒无限重试」，遥控器不在身边时会空转上千次且日志刷屏；
+/// 现在前几次快速重试，连续失败后退避到 30s，并让 UI 能显示重试进度。
+fn retry_delay_secs(failures: u64) -> u64 {
+    let base = match failures {
+        0 | 1 => 2,
+        2 => 4,
+        3 => 8,
+        4 => 15,
+        _ => 30,
+    };
+    let jitter_window = (base / 4).max(1);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0) as u64;
+    base + nanos % (jitter_window + 1)
+}
 
 /// 启动真实设备的语音桥（仅 Windows）。在工作线程中运行。
 /// 互斥：已有重连循环在跑时拒绝新请求，避免并发双桥争用同一 GATT 会话。
@@ -32,51 +103,106 @@ pub fn start_voice_bridge(
         core_log::log_info(&format!(
             "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, 设备 ID='{device_id}'，输出='{output_device}'"
         ));
+        set_bridge_status(&app, BridgeStatus::new("starting", 1, 0, 0, String::new()));
+
         let app_for_thread = app.clone();
         std::thread::spawn(move || {
             let mut attempt: u64 = 0;
+            let mut failures: u64 = 0;
             loop {
                 if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                     break;
                 }
+                attempt += 1;
                 let app_cb = app_for_thread.clone();
+                let attempt_cb = attempt;
+                let failures_cb = failures;
                 let on_status = move |connected: bool| {
                     let _ = app_cb.emit("ble-connection-status", connected);
+                    if connected {
+                        set_bridge_status(
+                            &app_cb,
+                            BridgeStatus::new("running", attempt_cb, failures_cb, 0, String::new()),
+                        );
+                    }
                 };
 
                 core_log::log_line(&format!(
-                    "[commands/audio] 语音桥启动: loop_id={loop_id}, attempt={}",
-                    attempt + 1
+                    "[commands/audio] 语音桥启动: loop_id={loop_id}, attempt={attempt}"
                 ));
-                let result = core_voice::run_bridge(&device_id, &output_device, on_status);
-                match result {
-                    Ok(()) => {
+                // 单次会话 panic 不能带走重连循环（否则 BRIDGE_RUNNING 永远为 true，
+                // 用户只能重启应用才能恢复）。
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    core_voice::run_bridge(&device_id, &output_device, on_status)
+                }));
+
+                let last_error = match result {
+                    Ok(Ok(())) => {
                         core_log::log_line(&format!(
-                            "[commands/audio] 语音桥已停止，准备重连: loop_id={loop_id}, attempt={}",
-                            attempt + 1
+                            "[commands/audio] 语音桥已停止，准备重连: loop_id={loop_id}, attempt={attempt}"
                         ));
+                        None
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         core_log::log_error(&format!(
-                            "[commands/audio] 语音桥错误: loop_id={loop_id}, attempt={}, err={e}",
-                            attempt + 1
+                            "[commands/audio] 语音桥错误: loop_id={loop_id}, attempt={attempt}, err={e}"
                         ));
+                        Some(e)
                     }
+                    Err(payload) => {
+                        let detail = core_hid::panic_payload_text(payload.as_ref());
+                        core_log::log_error(&format!(
+                            "[commands/audio] 语音桥线程 panic 已隔离: loop_id={loop_id}, attempt={attempt}, {detail}"
+                        ));
+                        Some(format!("语音桥异常：{detail}"))
+                    }
+                };
+
+                // 本次语音桥会话结束（BLE 断链 / 用户断开 / 音频通道断开）：
+                // 遥控器已经不在链路上了，物理松开事件永远不会到达，必须先把
+                // 映射层按住的动作和虚拟 HID 的残留按住状态一起松开，否则修饰键
+                // 会一直卡在系统里（实测遥控器断链后 rctrl 卡死，物理键盘失灵）。
+                crate::force_release_held_keys(
+                    &app_for_thread,
+                    &format!("语音桥会话结束（loop_id={loop_id}, attempt={attempt}）"),
+                );
+
+                // 区分「正常会话自然结束」与「连接失败」：前者重置失败计数，
+                // 后者累计用于退避与 failed 状态判定。
+                let session_ok = last_error.is_none();
+                if session_ok {
+                    failures = 0;
+                } else {
+                    failures = failures.saturating_add(1);
                 }
-                // 注意：不要在这里无条件 emit ble-connection-status=false。
-                // run_bridge 内部已通过 on_status 在 BLE 真正连接/断开时推送状态；
-                // 这里只是“语音桥本次会话结束”，不代表遥控器连接断开。
-                attempt += 1;
+
                 if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                     break;
                 }
-                let delay_secs = (attempt * 2).min(10);
+
+                let delay = retry_delay_secs(failures);
+                let state = if failures >= FAILED_AFTER_FAILURES {
+                    "failed"
+                } else {
+                    "retrying"
+                };
+                set_bridge_status(
+                    &app_for_thread,
+                    BridgeStatus::new(
+                        state,
+                        attempt,
+                        failures,
+                        delay,
+                        last_error.clone().unwrap_or_default(),
+                    ),
+                );
                 core_log::log_line(&format!(
-                    "[commands/audio] 将在 {delay_secs} 秒后重连（loop_id={loop_id}, 第 {attempt} 次）"
+                    "[commands/audio] 将在 {delay} 秒后重连（loop_id={loop_id}, 第 {attempt} 次尝试，连续失败 {failures} 次）"
                 ));
+
                 // 分秒睡眠，期间响应停止请求（最迟 1 秒内退出）。
                 let mut slept: u64 = 0;
-                while slept < delay_secs {
+                while slept < delay {
                     if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                         break;
                     }
@@ -86,12 +212,12 @@ pub fn start_voice_bridge(
                 if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                     break;
                 }
-                core_log::log_line(&format!(
-                    "[commands/audio] 重连等待结束，开始下一次尝试（loop_id={loop_id}, 即将 attempt={}）",
-                    attempt + 1
-                ));
             }
             BRIDGE_RUNNING.store(false, Ordering::SeqCst);
+            set_bridge_status(
+                &app_for_thread,
+                BridgeStatus::new("stopped", attempt, failures, 0, String::new()),
+            );
             core_log::log_line(&format!(
                 "[commands/audio] 语音桥循环已停止（loop_id={loop_id}），可重新启动"
             ));
@@ -105,23 +231,49 @@ pub fn start_voice_bridge(
     }
 }
 
-/// 停止语音桥重连循环（当前 run_bridge 会话结束后、或最迟 1 秒内生效）。
+/// `stop_voice_bridge` 的结果：前端据此决定是否真的标记为「已断开」。
+#[derive(Debug, Clone, Serialize)]
+pub struct BridgeStopResult {
+    pub stopped: bool,
+    pub message: String,
+}
+
+/// 停止语音桥重连循环（当前 run_bridge 会话结束后、或最迟约 10 秒内生效）。
+///
+/// 之前无论是否真的停下都返回「已断开连接」，用户会以为断了但实际仍在重连。
 #[tauri::command]
-pub fn stop_voice_bridge() -> String {
+pub fn stop_voice_bridge(app: tauri::AppHandle) -> BridgeStopResult {
     if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
         core_voice::set_connection_active(false);
-        return "未在连接".to_string();
+        set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
+        return BridgeStopResult {
+            stopped: true,
+            message: "未在连接".to_string(),
+        };
     }
     BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
     core_voice::request_bridge_stop();
     core_voice::set_connection_active(false);
-    for _ in 0..30 {
+    // 最长等 10s：WinRT 操作已有超时，正常会在数秒内退出。
+    for _ in 0..100 {
         if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
             break;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    "已断开连接".to_string()
+    let stopped = !BRIDGE_RUNNING.load(Ordering::SeqCst);
+    if stopped {
+        set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
+    }
+    core_log::log_info(&format!("[commands/audio] 停止语音桥：stopped={stopped}"));
+    BridgeStopResult {
+        stopped,
+        message: if stopped {
+            "已断开连接".to_string()
+        } else {
+            "停止超时：语音桥仍在运行（可能卡在蓝牙操作，请稍后重试）".to_string()
+        },
+    }
 }
 
 /// 在没有真实遥控器的情况下模拟完整语音链路。
@@ -240,5 +392,37 @@ pub fn trigger_voice_typing() -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         Err("仅限 Windows".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_delay_grows_then_caps() {
+        let d1 = retry_delay_secs(1);
+        let d2 = retry_delay_secs(2);
+        let d3 = retry_delay_secs(3);
+        let d4 = retry_delay_secs(4);
+        let d5 = retry_delay_secs(5);
+        let d99 = retry_delay_secs(99);
+        assert!((2..=3).contains(&d1), "第 1 次失败应约 2s，实际 {d1}");
+        assert!(d2 >= 4, "第 2 次失败应 ≥4s，实际 {d2}");
+        assert!(d3 >= 8, "第 3 次失败应 ≥8s，实际 {d3}");
+        assert!(d4 >= 15, "第 4 次失败应 ≥15s，实际 {d4}");
+        assert!(d5 >= 30, "第 5 次失败应封顶 30s，实际 {d5}");
+        assert!(d99 <= 35, "退避必须有上限，实际 {d99}");
+    }
+
+    #[test]
+    fn bridge_status_serializes_for_frontend() {
+        let status = BridgeStatus::new("retrying", 3, 2, 8, "no device".into());
+        let json = serde_json::to_value(&status).expect("应可序列化");
+        assert_eq!(json["state"], "retrying");
+        assert_eq!(json["attempt"], 3);
+        assert_eq!(json["failures"], 2);
+        assert_eq!(json["next_retry_secs"], 8);
+        assert_eq!(json["last_error"], "no device");
     }
 }

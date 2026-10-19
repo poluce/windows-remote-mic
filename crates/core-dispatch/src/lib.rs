@@ -41,6 +41,14 @@ use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger, VoiceTarget};
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
 
+/// 自定义快捷键单次按住的兜底上限（毫秒）。
+///
+/// 遥控器是「按住说话」式硬件，正常说话只有几秒，硬件推流上限也约 15 秒；
+/// 超过 10 秒的一定是松开事件丢了（BLE 断链、无线丢包等）。此时强制松开，
+/// 避免修饰键一直卡在系统里把用户的物理键盘拖成 Ctrl+ 组合键。
+/// 只约束 `KeyCombo`：`Voice`（Win+H）长按后的按住是正常语义，不能超时打断。
+const DEFAULT_MAX_COMBO_HOLD_MS: u64 = 10_000;
+
 /// 单个按键的运行时状态。
 #[derive(Default)]
 struct ButtonRuntime {
@@ -50,6 +58,14 @@ struct ButtonRuntime {
     long_executed: bool,
     /// 自定义快捷键已在物理按下时按住，松开时必须配对松开。
     combo_held: bool,
+    /// 按下时实际按住的那组 token，松开时**原样复用**。
+    ///
+    /// 不能等松开时再解析一遍映射：这期间前台应用配置可能已经变了
+    /// （用户切了窗口）或映射被热更新过，解析出来的可能是另一组键、
+    /// 甚至另一种动作，于是真正按住的那组键永远等不到松开——修饰键卡死。
+    held_tokens: Option<Vec<String>>,
+    /// 本次按住开始的时刻（毫秒），用于兜底超时释放。
+    hold_started_ms: Option<u64>,
 }
 
 struct Inner {
@@ -68,6 +84,9 @@ struct Inner {
     enabled: bool,
     /// 输入路由模式：普通映射 / 快捷菜单独占（按键直转菜单回调）。
     mode: InputMode,
+    /// 自定义快捷键单次按住的兜底上限（毫秒），见
+    /// [`DEFAULT_MAX_COMBO_HOLD_MS`]。
+    max_combo_hold_ms: u64,
 }
 
 /// 输入路由模式。
@@ -165,6 +184,7 @@ impl KeyDispatcher {
                 profiles: Arc::new(ProfileRegistry::default()),
                 enabled: true,
                 mode: InputMode::Normal,
+                max_combo_hold_ms: DEFAULT_MAX_COMBO_HOLD_MS,
             }),
             jobs_tx: tx,
             jobs_rx: Mutex::new(Some(rx)),
@@ -176,19 +196,22 @@ impl KeyDispatcher {
     /// 设置应用事件出口（开关快捷菜单、菜单独占按键直转等）。
     /// 须在 `spawn_runtime` 之前调用。
     pub fn set_app_event_handler(&self, handler: Option<AppEventHandler>) {
-        *self.app_event.lock().unwrap() = handler;
+        *self.app_event.lock().unwrap_or_else(|e| e.into_inner()) = handler;
     }
 
     /// 热更新语音识别目标（连接页切换「识别方案」后调用）。
     pub fn set_voice_target(&self, target: VoiceTarget) {
-        *self.voice_target.lock().unwrap() = target;
+        *self.voice_target.lock().unwrap_or_else(|e| e.into_inner()) = target;
         core_log::log_line(&format!("[dispatch] 语音识别目标已更新: {:?}", target));
     }
 
     /// 替换应用专属配置集合（启动时加载，或用户改过文件后重载）。
     pub fn set_profiles(&self, profiles: ProfileRegistry) {
         let count = profiles.profiles().len();
-        self.inner.lock().unwrap().profiles = Arc::new(profiles);
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .profiles = Arc::new(profiles);
         core_log::log_line(&format!("[dispatch] 已加载 {count} 份应用专属配置"));
     }
 
@@ -203,14 +226,26 @@ impl KeyDispatcher {
     ///
     /// 所以先短暂取锁把 `Arc` 快照拿出来，放掉锁之后再查。
     fn foreground_profile_snapshot(&self) -> Option<AppProfile> {
-        let profiles = { self.inner.lock().unwrap().profiles.clone() };
+        let profiles = {
+            self.inner
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .profiles
+                .clone()
+        };
         foreground_profile(&profiles).cloned()
     }
 
     /// 当前前台应用与命中的配置，供诊断页显示 / 核对进程名。
     pub fn foreground_status(&self) -> ForegroundStatus {
         // 同样先取快照再查前台窗口，不在持锁期间碰 Win32。
-        let profiles = { self.inner.lock().unwrap().profiles.clone() };
+        let profiles = {
+            self.inner
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .profiles
+                .clone()
+        };
         let process = core_app_profile::foreground_process_name();
         let title = core_app_profile::foreground_window_title();
         let profile = process
@@ -245,7 +280,7 @@ impl KeyDispatcher {
         // `find_window` 要遍历本机所有顶层窗口，不该让按键线程陪着一起等，
         // 更不该在持锁期间做系统调用。
         let profiles: Vec<AppProfile> = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.profiles.menu_entries().into_iter().cloned().collect()
         };
 
@@ -268,7 +303,7 @@ impl KeyDispatcher {
     ///
     /// 返回副本：调用方要遍历它拼 UI 数据，不该占着调度器的锁。
     pub fn profiles_snapshot(&self) -> Vec<AppProfile> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.profiles.profiles().to_vec()
     }
 
@@ -277,27 +312,30 @@ impl KeyDispatcher {
     /// 返回副本而不是引用：调用方要去做启动窗口这类可能阻塞的事，
     /// 不该一直占着调度器的锁。
     pub fn profile_by_id(&self, id: &str) -> Option<AppProfile> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.profiles.get_by_id(id).cloned()
     }
 
     /// 当前语音识别目标。
     pub fn voice_target(&self) -> VoiceTarget {
-        *self.voice_target.lock().unwrap()
+        *self.voice_target.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// 切换输入路由模式：快捷菜单独占模式下所有按键绕过触发检测与映射，
     /// 直接以 `AppEvent::MenuKey` 转发给应用事件出口；切回普通模式恢复
     /// 常规调度。切换时清空按键中间状态。
+    ///
+    /// **切模式前必须先松开已按住的快捷键**：独占模式不处理松开事件，
+    /// 带着一组按住的修饰键切进去，那组键就再也没人松开了。
     pub fn set_input_mode(&self, mode: InputMode) {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.mode == mode {
-            return;
+        {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if inner.mode == mode {
+                return;
+            }
+            inner.mode = mode;
         }
-        inner.mode = mode;
-        for rt in inner.buttons.values_mut() {
-            *rt = ButtonRuntime::default();
-        }
+        self.release_all_held(&format!("输入模式切换到 {mode:?}"));
         core_log::log_line(&format!("[dispatch] 输入模式已切换: {mode:?}"));
     }
 
@@ -305,9 +343,18 @@ impl KeyDispatcher {
     ///
     /// `stats_dir` 为按键统计存储目录（`core-stats`）。
     pub fn spawn_runtime(self: &Arc<Self>, stats_dir: PathBuf) {
-        let app_event = self.app_event.lock().unwrap().clone();
+        let app_event = self
+            .app_event
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let voice_target = self.voice_target.clone();
-        if let Some(rx) = self.jobs_rx.lock().unwrap().take() {
+        if let Some(rx) = self
+            .jobs_rx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             std::thread::Builder::new()
                 .name("rc003-dispatch-exec".into())
                 .spawn(move || execute_loop(rx, stats_dir, app_event, voice_target))
@@ -319,8 +366,23 @@ impl KeyDispatcher {
             .spawn(move || {
                 while let Some(dispatcher) = weak.upgrade() {
                     let now = dispatcher.now_ms();
-                    for job in dispatcher.tick_once(now) {
-                        let _ = dispatcher.jobs_tx.send(job);
+                    // 单次 tick panic 不能带走整个调度器：长按/单击确认与
+                    // 组合键超时兜底都靠这个线程，必须继续跑。
+                    let jobs = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        dispatcher.tick_once(now)
+                    }));
+                    match jobs {
+                        Ok(jobs) => {
+                            for job in jobs {
+                                let _ = dispatcher.jobs_tx.send(job);
+                            }
+                        }
+                        Err(payload) => {
+                            core_log::log_error(&format!(
+                                "[dispatch] tick 处理 panic 已隔离（继续运行）：{}",
+                                core_hid::panic_payload_text(payload.as_ref())
+                            ));
+                        }
                     }
                     std::thread::sleep(Duration::from_millis(TICK_INTERVAL_MS));
                 }
@@ -334,11 +396,16 @@ impl KeyDispatcher {
     /// `AppEvent::MenuKey` 转发给应用事件出口。
     pub fn on_vkey(&self, vkey: u16, pressed: bool) {
         let (mode, button) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             (inner.mode, inner.vkey_map.get(&vkey).copied())
         };
         if mode == InputMode::QuickMenu {
-            if let Some(cb) = self.app_event.lock().unwrap().as_ref() {
+            if let Some(cb) = self
+                .app_event
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
                 if let Some(button) = button {
                     cb(AppEvent::MenuKey(button, pressed));
                 }
@@ -352,17 +419,20 @@ impl KeyDispatcher {
 
     /// 热更新映射（保存映射后调用）。
     pub fn update_mapping(&self, mapping: MappingConfig) {
-        self.inner.lock().unwrap().mapping = mapping;
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).mapping = mapping;
     }
 
     /// 热更新校准表（保存校准后调用），并重建虚拟键反查表。
     pub fn update_calibrations(&self, calibrations: &HashMap<String, KeyCalibration>) {
-        self.inner.lock().unwrap().vkey_map = build_vkey_map(calibrations);
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .vkey_map = build_vkey_map(calibrations);
     }
 
     /// 热更新触发判定时间：长按阈值与双击窗口（毫秒）。
     pub fn set_trigger_timing(&self, long_press_ms: u64, double_click_ms: u64) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         for rt in inner.buttons.values_mut() {
             rt.detector.set_long_press_ms(long_press_ms);
             rt.detector.set_double_click_window_ms(double_click_ms);
@@ -374,19 +444,91 @@ impl KeyDispatcher {
     ///
     /// 返回值指示状态是否真正发生了改变（若已处于该状态则返回 `false`）。
     pub fn set_enabled(&self, enabled: bool) -> bool {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.enabled == enabled {
-            return false;
+        {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if inner.enabled == enabled {
+                return false;
+            }
+            inner.enabled = enabled;
         }
-        inner.enabled = enabled;
-        for rt in inner.buttons.values_mut() {
-            *rt = ButtonRuntime::default();
+        if enabled {
+            self.reset_gestures();
+        } else {
+            // 暂停调度会吞掉后续松开事件：先把已按住的快捷键松开，
+            // 否则测试完按键，那组修饰键会一直卡在系统里。
+            self.release_all_held("调度已暂停");
         }
         true
     }
 
+    /// 清空所有按键的手势中间状态，**不动已配置的判定时间**。
+    ///
+    /// 早期实现直接 `*rt = ButtonRuntime::default()`，会把
+    /// `long_press_ms` / `double_click_window_ms` 一起打回默认值（550/300），
+    /// 于是「暂停一次按键测试」就会悄悄丢掉用户设置的长按阈值。
+    fn reset_gestures(&self) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        for rt in inner.buttons.values_mut() {
+            rt.down = false;
+            rt.long_executed = false;
+            rt.combo_held = false;
+            rt.held_tokens = None;
+            rt.hold_started_ms = None;
+            rt.detector.abort();
+        }
+    }
+
+    /// 强制松开所有「按住未松开」的按键，返回松开按键的个数。
+    ///
+    /// 兜底路径专用（调度暂停、切换输入模式、BLE 断链、应用退出）：这些
+    /// 情况下物理松开事件永远不会到达，而按下时已注入的键还按在系统里。
+    ///
+    /// 只对按下时记住了 token 的 `KeyCombo` 生成松开任务；`Voice`（Win+H）
+    /// 的 Press 本身就是一次完整点按，没有需要配对松开的系统状态，只清状态。
+    pub fn release_all_held(&self, reason: &str) -> usize {
+        let mut jobs = Vec::new();
+        {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            for (button, rt) in inner.buttons.iter_mut() {
+                if !rt.down && !rt.combo_held && rt.held_tokens.is_none() {
+                    continue;
+                }
+                if let Some(tokens) = rt.held_tokens.take() {
+                    jobs.push(ActionJob {
+                        button: *button,
+                        trigger: Trigger::Release,
+                        action: ActionKind::KeyCombo(tokens),
+                    });
+                }
+                rt.down = false;
+                rt.long_executed = false;
+                rt.combo_held = false;
+                rt.hold_started_ms = None;
+                rt.detector.abort();
+            }
+        }
+        if !jobs.is_empty() {
+            core_log::log_warn(&format!(
+                "[dispatch] 强制松开按住未松开的按键 {} 个（{reason}）",
+                jobs.len()
+            ));
+        }
+        for job in &jobs {
+            let _ = self.jobs_tx.send(job.clone());
+        }
+        jobs.len()
+    }
+
+    /// 设置自定义快捷键的按住兜底上限（毫秒）。测试用，0 表示不限制。
+    pub fn set_max_combo_hold_ms(&self, ms: u64) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .max_combo_hold_ms = ms;
+    }
+
     pub fn is_enabled(&self) -> bool {
-        self.inner.lock().unwrap().enabled
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).enabled
     }
 
     fn now_ms(&self) -> u64 {
@@ -399,7 +541,7 @@ impl KeyDispatcher {
         // 先在临界区之外解析前台配置——这一步会调 Win32，持锁调用会死锁。
         let profile = self.foreground_profile_snapshot();
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.enabled {
             return jobs;
         }
@@ -422,13 +564,17 @@ impl KeyDispatcher {
             rt.down = true;
             rt.long_executed = false;
             rt.combo_held = false;
+            rt.held_tokens = None;
+            rt.hold_started_ms = Some(now);
             rt.detector.press(now);
             // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
             // （豆包等 IME 要的是键盘那种「一按住就生效」）。
             // Voice（Win+H）仍等 tick 识别长按后再发，避免点按误开语音条。
             if let Some(job) = build_job(mapping, profile, button, Trigger::Press, rt) {
-                if matches!(job.action, ActionKind::KeyCombo(_)) {
+                if let ActionKind::KeyCombo(tokens) = &job.action {
                     rt.combo_held = true;
+                    // 记住这一次真正按住的键，松开时原样复用。
+                    rt.held_tokens = Some(tokens.clone());
                     jobs.push(job);
                 }
             }
@@ -438,11 +584,12 @@ impl KeyDispatcher {
                 return jobs;
             }
             rt.down = false;
+            rt.hold_started_ms = None;
             // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
             let outcome = rt.detector.release(now);
             if rt.combo_held {
                 rt.combo_held = false;
-                if let Some(job) = build_job(mapping, profile, button, Trigger::Release, rt) {
+                if let Some(job) = release_job(mapping, profile, button, rt) {
                     jobs.push(job);
                 }
             } else if rt.detector.is_long_held() {
@@ -467,15 +614,37 @@ impl KeyDispatcher {
         // 同 feed：前台配置在临界区之外解析。
         let profile = self.foreground_profile_snapshot();
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.enabled {
             return jobs;
         }
+        let max_combo_hold_ms = inner.max_combo_hold_ms;
         let Inner {
             mapping, buttons, ..
         } = &mut *inner;
         let profile = profile.as_ref();
         for (button, rt) in buttons.iter_mut() {
+            // 兜底：自定义快捷键按住远超任何合理时长，说明松开事件丢了
+            // （BLE 断链等）。强制松开，避免修饰键一直卡在系统里。
+            if max_combo_hold_ms > 0 && rt.combo_held {
+                if let Some(started) = rt.hold_started_ms {
+                    if now.saturating_sub(started) >= max_combo_hold_ms {
+                        let job = release_job(mapping, profile, *button, rt);
+                        core_log::log_warn(&format!(
+                            "[dispatch] 按键 {button:?} 按住超过 {}s 未松开，已强制释放（松开事件丢失兜底）",
+                            max_combo_hold_ms / 1000
+                        ));
+                        rt.down = false;
+                        rt.long_executed = false;
+                        rt.combo_held = false;
+                        rt.hold_started_ms = None;
+                        rt.detector.abort();
+                        if let Some(job) = job {
+                            jobs.push(job);
+                        }
+                    }
+                }
+            }
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);
             // 长按刚被识别：发 Press 边沿触发（Win+H 等）。快捷键已在按下时发过。
@@ -524,6 +693,30 @@ fn build_job(
         trigger,
         action,
     })
+}
+
+/// 构造「松开」任务：优先复用按下时记住的那组键。
+///
+/// 按下与松开之间，前台应用配置和映射都可能已经变了；如果松开时重新解析
+/// 映射，很容易解析出另一组键（甚至另一个动作），结果就是**按下时那组键
+/// 永远没人松开**——修饰键卡在系统里，用户的物理键盘跟着遭殃。
+///
+/// 因此只要记住了 token 就直接用它，连「动作是否被禁用」都不再检查：
+/// 多松一次无害，少松一次就是全局卡键。
+fn release_job(
+    mapping: &MappingConfig,
+    profile: Option<&AppProfile>,
+    button: ButtonId,
+    rt: &mut ButtonRuntime,
+) -> Option<ActionJob> {
+    if let Some(tokens) = rt.held_tokens.take() {
+        return Some(ActionJob {
+            button,
+            trigger: Trigger::Release,
+            action: ActionKind::KeyCombo(tokens),
+        });
+    }
+    build_job(mapping, profile, button, Trigger::Release, rt)
 }
 
 /// 解析 (按键, 触发) 对应的动作：**应用配置优先，未覆盖时回落到全局映射**。
@@ -619,7 +812,16 @@ fn execute_loop(
 ) {
     let stats = core_stats::StatsStore::new(stats_dir).ok();
     while let Ok(job) = rx.recv() {
-        let outcome = execute_action(&job, app_event.as_ref(), &voice_target);
+        // 单个动作执行 panic 不能带走执行线程（否则后续所有按键静默失效）。
+        let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            execute_action(&job, app_event.as_ref(), &voice_target)
+        })) {
+            Ok(outcome) => outcome,
+            Err(payload) => Err(format!(
+                "动作执行 panic 已隔离：{}",
+                core_hid::panic_payload_text(payload.as_ref())
+            )),
+        };
         match &outcome {
             Ok(()) => core_log::log_info(&format!(
                 "[dispatch] 已执行: {} {:?} -> {:?}",
@@ -703,7 +905,7 @@ fn execute_action(
             // 语音动作按「识别目标 + 触发边沿」分发：
             // - Press/Release（麦克风 PTT）→ 按住说话/松手收尾；
             // - 单击/双击/长按等非 PTT 边沿 → Tap（开启/重置一次会话）。
-            let target = *voice_target.lock().unwrap();
+            let target = *voice_target.lock().unwrap_or_else(|e| e.into_inner());
             match voice_primitive(job.trigger) {
                 VoicePrimitive::Press => core_input::voice_press(target)
                     .map(|_| ())
@@ -788,6 +990,18 @@ mod tests {
 
     fn jobs_of(dispatcher: &KeyDispatcher, vkey: u16, pressed: bool, now: u64) -> Vec<ActionJob> {
         dispatcher.feed(vkey, pressed, now)
+    }
+
+    /// 抽干直接投进执行队列的任务（`release_all_held` 这类兜底路径）。
+    /// 测试不会调 `spawn_runtime`，接收端还在自己手里。
+    fn drain_jobs(dispatcher: &KeyDispatcher) -> Vec<ActionJob> {
+        let guard = dispatcher.jobs_rx.lock().unwrap_or_else(|e| e.into_inner());
+        let rx = guard.as_ref().expect("测试中执行队列接收端仍在");
+        let mut jobs = Vec::new();
+        while let Ok(job) = rx.try_recv() {
+            jobs.push(job);
+        }
+        jobs
     }
 
     #[test]
@@ -1015,6 +1229,237 @@ mod tests {
         assert_eq!(up.len(), 1);
         assert_eq!(up[0].trigger, Trigger::Release);
         assert_eq!(up[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+    }
+
+    /// 按下与松开之间映射被换掉（切前台应用 / 热更新映射）时，
+    /// 松开必须仍然松开**按下时真正按住**的那组键。
+    #[test]
+    fn combo_release_uses_remembered_tokens_after_mapping_change() {
+        let combo = |tokens: &[&str]| {
+            ActionKind::KeyCombo(tokens.iter().map(|t| (*t).to_string()).collect())
+        };
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(ButtonId::Mic, Trigger::Press, combo(&["rctrl"])),
+                binding(ButtonId::Mic, Trigger::Release, combo(&["rctrl"])),
+            ],
+        });
+        let down = jobs_of(&d, 116, true, 0);
+        assert_eq!(down.len(), 1);
+        assert_eq!(down[0].action, combo(&["rctrl"]));
+
+        // 按住期间换了映射：松开边沿不该被新映射改写
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(ButtonId::Mic, Trigger::Press, combo(&["lalt"])),
+                binding(ButtonId::Mic, Trigger::Release, combo(&["lalt"])),
+            ],
+        });
+        let up = jobs_of(&d, 116, false, 700);
+        assert_eq!(up.len(), 1);
+        assert_eq!(up[0].trigger, Trigger::Release);
+        assert_eq!(
+            up[0].action,
+            combo(&["rctrl"]),
+            "松开必须沿用按下时按住的那组键，否则那组键永远没人松开"
+        );
+    }
+
+    /// 即使按住期间该映射被禁用，松开也必须照发——多松一次无害，
+    /// 少松一次就是全局卡修饰键。
+    #[test]
+    fn combo_release_is_not_lost_when_binding_disabled_mid_hold() {
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Press,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Release,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+            ],
+        });
+        assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+        d.update_mapping(MappingConfig {
+            bindings: vec![binding(
+                ButtonId::Mic,
+                Trigger::Release,
+                ActionKind::Disabled,
+            )],
+        });
+        let up = jobs_of(&d, 116, false, 500);
+        assert_eq!(up.len(), 1);
+        assert_eq!(up[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+    }
+
+    /// 兜底释放：按下快捷键后走强制释放路径，必须生成配对的松开任务。
+    #[test]
+    fn release_all_held_emits_paired_release() {
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Press,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Release,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+            ],
+        });
+        assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+
+        assert_eq!(d.release_all_held("测试"), 1);
+        let jobs = drain_jobs(&d);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].trigger, Trigger::Release);
+        assert_eq!(jobs[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+
+        // 状态已清干净：重复调用不再产出，后续物理松开也不会重复松。
+        assert_eq!(d.release_all_held("再试一次"), 0);
+        assert!(drain_jobs(&d).is_empty());
+        assert!(jobs_of(&d, 116, false, 900).is_empty());
+        assert!(d.tick_once(1000).is_empty());
+    }
+
+    /// Voice（Win+H）的 Press 是一次完整点按，没有需要配对的系统按住状态：
+    /// 强制释放只清状态，不产生任务。
+    #[test]
+    fn release_all_held_ignores_voice_hold() {
+        let d = dispatcher();
+        assert!(jobs_of(&d, 116, true, 0).is_empty());
+        assert_eq!(d.tick_once(600).len(), 1, "长按识别后发 Win+H");
+
+        assert_eq!(d.release_all_held("测试"), 0);
+        assert!(drain_jobs(&d).is_empty());
+        assert!(
+            jobs_of(&d, 116, false, 700).is_empty(),
+            "状态已清空，物理松开不再产生 Voice Release"
+        );
+    }
+
+    /// 诊断页暂停调度会吞掉后续松开事件：暂停时必须先松开已按住的快捷键。
+    #[test]
+    fn set_enabled_false_releases_held_combo() {
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Press,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Release,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+            ],
+        });
+        assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+
+        assert!(d.set_enabled(false));
+        let jobs = drain_jobs(&d);
+        assert_eq!(jobs.len(), 1, "暂停调度前必须松开按住的快捷键");
+        assert_eq!(jobs[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+
+        assert!(d.set_enabled(true));
+        assert!(drain_jobs(&d).is_empty(), "恢复调度不应重复产出松开");
+        // 按下状态已清空：暂停前的释放不会串到恢复之后
+        assert!(jobs_of(&d, 116, false, 800).is_empty());
+    }
+
+    /// 快捷菜单独占模式不处理松开事件：切进去之前必须松开已按住的快捷键。
+    #[test]
+    fn quick_menu_switch_releases_held_combo() {
+        let d = dispatcher();
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Press,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Release,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+            ],
+        });
+        assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+
+        d.set_input_mode(InputMode::QuickMenu);
+        let jobs = drain_jobs(&d);
+        assert_eq!(jobs.len(), 1, "切模式前必须松开按住的快捷键");
+        assert_eq!(jobs[0].trigger, Trigger::Release);
+        assert_eq!(jobs[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+
+        d.set_input_mode(InputMode::Normal);
+        assert!(drain_jobs(&d).is_empty());
+        assert!(jobs_of(&d, 116, false, 900).is_empty());
+    }
+
+    /// 按住超过兜底上限（松开事件丢失）时，tick 必须强制松开。
+    #[test]
+    fn combo_hold_watchdog_releases_after_timeout() {
+        let d = dispatcher();
+        d.set_max_combo_hold_ms(1_000);
+        d.update_mapping(MappingConfig {
+            bindings: vec![
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Press,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+                binding(
+                    ButtonId::Mic,
+                    Trigger::Release,
+                    ActionKind::KeyCombo(vec!["rctrl".into()]),
+                ),
+            ],
+        });
+        assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+
+        assert!(d.tick_once(500).is_empty(), "未到上限不释放");
+        let jobs = d.tick_once(1_000);
+        assert_eq!(jobs.len(), 1, "到上限强制释放");
+        assert_eq!(jobs[0].trigger, Trigger::Release);
+        assert_eq!(jobs[0].action, ActionKind::KeyCombo(vec!["rctrl".into()]));
+        assert!(d.tick_once(1_100).is_empty(), "释放只做一次");
+        assert!(jobs_of(&d, 116, false, 1_200).is_empty());
+    }
+
+    /// 暂停/恢复调度不能丢掉用户配置的长按阈值。
+    #[test]
+    fn set_enabled_keeps_trigger_timing() {
+        let d = dispatcher();
+        d.set_trigger_timing(900, 400);
+        d.update_mapping(MappingConfig {
+            bindings: vec![binding(
+                ButtonId::Up,
+                Trigger::LongPress,
+                ActionKind::OpenApp("notepad".into()),
+            )],
+        });
+        assert!(d.set_enabled(false));
+        assert!(d.set_enabled(true));
+
+        jobs_of(&d, 38, true, 0);
+        assert!(
+            d.tick_once(600).is_empty(),
+            "自定义阈值 900ms 应仍在生效（不是默认 550ms）"
+        );
+        assert_eq!(d.tick_once(1_000).len(), 1, "超过 900ms 才触发长按");
     }
 
     #[test]

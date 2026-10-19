@@ -5,12 +5,35 @@ import { useSyncExternalStore } from "react";
 export type BridgeStatus = "idle" | "running" | "failed";
 export type TapStatus = "idle" | "attached" | "pending" | "unavailable";
 
+/** 后端语音桥的细粒度状态（重连进度 / 失败原因）。 */
+export type BridgeState =
+  | "idle"
+  | "starting"
+  | "running"
+  | "retrying"
+  | "failed"
+  | "stopped";
+
+export type BridgeStatusSnapshot = {
+  state: BridgeState;
+  attempt: number;
+  failures: number;
+  next_retry_secs: number;
+  last_error: string;
+};
+
 export type RuntimeStatusState = {
   connected: boolean;
   bridgeStatus: BridgeStatus;
   tapStatus: TapStatus;
   tapMessage: string;
   endpointsReady: boolean;
+  /** 语音桥重连进度（来自后端 bridge-status 事件）。 */
+  bridgeState: BridgeState;
+  bridgeAttempt: number;
+  bridgeFailures: number;
+  bridgeNextRetrySecs: number;
+  bridgeLastError: string;
 };
 
 type TapStatusEvent = {
@@ -24,6 +47,11 @@ const initial: RuntimeStatusState = {
   tapStatus: "idle",
   tapMessage: "",
   endpointsReady: false,
+  bridgeState: "idle",
+  bridgeAttempt: 0,
+  bridgeFailures: 0,
+  bridgeNextRetrySecs: 0,
+  bridgeLastError: "",
 };
 
 let state: RuntimeStatusState = initial;
@@ -64,6 +92,33 @@ function applyTapEvent(evt: TapStatusEvent | null | undefined) {
   });
 }
 
+function applyBridgeSnapshot(evt: BridgeStatusSnapshot | null | undefined) {
+  if (!evt) {
+    setState({
+      bridgeState: "idle",
+      bridgeAttempt: 0,
+      bridgeFailures: 0,
+      bridgeNextRetrySecs: 0,
+      bridgeLastError: "",
+    });
+    return;
+  }
+  setState({
+    bridgeState: evt.state,
+    bridgeAttempt: evt.attempt,
+    bridgeFailures: evt.failures,
+    bridgeNextRetrySecs: evt.next_retry_secs,
+    bridgeLastError: evt.last_error,
+    // 让旧字段与新状态保持一致：running→running，其余非 idle 都算异常。
+    bridgeStatus:
+      evt.state === "running"
+        ? "running"
+        : evt.state === "failed"
+          ? "failed"
+          : "idle",
+  });
+}
+
 function tapStatusLabel(status: TapStatus): string {
   switch (status) {
     case "attached":
@@ -90,6 +145,7 @@ export async function initRuntimeStatus() {
       bridge_running: boolean;
       tap_status: TapStatusEvent | null;
       endpoints_ready: boolean;
+      bridge_status: BridgeStatusSnapshot | null;
     }>("get_runtime_status");
     setState({
       connected: snap.connected,
@@ -97,6 +153,7 @@ export async function initRuntimeStatus() {
       endpointsReady: snap.endpoints_ready,
     });
     applyTapEvent(snap.tap_status);
+    applyBridgeSnapshot(snap.bridge_status);
   } catch {
     // 忽略：后端暂不可用时保持默认
   }
@@ -110,6 +167,10 @@ export async function initRuntimeStatus() {
 
   await listen<TapStatusEvent>("hid-tap-status", (event) => {
     applyTapEvent(event.payload);
+  });
+
+  await listen<BridgeStatusSnapshot>("bridge-status", (event) => {
+    applyBridgeSnapshot(event.payload);
   });
 }
 
@@ -127,7 +188,30 @@ export function markDisconnected() {
     connected: false,
     bridgeStatus: "idle",
     endpointsReady: false,
+    bridgeState: "stopped",
+    bridgeAttempt: 0,
+    bridgeFailures: 0,
+    bridgeNextRetrySecs: 0,
+    bridgeLastError: "",
   });
+}
+
+/** 语音桥状态的人类可读标签（连接页状态胶囊用）。 */
+export function bridgeStateLabel(state: BridgeState, attempt: number): string {
+  switch (state) {
+    case "starting":
+      return "语音桥启动中…";
+    case "running":
+      return "ATVV 语音桥";
+    case "retrying":
+      return `语音桥重连中（第 ${attempt} 次）`;
+    case "failed":
+      return "语音桥连接失败";
+    case "stopped":
+      return "语音桥已停止";
+    default:
+      return "ATVV 语音桥";
+  }
 }
 
 export { tapStatusLabel };

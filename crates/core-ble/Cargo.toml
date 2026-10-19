@@ -18,7 +18,7 @@ windows = { version = "0.62", features = [
   "Devices_Enumeration",
   "Storage_Streams",
 ] }
-pollster = "0.4"
+windows-future = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

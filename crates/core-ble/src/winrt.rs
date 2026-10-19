@@ -1,9 +1,15 @@
 //! Windows WinRT BLE 扫描（仅 Windows）。
 
+use std::time::Duration;
+
 use windows::Devices::Bluetooth::BluetoothLEDevice;
 use windows::Devices::Enumeration::DeviceInformation;
 
+use crate::async_wait::wait_op;
 use crate::{BleDevice, BleError, Result};
+
+/// 枚举蓝牙设备的超时。设备多/蓝牙栈异常时不至于永久阻塞。
+const SCAN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 枚举 Windows 当前已知的蓝牙低功耗设备。
 pub fn scan_paired() -> Result<Vec<BleDevice>> {
@@ -22,9 +28,9 @@ pub fn scan_paired() -> Result<Vec<BleDevice>> {
         BleError::Windows(e.to_string())
     })?;
 
-    let collection = pollster::block_on(async { operation.await }).map_err(|e| {
+    let collection = wait_op(&operation, SCAN_TIMEOUT, "枚举蓝牙设备").map_err(|e| {
         core_log::log_error(&format!("[ble/winrt] 等待蓝牙设备查询失败: {e}"));
-        BleError::Windows(e.to_string())
+        e
     })?;
 
     let mut out = Vec::new();
