@@ -224,8 +224,11 @@ export function ConnectionPage() {
       : bridgeState === "failed" || bridgeStatus === "failed"
         ? "err"
         : "warn";
+  // 遥控器语音固件挂起的专属提示（后端在连续零数据会话后给出该文案）。
+  const silentSessionHint = bridgeLastError.includes("语音固件可能挂起");
   const showBridgeHint =
-    bridgeState === "retrying" || bridgeState === "failed" || bridgeState === "starting";
+    (bridgeState === "retrying" || bridgeState === "failed" || bridgeState === "starting") &&
+    !silentSessionHint;
 
   const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
@@ -307,6 +310,20 @@ export function ConnectionPage() {
             </span>
           ))}
         </div>
+        {silentSessionHint && (
+          <div className="bridge-hint err">
+            <span className="bridge-hint-title">遥控器语音服务可能已挂起</span>
+            <span className="bridge-hint-body">
+              蓝牙链路正常，但连续多次会话都收不到遥控器的语音数据。请按顺序操作：
+              <br />
+              1. 取下遥控器电池，等待约 10 秒后装回（或长按电源键重启遥控器）；
+              <br />
+              2. 回到本页点「断开」，再点「连接」；
+              <br />
+              3. 长按麦克风键说话，确认语音条有反应。
+            </span>
+          </div>
+        )}
         {showBridgeHint && (
           <div className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}>
             <span className="bridge-hint-title">

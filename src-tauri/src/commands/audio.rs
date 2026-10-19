@@ -14,6 +14,8 @@ static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
 static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 /// 最近一次语音桥状态快照（供前端恢复状态 / 事件推送）。
 static BRIDGE_STATE: Mutex<Option<BridgeStatus>> = Mutex::new(None);
+/// 连续「链路通但零数据」会话计数（供诊断页展示）。
+static SILENT_SESSIONS: AtomicU64 = AtomicU64::new(0);
 
 /// 连续失败多少次后把状态标为 `failed`（仍会按 30s 上限继续重试，用户可手动断开）。
 const FAILED_AFTER_FAILURES: u64 = 5;
@@ -56,6 +58,11 @@ fn set_bridge_status(app: &tauri::AppHandle, status: BridgeStatus) {
         *guard = Some(status.clone());
     }
     let _ = app.emit("bridge-status", &status);
+}
+
+/// 连续「链路通但零数据」会话数（诊断页用）。
+pub fn current_silent_sessions() -> u64 {
+    SILENT_SESSIONS.load(Ordering::Relaxed)
 }
 
 /// 读取最近一次语音桥状态（供 `get_runtime_status` 快照）。
@@ -187,12 +194,14 @@ pub fn start_voice_bridge(
                         let silent = is_silent_session(report.duration_secs, report.control_pkts);
                         if silent {
                             silent_sessions = silent_sessions.saturating_add(1);
+                            SILENT_SESSIONS.store(silent_sessions, Ordering::Relaxed);
                             core_log::log_warn(&format!(
                                 "[commands/audio] 链路健康告警：会话存活 {:.0}s 却未收到任何控制通知（连续 {silent_sessions} 次），遥控器语音服务可能挂起",
                                 report.duration_secs
                             ));
                         } else {
                             silent_sessions = 0;
+                            SILENT_SESSIONS.store(0, Ordering::Relaxed);
                         }
                     }
                 }

@@ -220,6 +220,21 @@ mod tests {
     }
 
     #[test]
+    fn frame_bytes_can_be_adapted_from_caps() {
+        // 默认 120 字节帧：喂 126 字节会产出 1 帧 + 6 字节残留。
+        let mut engine = VoiceEngine::new();
+        engine.on_control(ControlEvent::StreamStart).unwrap();
+        let chunk = engine.feed(&[0x22; 126]);
+        assert_eq!(chunk.complete_frames, 1);
+
+        // 按 CAPS 协商为 126 字节后，再喂 126 字节应恰好产出 1 帧。
+        engine.set_frame_bytes(126);
+        let chunk = engine.feed(&[0x22; 126]);
+        assert_eq!(chunk.complete_frames, 1);
+        assert_eq!(chunk.pcm_samples, 126 * 2);
+    }
+
+    #[test]
     fn feed_pcm_produces_48k_stereo_output() {
         let mut engine = VoiceEngine::new();
         let chunk = engine.feed_pcm(&[0i16; 240]);

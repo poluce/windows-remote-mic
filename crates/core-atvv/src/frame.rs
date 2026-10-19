@@ -63,6 +63,20 @@ mod tests {
     }
 
     #[test]
+    fn set_frame_len_discards_stale_partial_frame() {
+        let mut a = AudioFrameAssembler::new(120);
+        let frames = a.push(&[1u8; 126]);
+        assert_eq!(frames.len(), 1);
+        assert_eq!(a.pending_len(), 6);
+        // 切换到 126 字节帧：旧的 6 字节半帧不再可信，应被清空。
+        a.set_frame_len(126);
+        assert_eq!(a.pending_len(), 0);
+        let frames = a.push(&[2u8; 126]);
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].len(), 126);
+    }
+
+    #[test]
     fn splits_fragmented_frames() {
         let mut a = AudioFrameAssembler::new(4);
         let frames = a.push(&[1, 2]);

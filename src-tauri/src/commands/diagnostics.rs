@@ -161,7 +161,42 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         });
     }
 
-    // 8) 测试音播放（仅 Windows）
+    // 8) 最近语音会话健康（识别「链路通但零数据」的遥控器固件挂起）
+    #[cfg(target_os = "windows")]
+    {
+        let silent = crate::commands::audio::current_silent_sessions();
+        match core_voice::last_session_report() {
+            Some(report) if silent >= 3 => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "fail".into(),
+                detail: format!(
+                    "连续 {} 次会话未收到任何语音数据（上次 {:.0}s / 控制包 {} / 音频包 {}）。\n建议：给遥控器断电重启（抠电池 10 秒）后重新连接。",
+                    silent, report.duration_secs, report.control_pkts, report.audio_pkts
+                ),
+            }),
+            Some(report) => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "pass".into(),
+                detail: format!(
+                    "上次会话 {:.0}s、控制包 {}、音频包 {}；连续零数据会话 {} 次",
+                    report.duration_secs, report.control_pkts, report.audio_pkts, silent
+                ),
+            }),
+            None => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "skip".into(),
+                detail: "本次启动还没有发生过语音会话（连接并使用一次麦克风后再测）".into(),
+            }),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    items.push(SelfTestItem {
+        name: "最近语音会话健康".into(),
+        status: "skip".into(),
+        detail: "仅限 Windows".into(),
+    });
+
+    // 9) 测试音播放（仅 Windows）
     #[cfg(target_os = "windows")]
     {
         match core_audio::playback::play_test_tone(None) {

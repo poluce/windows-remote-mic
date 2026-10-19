@@ -191,7 +191,10 @@ where
         e.to_string()
     })?;
     core_log::log_info(&format!(
-        "[bridge] 音频输出（AudioSink）已初始化：{output_device}"
+        "[bridge] 音频输出（AudioSink）已初始化：{output_device}（{}Hz/{}ch/{:?}）",
+        sink.sample_rate(),
+        sink.channels(),
+        sink.sample_format()
     ));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
@@ -341,9 +344,10 @@ where
                 if sink.is_failed() {
                     if !audio_stream_warned {
                         audio_stream_warned = true;
-                        core_log::log_error(
-                            "[bridge] 音频输出流已报错：CABLE Input 可能被禁用/拔出，语音可能无法送达；正在尝试重建输出流",
-                        );
+                        let detail = sink.last_error().unwrap_or_else(|| "未知原因".to_string());
+                        core_log::log_error(&format!(
+                            "[bridge] 音频输出流已报错（{detail}）；正在尝试重建输出流"
+                        ));
                     }
                     // 每 5 秒最多重建一次，避免设备持续异常时刷屏/抖动。
                     let due = last_sink_recover
