@@ -121,13 +121,17 @@ export function ConnectionPage() {
     }
   }
 
-  async function connect() {
+  async function connect(options?: { auto?: boolean }) {
     if (!isTauri()) {
       setFeedback("请在桌面应用内连接");
       return;
     }
     setConnecting(true);
-    setFeedback("正在连接并枚举 GATT 特征…");
+    setFeedback(
+      options?.auto
+        ? "检测到上次使用的遥控器，正在自动连接…"
+        : "正在连接并枚举 GATT 特征…",
+    );
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
@@ -149,11 +153,47 @@ export function ConnectionPage() {
         setFeedback(`语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
-      setFeedback(`连接失败：${err}`);
+      setFeedback(
+        options?.auto
+          ? "自动连接未成功，请唤醒遥控器后点「连接」重试"
+          : `连接失败：${err}`,
+      );
     } finally {
       setConnecting(false);
     }
   }
+
+  // 启动时自动尝试连接「上次成功连接的设备」，省掉每次开机手动点连接。
+  // 仅挂载时尝试一次；失败保持安静（手动点连接会给出明确错误）。
+  // 注意：React StrictMode 会「挂载→卸载→再挂载」跑两次 effect，
+  // 这里不设 cancelled 短路，否则第一次的异步请求会被取消、第二次又被
+  // autoConnectTried 拦住，导致自动连接永远不生效（开发模式实测）。
+  const autoConnectTried = useRef(false);
+  useEffect(() => {
+    if (autoConnectTried.current || !isTauri() || connected || connecting) {
+      return;
+    }
+    autoConnectTried.current = true;
+    void (async () => {
+      try {
+        const savedId = await invoke<string | null>("get_saved_device_id");
+        void invoke("log_message", {
+          message: `[auto-connect] 启动自动连接：saved_device_id=${savedId ?? "null"}`,
+        }).catch(() => {});
+        if (!savedId) {
+          return;
+        }
+        await connect({ auto: true });
+      } catch (err) {
+        // 忽略：自动连接只是锦上添花，不打扰用户。
+        void invoke("log_message", {
+          message: `[auto-connect] 自动连接异常：${String(err)}`,
+        }).catch(() => {});
+      }
+    })();
+    // 只在挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function disconnect() {
     if (!isTauri()) {
@@ -245,7 +285,7 @@ export function ConnectionPage() {
               ) : (
                 <button
                   className="btn primary"
-                  onClick={connect}
+                  onClick={() => connect()}
                   disabled={!isTauri() || connecting}
                 >
                   {connecting ? "连接中…" : "连接"}

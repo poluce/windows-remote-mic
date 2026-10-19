@@ -109,6 +109,10 @@ pub fn start_voice_bridge(
         std::thread::spawn(move || {
             let mut attempt: u64 = 0;
             let mut failures: u64 = 0;
+            // 连续「会话正常但一个控制包都没有」的次数。
+            // 实测遥控器语音固件挂起时，链路能连上、CCCD 能订阅，
+            // 但 CAPS 响应/音频全部收不到，且会持续数小时——必须能识别并提示用户。
+            let mut silent_sessions: u64 = 0;
             loop {
                 if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                     break;
@@ -176,25 +180,42 @@ pub fn start_voice_bridge(
                     failures = failures.saturating_add(1);
                 }
 
+                // 链路健康检查：会话存活够久却一个控制通知都没收到
+                // → 链路通、遥控器不说话（CAPS 都未回应），累计连续次数。
+                if session_ok {
+                    if let Some(report) = core_voice::last_session_report() {
+                        let silent = is_silent_session(report.duration_secs, report.control_pkts);
+                        if silent {
+                            silent_sessions = silent_sessions.saturating_add(1);
+                            core_log::log_warn(&format!(
+                                "[commands/audio] 链路健康告警：会话存活 {:.0}s 却未收到任何控制通知（连续 {silent_sessions} 次），遥控器语音服务可能挂起",
+                                report.duration_secs
+                            ));
+                        } else {
+                            silent_sessions = 0;
+                        }
+                    }
+                }
+
                 if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                     break;
                 }
 
                 let delay = retry_delay_secs(failures);
-                let state = if failures >= FAILED_AFTER_FAILURES {
-                    "failed"
+                // 连续「零数据会话」优先给出可操作提示（实测故障：需重启遥控器）。
+                let (state, status_error) = if silent_sessions >= 3 {
+                    (
+                        "failed",
+                        "链路已连接但遥控器连续多次没有任何语音数据（语音固件可能挂起）：请给遥控器断电重启（抠电池 10 秒）后重试".to_string(),
+                    )
+                } else if failures >= FAILED_AFTER_FAILURES {
+                    ("failed", last_error.clone().unwrap_or_default())
                 } else {
-                    "retrying"
+                    ("retrying", last_error.clone().unwrap_or_default())
                 };
                 set_bridge_status(
                     &app_for_thread,
-                    BridgeStatus::new(
-                        state,
-                        attempt,
-                        failures,
-                        delay,
-                        last_error.clone().unwrap_or_default(),
-                    ),
+                    BridgeStatus::new(state, attempt, failures, delay, status_error),
                 );
                 core_log::log_line(&format!(
                     "[commands/audio] 将在 {delay} 秒后重连（loop_id={loop_id}, 第 {attempt} 次尝试，连续失败 {failures} 次）"
@@ -229,6 +250,15 @@ pub fn start_voice_bridge(
         let _ = (app, device_id, output_device);
         "语音桥仅在 Windows 可用".to_string()
     }
+}
+
+/// 判断一次会话是否属于「链路通但零数据」的可疑会话。
+///
+/// 正常会话至少会收到 CAPS 响应（控制包 ≥1）；存活足够久却一个控制包
+/// 都没有，说明遥控器的 ATVV 语音服务没有响应（实测固件挂起时如此，
+/// 需要给遥控器断电重启）。
+fn is_silent_session(duration_secs: f32, control_pkts: u64) -> bool {
+    duration_secs >= 15.0 && control_pkts == 0
 }
 
 /// `stop_voice_bridge` 的结果：前端据此决定是否真的标记为「已断开」。
@@ -413,6 +443,16 @@ mod tests {
         assert!(d4 >= 15, "第 4 次失败应 ≥15s，实际 {d4}");
         assert!(d5 >= 30, "第 5 次失败应封顶 30s，实际 {d5}");
         assert!(d99 <= 35, "退避必须有上限，实际 {d99}");
+    }
+
+    #[test]
+    fn silent_session_detection() {
+        // 连接够久却零控制包 → 可疑（遥控器语音固件可能挂起）。
+        assert!(is_silent_session(20.0, 0));
+        // 短会话不判定（用户可能刚连上就断开）。
+        assert!(!is_silent_session(3.0, 0));
+        // 收到过 CAPS 等控制包 → 正常。
+        assert!(!is_silent_session(60.0, 1));
     }
 
     #[test]

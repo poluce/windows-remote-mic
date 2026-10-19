@@ -154,6 +154,21 @@ impl VoiceEngine {
         chunk
     }
 
+    /// 按 CAPS 协商结果切换音频帧长（不同固件 120/126/134/160 字节）。
+    ///
+    /// 帧长会被夹到合理区间，避免异常包把累积缓冲撑大。
+    pub fn set_frame_bytes(&mut self, frame_bytes: usize) {
+        let clamped = frame_bytes.clamp(8, 1024);
+        if clamped != self.assembler.frame_len() {
+            core_log::log_info(&format!(
+                "[voice] 按 CAPS 适配音频帧长: {} -> {} 字节",
+                self.assembler.frame_len(),
+                clamped
+            ));
+            self.assembler.set_frame_len(clamped);
+        }
+    }
+
     /// 会话当前是否正在流式传输（streaming）。
     pub fn is_streaming(&self) -> bool {
         self.session.is_streaming()
@@ -228,7 +243,7 @@ mod tests {
 pub mod bridge;
 
 #[cfg(target_os = "windows")]
-pub use bridge::run_bridge;
+pub use bridge::{last_session_report, run_bridge, SessionReport};
 
 #[cfg(target_os = "windows")]
 pub mod simulate;

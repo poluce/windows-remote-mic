@@ -83,6 +83,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         let _ = std::fs::remove_dir_all(&dir);
         if let Ok(store) = core_stats::StatsStore::new(&dir) {
             let ok = store.record_key("self_test").is_ok()
+                && store.flush().is_ok()
                 && store
                     .load()
                     .map(|m| {

@@ -111,6 +111,14 @@ pub fn save_selected_device(device_id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 读取上次成功连接过的设备 ID（供连接页启动时自动重连一次）。
+#[tauri::command]
+pub fn get_saved_device_id() -> Option<String> {
+    config_store()
+        .and_then(|s| s.load().ok())
+        .and_then(|cfg| cfg.selected_device_id)
+}
+
 /// 读取当前语音识别目标（连接页「识别方案」）。
 /// 返回 snake_case 字符串（如 `windows_voice` / `ime_wechat`）。
 #[tauri::command]

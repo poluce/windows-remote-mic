@@ -600,6 +600,7 @@ pub fn run() {
             commands::connection::scan_for_rc003,
             commands::connection::connect_rc003,
             commands::connection::get_runtime_status,
+            commands::connection::get_saved_device_id,
             commands::connection::save_selected_device,
             commands::connection::get_hid_tap_eat,
             commands::connection::set_hid_tap_eat,

@@ -31,6 +31,23 @@ impl AudioFrameAssembler {
     pub fn pending_len(&self) -> usize {
         self.pending.len()
     }
+
+    /// 热切换帧长（不同固件可能是 120/126/134/160 字节）。
+    ///
+    /// 帧长变化后旧的半帧数据不再可信，直接丢弃等待重新对齐——
+    /// 继续按旧偏移切分会持续产出错位的「伪帧」，听感是噪音。
+    pub fn set_frame_len(&mut self, frame_len: usize) {
+        if frame_len == 0 || frame_len == self.frame_len {
+            return;
+        }
+        self.frame_len = frame_len;
+        self.pending.clear();
+        self.pending.reserve(frame_len * 2);
+    }
+
+    pub fn frame_len(&self) -> usize {
+        self.frame_len
+    }
 }
 
 #[cfg(test)]
