@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use crate::find_install_script;
 
@@ -99,6 +99,27 @@ fn retry_delay_secs(failures: u64) -> u64 {
     base + nanos % (jitter_window + 1)
 }
 
+/// 恢复遥控器按键接管（连接语音桥时调用）。
+fn resume_key_passthrough(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if state.dispatcher.set_enabled(true) {
+            core_log::log_info("[dispatch] 遥控器按键接管已恢复（语音桥已连接）");
+        }
+    }
+}
+
+/// 暂停遥控器按键接管（断开语音桥时调用）。
+///
+/// 「断开」如果只停语音桥、不停按键接管，用户会疑惑：明明显示未连接，
+/// 按遥控器麦克风键却还能唤起豆包等输入法（HID 旁路 + 映射注入仍在工作）。
+fn pause_key_passthrough(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if state.dispatcher.set_enabled(false) {
+            core_log::log_info("[dispatch] 遥控器按键接管已暂停（语音桥已断开）");
+        }
+    }
+}
+
 /// 启动真实设备的语音桥（仅 Windows）。
 ///
 /// 采用**事件驱动**而不是定时盲重试：
@@ -123,6 +144,8 @@ pub fn start_voice_bridge(
             return "语音桥已在运行（请勿重复启动）".to_string();
         }
         core_voice::clear_bridge_stop_request();
+        // 断开时暂停过按键接管，重新连接/重试时恢复，避免「连上了但按键没反应」。
+        resume_key_passthrough(&app);
         let loop_id = BRIDGE_LOOP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
         core_log::log_info(&format!(
             "[commands/audio] 收到启动语音桥请求：loop_id={loop_id}, 设备 ID='{device_id}'，输出='{output_device}'"
@@ -457,10 +480,11 @@ pub struct BridgeStopResult {
 pub fn stop_voice_bridge(app: tauri::AppHandle) -> BridgeStopResult {
     if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
         core_voice::set_connection_active(false);
+        pause_key_passthrough(&app);
         set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
         return BridgeStopResult {
             stopped: true,
-            message: "未在连接".to_string(),
+            message: "语音桥未在运行；遥控器按键接管已暂停，点「连接」恢复".to_string(),
         };
     }
     core_voice::request_bridge_stop();
@@ -474,13 +498,16 @@ pub fn stop_voice_bridge(app: tauri::AppHandle) -> BridgeStopResult {
     }
     let stopped = !BRIDGE_RUNNING.load(Ordering::SeqCst);
     if stopped {
+        // 断开 = 停止语音桥 + 暂停按键接管：
+        // 否则遥控器麦克风键仍会经 HOGP 旁路 + 映射注入唤起豆包等输入法。
+        pause_key_passthrough(&app);
         set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
     }
     core_log::log_info(&format!("[commands/audio] 停止语音桥：stopped={stopped}"));
     BridgeStopResult {
         stopped,
         message: if stopped {
-            "已断开连接".to_string()
+            "已断开连接（遥控器按键接管已暂停，点「连接」恢复）".to_string()
         } else {
             "停止超时：语音桥仍在运行（可能卡在蓝牙操作，请稍后重试）".to_string()
         },
