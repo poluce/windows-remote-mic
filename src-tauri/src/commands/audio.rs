@@ -204,6 +204,9 @@ fn run_bridge_supervisor(
                     core_log::log_warn(&format!("[commands/audio] {message}"));
                 }
                 set_bridge_status(&app, BridgeStatus::new("waiting", 0, 0, 0, message));
+                if open_attempts == 1 {
+                    let _ = app.emit("ble-connection-status", false);
+                }
                 for _ in 0..5 {
                     if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
                         break;

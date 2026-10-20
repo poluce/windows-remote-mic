@@ -586,6 +586,20 @@ impl Drop for AtvvLink {
     }
 }
 
+/// 只查询某设备当前 BLE 链路状态（不打开任何 GATT 服务，不触发连接）。
+///
+/// 用于区分「缓存里的配对/服务信息」与「当前链路是否真的连上」：
+/// GATT 缓存发现可以在链路断开时成功，不能据此认为设备已连接。
+pub fn is_link_connected(device_id: &str) -> bool {
+    match open_ble_device(device_id) {
+        Ok(device) => matches!(
+            device.ConnectionStatus(),
+            Ok(BluetoothConnectionStatus::Connected)
+        ),
+        Err(_) => false,
+    }
+}
+
 /// 轻量链路监视器：**只持有蓝牙设备句柄并监听连接状态**，
 /// 不打开任何 GATT 服务，因此不会主动触发连接、也不会和别的电脑抢设备。
 ///

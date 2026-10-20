@@ -176,11 +176,15 @@ export async function initRuntimeStatus() {
 }
 
 // 供连接页在 connect 成功后直接更新，无需等事件。
-export function markConnected(endpointsReady: boolean) {
+//
+// 注意：`connect_rc003` 可能命中 GATT 缓存，即使链路未连接也能发现端点。
+// 因此 connected 必须以「真实链路状态」linkConnected 为准，否则会出现
+// 「已连接 + 等待遥控器上线」这类自相矛盾的 UI。
+export function markConnected(endpointsReady: boolean, linkConnected: boolean) {
   setState({
-    connected: true,
-    bridgeStatus: "running",
-    endpointsReady,
+    connected: linkConnected,
+    bridgeStatus: linkConnected ? "running" : "idle",
+    endpointsReady: linkConnected ? endpointsReady : false,
   });
 }
 

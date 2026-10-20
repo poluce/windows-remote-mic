@@ -31,6 +31,11 @@ pub fn get_runtime_status() -> RuntimeStatus {
 pub struct Rc003Connection {
     pub device: core_ble::BleDevice,
     pub endpoints: core_ble::gatt::AtvvEndpoints,
+    /// 当前 BLE 链路是否真的已连接。
+    ///
+    /// `scan_and_connect` 可能命中 WinRT 的 GATT 缓存，即使链路断开也能发现端点；
+    /// 前端不能用「发现成功」推断「已连接」，必须以该字段为准。
+    pub link_connected: bool,
 }
 
 #[tauri::command]
@@ -63,7 +68,15 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
                     "[commands/connection] 连接 RC003 成功：'{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
                     device.name, device.id, endpoints.tx, endpoints.audio, endpoints.control
                 ));
-                Ok(Rc003Connection { device, endpoints })
+                let link_connected = core_ble::is_link_connected(&device.id);
+                core_log::log_info(&format!(
+                    "[commands/connection] 连接结果：link_connected={link_connected}"
+                ));
+                Ok(Rc003Connection {
+                    device,
+                    endpoints,
+                    link_connected,
+                })
             }
             Err(e) => {
                 core_log::log_error(&format!("[commands/connection] 连接 RC003 失败: {e}"));

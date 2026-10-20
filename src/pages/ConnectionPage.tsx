@@ -29,6 +29,8 @@ type AtvvEndpoints = {
 type Rc003Connection = {
   device: Rc003Device;
   endpoints: AtvvEndpoints;
+  /** 真实 BLE 链路状态（GATT 缓存发现成功 ≠ 链路已连接）。 */
+  link_connected: boolean;
 };
 
 type VbCableStatus = {
@@ -135,7 +137,7 @@ export function ConnectionPage() {
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
-      markConnected(endpointsReady);
+      markConnected(endpointsReady, result.link_connected);
       setFeedback("");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
@@ -275,6 +277,11 @@ export function ConnectionPage() {
     bridgeState === "waiting"
       ? "等待遥控器上线"
       : bridgeStateLabel(bridgeState, bridgeAttempt);
+  // 单一事实来源：supervisor 处于 waiting 说明链路一定不在。
+  // 即使 connected 因缓存发现/事件时序暂时为 true，也不能显示「已连接」，
+  // 否则会和「等待遥控器上线」同屏出现（实测过的矛盾状态）。
+  const effectiveConnected = connected && bridgeState !== "waiting";
+
   // 遥控器语音固件挂起的专属提示（后端在连续零数据会话后给出该文案）。
   const silentSessionHint = bridgeLastError.includes("语音固件可能挂起");
   // 监督线程活着（等待链路/建会话/运行/重试）→ 按钮显示「停止」而不是「连接」。
@@ -326,18 +333,20 @@ export function ConnectionPage() {
             </div>
           </div>
           <div className="device-actions">
-            <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-              {connected ? "已连接" : "未连接"}
+            <span
+              className={`badge ${effectiveConnected ? "badge-ok" : "badge-warn"}`}
+            >
+              {effectiveConnected ? "已连接" : "未连接"}
             </span>
             <div className="actions">
               <button
                 className="btn"
                 onClick={scan}
-                disabled={!isTauri() || scanning || connected}
+                disabled={!isTauri() || scanning || effectiveConnected}
               >
                 {scanning ? "扫描中…" : "扫描"}
               </button>
-              {connected || bridgeActive ? (
+              {effectiveConnected || bridgeActive ? (
                 <button
                   className="btn"
                   onClick={disconnect}
@@ -345,7 +354,7 @@ export function ConnectionPage() {
                 >
                   {disconnecting
                     ? "停止中…"
-                    : connected
+                    : effectiveConnected
                       ? "断开"
                       : "停止等待"}
                 </button>
