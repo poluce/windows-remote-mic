@@ -66,6 +66,9 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
                     "[commands/connection] 连接 RC003 成功：'{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
                     device.name, device.id, endpoints.tx, endpoints.audio, endpoints.control
                 ));
+                // 发现即就绪：把「ATVV 端点是否发现」这一事实同步给语音桥状态机，
+                // 避免要等到会话建立后才更新（此前 UI 会短暂/持续显示「端点未就绪」）。
+                core_voice::set_atvv_endpoints_ready(endpoints.is_complete());
                 let link_connected = core_ble::is_link_connected(&device.id);
                 core_log::log_info(&format!(
                     "[commands/connection] 连接结果：link_connected={link_connected}"

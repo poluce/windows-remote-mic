@@ -311,7 +311,9 @@ export function ConnectionPage() {
     {
       key: "endpoints",
       label: "ATVV 端点",
-      tone: endpointsReady ? "ok" : "warn",
+      // 语音桥运行中必然已经发现端点；即使快照里的标志因事件时序暂时滞后，
+      // 也不能在这里显示「未就绪」，避免和「ATVV 语音桥（运行中）」矛盾。
+      tone: endpointsReady || bridgeState === "running" ? "ok" : "warn",
     },
   ];
 
