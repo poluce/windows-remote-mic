@@ -353,10 +353,16 @@ where
 /// 交错立体声 → 设备声道数的交错样本。
 fn map_channels(stereo: &[f32], out_channels: u16, out: &mut Vec<f32>) {
     match out_channels {
-        1 => out.extend(stereo.chunks_exact(2).map(|c| (c[0] + c[1]) * 0.5)),
+        1 => out.extend(
+            stereo
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| (c[0] + c[1]) * 0.5),
+        ),
         2 => out.extend_from_slice(stereo),
         n => {
-            for c in stereo.chunks_exact(2) {
+            for c in stereo.as_chunks::<2>().0 {
                 out.push(c[0]);
                 out.push(c[1]);
                 for _ in 2..n {
@@ -389,7 +395,12 @@ impl LinearResampler {
 
     /// 输入交错立体声 f32，输出重采样后的交错立体声 f32。
     fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
-        let frames: Vec<[f32; 2]> = input.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
+        let frames: Vec<[f32; 2]> = input
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| [c[0], c[1]])
+            .collect();
         if frames.is_empty() {
             return;
         }
@@ -475,7 +486,7 @@ mod tests {
         let mut out = Vec::new();
         r.process(&make_block(0), &mut out);
         r.process(&make_block(240), &mut out);
-        let left: Vec<f32> = out.chunks_exact(2).map(|c| c[0]).collect();
+        let left: Vec<f32> = out.as_chunks::<2>().0.iter().map(|c| c[0]).collect();
         for w in left.windows(2) {
             assert!(
                 (w[1] - w[0]).abs() < 0.05,
