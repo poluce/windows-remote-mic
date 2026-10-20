@@ -438,6 +438,15 @@ export function ConnectionPage() {
             )}
           </div>
         )}
+        {bridgeState === "stopped" && !effectiveConnected && (
+          <div className="bridge-hint warn">
+            <span className="bridge-hint-title">语音桥已停止</span>
+            <span className="bridge-hint-body">
+              遥控器按键接管已暂停：现在按遥控器按键不会触发任何映射（也不会再唤起输入法）。
+              点上方「连接」可恢复语音与按键映射；若要彻底断开遥控器，请在 Windows 蓝牙设置中删除设备。
+            </span>
+          </div>
+        )}
       </section>
       </div>
 
