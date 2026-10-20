@@ -4,4 +4,5 @@ pub mod connection;
 pub mod diagnostics;
 pub mod log;
 pub mod mapping;
+pub mod mapping_catalog;
 pub mod quick_menu;

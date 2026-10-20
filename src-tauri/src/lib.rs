@@ -617,6 +617,7 @@ pub fn run() {
             commands::log::set_debug_logging,
             commands::mapping::save_mapping,
             commands::mapping::get_mappings,
+            commands::mapping_catalog::get_mapping_catalog,
             commands::mapping::save_key_calibrations,
             commands::mapping::get_key_calibrations,
             commands::mapping::set_dispatch_enabled,

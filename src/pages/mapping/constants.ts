@@ -1,5 +1,17 @@
+/**
+ * 映射编辑器目录的**浏览器预览兜底**。
+ *
+ * 桌面应用里这些数据由后端 `get_mapping_catalog` 单一来源提供（按键、触发方式、
+ * 动作分类、默认绑定）；这里保留一份仅用于：
+ * 1. 没有 Tauri 后端的浏览器预览；
+ * 2. 后端命令异常时的降级显示。
+ *
+ * 新增动作/按键时以后端为准——如果这里没同步，桌面应用仍然能显示新动作，
+ * 只有浏览器预览会缺失。
+ */
 import type {
   ActionCategory,
+  MappingCatalog,
   MappingEntry,
   RemoteButton,
   TriggerOption,
@@ -105,3 +117,13 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
 export const TRIGGER_LABEL: Record<string, string> = Object.fromEntries(
   TRIGGERS.map((t) => [t.key, t.label])
 );
+/** 浏览器预览 / 后端异常时的兜底目录（桌面应用以 `get_mapping_catalog` 为准）。 */
+export const FALLBACK_CATALOG: MappingCatalog = {
+  buttons: REMOTE_BUTTONS.map((button) => ({
+    ...button,
+    triggers: triggersFor(button.key).map((trigger) => trigger.key),
+  })),
+  triggers: TRIGGERS,
+  categories: ACTION_CATEGORIES,
+  default_bindings: FALLBACK_MAPPING,
+};
