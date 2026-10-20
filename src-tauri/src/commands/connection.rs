@@ -1,24 +1,26 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::commands::audio::{current_bridge_status, BridgeStatus};
 use crate::{config_store, AppState};
 
 /// 连接页需要恢复的运行时状态快照。
 #[derive(Serialize)]
 pub struct RuntimeStatus {
     pub connected: bool,
-    pub bridge_running: bool,
     pub tap_status: Option<core_hid::tap::TapStatusEvent>,
     pub endpoints_ready: bool,
+    /// 最近一次语音桥状态（连接页恢复「重连中/失败」展示用）。
+    pub bridge_status: Option<BridgeStatus>,
 }
 
 #[tauri::command]
 pub fn get_runtime_status() -> RuntimeStatus {
     RuntimeStatus {
         connected: core_voice::connection_active(),
-        bridge_running: core_voice::bridge_running(),
         tap_status: core_hid::tap::last_status(),
         endpoints_ready: core_voice::atvv_endpoints_ready(),
+        bridge_status: current_bridge_status(),
     }
 }
 
@@ -27,6 +29,11 @@ pub fn get_runtime_status() -> RuntimeStatus {
 pub struct Rc003Connection {
     pub device: core_ble::BleDevice,
     pub endpoints: core_ble::gatt::AtvvEndpoints,
+    /// 当前 BLE 链路是否真的已连接。
+    ///
+    /// `scan_and_connect` 可能命中 WinRT 的 GATT 缓存，即使链路断开也能发现端点；
+    /// 前端不能用「发现成功」推断「已连接」，必须以该字段为准。
+    pub link_connected: bool,
 }
 
 #[tauri::command]
@@ -59,7 +66,15 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
                     "[commands/connection] 连接 RC003 成功：'{}' ({}) -> ATVV: tx={:?}, audio={:?}, control={:?}",
                     device.name, device.id, endpoints.tx, endpoints.audio, endpoints.control
                 ));
-                Ok(Rc003Connection { device, endpoints })
+                let link_connected = core_ble::is_link_connected(&device.id);
+                core_log::log_info(&format!(
+                    "[commands/connection] 连接结果：link_connected={link_connected}"
+                ));
+                Ok(Rc003Connection {
+                    device,
+                    endpoints,
+                    link_connected,
+                })
             }
             Err(e) => {
                 core_log::log_error(&format!("[commands/connection] 连接 RC003 失败: {e}"));
@@ -105,6 +120,14 @@ pub fn save_selected_device(device_id: String) -> Result<(), String> {
         .ok_or_else(|| "无法创建配置目录".to_string())?
         .save(&cfg)
         .map_err(|e| e.to_string())
+}
+
+/// 读取上次成功连接过的设备 ID（供连接页启动时自动重连一次）。
+#[tauri::command]
+pub fn get_saved_device_id() -> Option<String> {
+    config_store()
+        .and_then(|s| s.load().ok())
+        .and_then(|cfg| cfg.selected_device_id)
 }
 
 /// 读取当前语音识别目标（连接页「识别方案」）。

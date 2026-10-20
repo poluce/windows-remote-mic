@@ -12,6 +12,29 @@ use core_ble::gatt::AtvvLink;
 
 use crate::VoiceEngine;
 
+/// 单次语音桥会话结束时留存的统计（供外层重连循环做健康判断）。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SessionReport {
+    /// 本会话存活时长（秒）。
+    pub duration_secs: f32,
+    /// 收到的控制通知包数（正常会话应 >0：至少 CAPS 响应）。
+    pub control_pkts: u64,
+    /// 收到的音频包数（只有按住说话时才 >0）。
+    pub audio_pkts: u64,
+    /// 本次会话退出原因。
+    pub exit_reason: &'static str,
+}
+
+static LAST_SESSION_REPORT: Mutex<Option<SessionReport>> = Mutex::new(None);
+
+/// 最近一次语音桥会话的统计快照。
+pub fn last_session_report() -> Option<SessionReport> {
+    match LAST_SESSION_REPORT.lock() {
+        Ok(g) => *g,
+        Err(e) => *e.into_inner(),
+    }
+}
+
 /// 单次语音桥会话的断链诊断快照（活动时间戳 / 包计数）。
 struct BridgeDiag {
     started_at: Instant,
@@ -72,7 +95,7 @@ impl BridgeDiag {
         let last_audio = self.last_audio_at.lock().ok().and_then(|g| *g);
         let last_mic = self.last_mic_at.lock().ok().and_then(|g| *g);
         format!(
-            "[bridge] 断链诊断: reason={reason}, 会话时长={:.1}s, 距上次控制通知={}, 距上次音频={}, 距上次麦克风事件={}, 控制包={}, 音频包={}, 语音输入中={}, bridge_running={}",
+            "[bridge] 断链诊断: reason={reason}, 会话时长={:.1}s, 距上次控制通知={}, 距上次音频={}, 距上次麦克风事件={}, 控制包={}, 音频包={}, 语音输入中={}, session_active={}",
             self.started_at.elapsed().as_secs_f32(),
             Self::age_label(last_control),
             Self::age_label(last_audio),
@@ -80,7 +103,7 @@ impl BridgeDiag {
             self.control_pkts.load(Ordering::Relaxed),
             self.audio_pkts.load(Ordering::Relaxed),
             self.voice_active.load(Ordering::Relaxed),
-            crate::bridge_running(),
+            crate::bridge_session_active(),
         )
     }
 }
@@ -95,9 +118,9 @@ where
     core_log::log_info(&format!(
         "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
     ));
-    if crate::bridge_running() {
+    if crate::bridge_session_active() {
         core_log::log_warn(
-            "[bridge] 启动时 bridge_running 已为 true（疑似并发双桥，可能争用同一 GATT 会话）",
+            "[bridge] 启动时已有语音桥会话在运行（疑似并发双桥，可能争用同一 GATT 会话）",
         );
     }
 
@@ -107,7 +130,10 @@ where
     })?;
     core_log::log_info("[bridge] ATVV 链路已连接");
     crate::set_connection_active(true);
-    crate::set_bridge_running(true);
+    crate::set_bridge_session_active(true);
+    // 连接建立时连接状态事件不一定再触发（注册回调前链路已是 Connected），
+    // 这里主动回调一次，保证 UI 能从「启动中」切换到「运行中」。
+    on_status(true);
     // ATVV 端点已由 connect_rc003 发现并传入，这里标记为就绪。
     crate::set_atvv_endpoints_ready(true);
 
@@ -127,6 +153,9 @@ where
             // 先打诊断再置位，确保主循环退出日志能读到同一快照语境。
             core_log::log_info(&diag_cb.summary("winrt_ConnectionStatusChanged"));
             disconnected_cb.store(true, Ordering::SeqCst);
+            // 蓝牙断链瞬间立即清空驱动层活跃按键并重置虚拟 HID，防止修饰键残留
+            core_hid::tap::clear_active_usages();
+            core_input::release_all_keys();
         }
         on_status(connected);
     })
@@ -157,12 +186,15 @@ where
     // 以免 HOGP 注入在特征设置期间抢占 GATT 会话。
     core_hid::tap::start_after_atvv();
 
-    let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
+    let mut sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
         core_log::log_error(&format!("[bridge] 初始化音频输出（AudioSink）失败: {e}"));
         e.to_string()
     })?;
     core_log::log_info(&format!(
-        "[bridge] 音频输出（AudioSink）已初始化：{output_device}"
+        "[bridge] 音频输出（AudioSink）已初始化：{output_device}（{}Hz/{}ch/{:?}）",
+        sink.sample_rate(),
+        sink.channels(),
+        sink.sample_format()
     ));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
@@ -176,6 +208,10 @@ where
     let engine_cb = engine.clone();
     let capture_audio = capture.clone();
     let diag_audio = diag.clone();
+    // 逻辑时钟：VoiceEngine 的时间语义（STOP_TAIL_DROP 等）依赖它。
+    // 之前从不推进，导致所有基于时间的门控实际失效。
+    let feed_clock = Arc::new(Mutex::new(Instant::now()));
+    let feed_clock_audio = feed_clock.clone();
     let _audio_cookie = link
         .register_audio_handler(move |bytes| {
             diag_audio.touch_audio();
@@ -184,6 +220,13 @@ where
                 Ok(g) => g,
                 Err(_) => return,
             };
+            if let Ok(mut clock) = feed_clock_audio.lock() {
+                let now = Instant::now();
+                let elapsed_ms = now.duration_since(*clock).as_millis() as u64;
+                *clock = now;
+                // 限制单次推进量，避免长时间空闲后一次跳太多导致时序误判。
+                eng.advance(elapsed_ms.min(1000));
+            }
             let chunk = eng.feed(&bytes);
             if !chunk.output.is_empty() {
                 core_log::log_debug(&format!(
@@ -219,12 +262,19 @@ where
             core_log::log_debug(&format!("[bridge] 已解析控制事件: {:?}", event));
             match event {
                 RawControlEvent::Caps(caps) => {
+                    core_log::log_info(&format!(
+                        "[bridge] CAPS: version=0x{:04X}, codecs=0x{:02X}, frame_size={}B, {}Hz",
+                        caps.version, caps.codecs, caps.frame_size, caps.sample_rate_hz
+                    ));
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
                         core_input::log_warn(&format!(
                             "[bridge] 不支持的 ATVV 采样率: {}",
                             caps.sample_rate_hz
                         ));
                     }
+                    // 不同固件的音频帧长可能是 120/126/134/160 字节：
+                    // 按 CAPS 协商结果适配，避免错位切帧产生噪音。
+                    eng.set_frame_bytes(caps.frame_size);
                 }
                 RawControlEvent::MicButtonPressed => {
                     // 语音 toggle 已由 HID 兜底键（usage 0x3E -> 调度器 Voice 动作）
@@ -255,6 +305,9 @@ where
                             let _ = eng.on_control(ControlEvent::StreamStop);
                         }
                     }
+                    // 联动释放麦克风按键：遥控器已停止推流（硬件已松手）。
+                    // 若真实 HID 松开报告因无线丢包丢失，AudioStopped 兜底补发释放。
+                    core_hid::tap::release_mic_on_audio_stop();
                 }
                 RawControlEvent::AudioSynced { .. } => {
                     // TODO: 将 predictor/step_index 提供给解码器以重新同步。
@@ -267,6 +320,8 @@ where
     // 主循环：保持链路存活，并将解码后的帧推送到 sink。
     // 每 2s timeout 计一次空闲心跳；满 30s 打一条 INFO，便于对照“空闲多久后断链”。
     let mut idle_ticks: u32 = 0;
+    let mut audio_stream_warned = false;
+    let mut last_sink_recover: Option<Instant> = None;
     let exit_reason;
     loop {
         if crate::bridge_stop_requested() {
@@ -285,21 +340,65 @@ where
             Ok(frames) => {
                 idle_ticks = 0;
                 sink.push(&frames);
+                // 输出流报错（CABLE Input 被禁用/拔出等）时提示，并尝试重建流。
+                if sink.is_failed() {
+                    if !audio_stream_warned {
+                        audio_stream_warned = true;
+                        let detail = sink.last_error().unwrap_or_else(|| "未知原因".to_string());
+                        core_log::log_error(&format!(
+                            "[bridge] 音频输出流已报错（{detail}）；正在尝试重建输出流"
+                        ));
+                    }
+                    // 每 5 秒最多重建一次，避免设备持续异常时刷屏/抖动。
+                    let due = last_sink_recover
+                        .map(|t| t.elapsed() >= Duration::from_secs(5))
+                        .unwrap_or(true);
+                    if due {
+                        last_sink_recover = Some(Instant::now());
+                        match core_audio::sink::AudioSink::new(Some(output_device)) {
+                            Ok(new_sink) => {
+                                sink = new_sink;
+                                audio_stream_warned = false;
+                                core_log::log_warn("[bridge] 音频输出流已重建成功（设备恢复）");
+                            }
+                            Err(e) => {
+                                core_log::log_error(&format!("[bridge] 音频输出流重建失败: {e}"))
+                            }
+                        }
+                    }
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 idle_ticks = idle_ticks.saturating_add(1);
-                // 15 * 2s = 30s
+                // 事件兜底：WinRT 的 ConnectionStatusChanged 偶尔不送达
+                // （蓝牙无线电被关、驱动卡住等）。每 30s 主动读一次链路状态，
+                // 避免会话永远挂在「以为还连着」的状态里。
+                if idle_ticks.is_multiple_of(15) && !link.is_connected() {
+                    exit_reason = "winrt_status_poll_disconnected";
+                    core_log::log_warn(
+                        "[bridge] 链路状态轮询发现已断开（未收到状态事件），停止会话",
+                    );
+                    core_log::log_info(&diag.summary(exit_reason));
+                    break;
+                }
+                // 15 * 2s = 30s：DEBUG 级别每 30s 一条，INFO 每 5 分钟一条。
+                // 之前每 30s 一条 INFO 占了日志的大头，把真正的异常淹没了。
                 if idle_ticks > 0 && idle_ticks.is_multiple_of(15) {
                     let last_ctrl = diag.last_control_at.lock().ok().and_then(|g| *g);
                     let last_aud = diag.last_audio_at.lock().ok().and_then(|g| *g);
-                    core_log::log_info(&format!(
+                    let message = format!(
                         "[bridge] 链路空闲心跳: 主循环已空闲 {}s, 距上次控制={}, 距上次音频={}, 语音输入中={}, ConnectionActive={}",
                         idle_ticks * 2,
                         BridgeDiag::age_label(last_ctrl),
                         BridgeDiag::age_label(last_aud),
                         diag.voice_active.load(Ordering::Relaxed),
                         crate::connection_active(),
-                    ));
+                    );
+                    if idle_ticks.is_multiple_of(150) {
+                        core_log::log_info(&message);
+                    } else {
+                        core_log::log_debug(&message);
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -316,7 +415,20 @@ where
         "[bridge] 会话结束: exit_reason={exit_reason}, 即将 Drop AtvvLink（若随后看到 ble/gatt Drop 日志可对照时序）"
     ));
     crate::set_connection_active(false);
-    crate::set_bridge_running(false);
+    crate::set_bridge_session_active(false);
+
+    // 留一份会话统计给外层重连循环：用于识别「链路已连接但从未收到任何
+    // 控制/音频通知」的半死状态（实测遥控器语音固件挂起时会连续数小时如此）。
+    let report = SessionReport {
+        duration_secs: diag.started_at.elapsed().as_secs_f32(),
+        control_pkts: diag.control_pkts.load(Ordering::Relaxed),
+        audio_pkts: diag.audio_pkts.load(Ordering::Relaxed),
+        exit_reason,
+    };
+    match LAST_SESSION_REPORT.lock() {
+        Ok(mut guard) => *guard = Some(report),
+        Err(e) => *e.into_inner() = Some(report),
+    }
 
     Ok(())
 }

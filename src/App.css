@@ -439,6 +439,117 @@ button:focus-visible,
   color: var(--warn);
 }
 
+.device-status-pill.err {
+  background: var(--err-bg);
+  color: var(--err);
+}
+
+/* ---------- 界面异常兜底 ---------- */
+.ui-crash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.ui-crash-card {
+  max-width: 520px;
+  width: 100%;
+  padding: 24px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ui-crash-card h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.ui-crash-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ui-crash-detail {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 160px;
+  overflow: auto;
+}
+
+/* ---------- 语音桥状态行 ---------- */
+.bridge-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.bridge-inline-text {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bridge-last-error {
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+/* ---------- 语音桥重连 / 失败提示 ---------- */
+.bridge-hint {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bridge-hint.err {
+  border-left-color: var(--err);
+  background: var(--err-bg);
+}
+
+.bridge-hint-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.bridge-hint.err .bridge-hint-title {
+  color: var(--err);
+}
+
+.bridge-hint-body {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.bridge-hint-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+}
+
 /* ---------- VB-CABLE 紧凑行 ---------- */
 .vbcable-card {
   display: flex;

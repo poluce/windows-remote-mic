@@ -20,7 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
-use crate::parse_hid_report_vkeys;
+use crate::{lock_or_recover, panic_payload_text, parse_hid_report_vkeys};
 
 type RawInputCallback = Box<dyn Fn(RawInputEvent) + Send>;
 
@@ -50,7 +50,7 @@ pub struct RawInputListener {
 pub fn start_listener(
     callback: impl Fn(RawInputEvent) + Send + 'static,
 ) -> Result<RawInputListener, String> {
-    *CALLBACK.lock().unwrap() = Some(Box::new(callback));
+    *lock_or_recover(&CALLBACK) = Some(Box::new(callback));
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -160,9 +160,7 @@ fn emit_appcommand(cmd: u32) -> bool {
         // 键盘 Raw Input 路径通常已经上报过同一物理按键；WM_APPCOMMAND
         // 附带的合成"按下+松开"会把按住时长截断为 0，破坏长按/按住
         // 重复检测，因此近期上报过时直接吞掉。
-        let recent = LAST_KEYBOARD_EMIT
-            .lock()
-            .unwrap()
+        let recent = lock_or_recover(&LAST_KEYBOARD_EMIT)
             .iter()
             .any(|(vk, t)| *vk == vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW);
         if recent {
@@ -188,9 +186,16 @@ fn emit_appcommand(cmd: u32) -> bool {
 }
 
 pub(crate) fn emit(event: RawInputEvent) {
-    if let Ok(mut cb) = CALLBACK.lock() {
-        if let Some(f) = cb.as_mut() {
-            f(event);
+    let mut cb = lock_or_recover(&CALLBACK);
+    if let Some(f) = cb.as_mut() {
+        // 回调链最终会进入 dispatcher：即便其中某处 panic，也不能让它
+        // 展开到 Win32 消息循环里（跨 FFI 边界是 UB）。
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(event)));
+        if let Err(payload) = outcome {
+            core_log::log_error(&format!(
+                "[raw_input] 事件回调 panic 已隔离: {}",
+                panic_payload_text(payload.as_ref())
+            ));
         }
     }
 }
@@ -268,10 +273,14 @@ fn hid_payload(buf: &[u8]) -> &[u8] {
     if buf.len() < header_size + 8 {
         return &[];
     }
-    let dw_size_hid =
-        u32::from_le_bytes(buf[header_size..header_size + 4].try_into().unwrap()) as usize;
-    let dw_count =
-        u32::from_le_bytes(buf[header_size + 4..header_size + 8].try_into().unwrap()) as usize;
+    let Ok(size_hid_bytes) = buf[header_size..header_size + 4].try_into() else {
+        return &[];
+    };
+    let Ok(count_bytes) = buf[header_size + 4..header_size + 8].try_into() else {
+        return &[];
+    };
+    let dw_size_hid = u32::from_le_bytes(size_hid_bytes) as usize;
+    let dw_count = u32::from_le_bytes(count_bytes) as usize;
     let start = header_size + 8;
     let total = dw_size_hid.saturating_mul(dw_count.max(1));
     let end = (start + total).min(buf.len());
@@ -288,6 +297,23 @@ unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    // Win32 回调绝不能把 Rust panic 展开到系统栈（UB / 进程 abort）。
+    // 这里统一兜住：记日志、返回 0、让消息循环继续跑。
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        wnd_proc_inner(hwnd, msg, wparam, lparam)
+    })) {
+        Ok(result) => result,
+        Err(payload) => {
+            core_log::log_error(&format!(
+                "[raw_input] WndProc 处理消息时 panic（已隔离）: {}",
+                panic_payload_text(payload.as_ref())
+            ));
+            LRESULT(0)
+        }
+    }
+}
+
+unsafe fn wnd_proc_inner(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
         if msg == WM_INPUT {
             let Some(buf) = read_raw_input(lparam) else {
@@ -326,7 +352,7 @@ unsafe extern "system" fn wnd_proc(
                             vkey, keyboard.MakeCode, pressed
                         ));
                         {
-                            let mut recent = LAST_KEYBOARD_EMIT.lock().unwrap();
+                            let mut recent = lock_or_recover(&LAST_KEYBOARD_EMIT);
                             recent.retain(|(vk, t)| {
                                 vk != &vkey && t.elapsed() < APPCOMMAND_ECHO_WINDOW
                             });
@@ -348,7 +374,7 @@ unsafe extern "system" fn wnd_proc(
                         raw_slice, name
                     ));
                     let now = parse_hid_report_vkeys(raw_slice);
-                    let mut prev = HID_DOWN.lock().unwrap();
+                    let mut prev = lock_or_recover(&HID_DOWN);
                     for vk in &now {
                         if !prev.contains(vk) {
                             emit(RawInputEvent {

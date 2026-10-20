@@ -123,22 +123,51 @@ impl ConfigStore {
         self.dir.join("config.json")
     }
 
+    fn backup_path(&self) -> PathBuf {
+        self.dir.join("config.json.bak")
+    }
+
+    fn load_from(&self, path: &std::path::Path) -> Result<Config> {
+        let text = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&text)?)
+    }
+
     /// 加载配置；文件不存在时返回默认值。
+    ///
+    /// 主文件损坏时自动回退到上一次成功保存的 `config.json.bak`，
+    /// 避免一次写坏/断电就让用户的全部映射与校准静默丢失。
     pub fn load(&self) -> Result<Config> {
         let path = self.config_path();
         if !path.exists() {
             return Ok(Config::default());
         }
-        let text = fs::read_to_string(&path)?;
-        serde_json::from_str(&text).map_err(|e| {
-            // 保持“最后一次可用”行为：配置损坏时返回默认值
-            // （损坏文件原样保留，便于诊断）。
-            ConfigError::Json(e)
-        })
+        match self.load_from(&path) {
+            Ok(cfg) => Ok(cfg),
+            Err(primary_err) => {
+                let backup = self.backup_path();
+                if backup.exists() {
+                    match self.load_from(&backup) {
+                        Ok(cfg) => {
+                            core_log::log_warn(&format!(
+                                "[config] config.json 损坏（{primary_err}），已回退到上次成功保存的备份 config.json.bak"
+                            ));
+                            return Ok(cfg);
+                        }
+                        Err(e) => core_log::log_error(&format!(
+                            "[config] 配置文件与备份均损坏：主文件={primary_err}，备份={e}"
+                        )),
+                    }
+                }
+                Err(primary_err)
+            }
+        }
     }
 
     pub fn load_or_default(&self) -> Config {
-        self.load().unwrap_or_default()
+        self.load().unwrap_or_else(|e| {
+            core_log::log_warn(&format!("[config] 读取配置失败，本次使用默认配置：{e}"));
+            Config::default()
+        })
     }
 
     /// 原子保存：写入 `<config.json.tmp>` -> fsync -> rename。
@@ -151,6 +180,17 @@ impl ConfigStore {
             let mut file = File::create(&tmp)?;
             file.write_all(json.as_bytes())?;
             file.sync_all()?;
+        }
+
+        // 覆盖前把当前文件复制一份作为 last-known-good：
+        // 用 copy 而不是 rename，即使后续 rename 失败也不会丢掉原配置。
+        if path.exists() {
+            let backup = self.backup_path();
+            let _ = fs::remove_file(&backup);
+            if let Err(e) = fs::copy(&path, &backup) {
+                // 备份失败不阻断主流程，但必须留下痕迹。
+                core_log::log_warn(&format!("[config] 备份旧配置失败（继续保存）: {e}"));
+            }
         }
 
         fs::rename(&tmp, &path)?;
@@ -243,6 +283,25 @@ mod tests {
         // 未知枚举值应整体回落默认，而不是 panic。
         let cfg = store.load_or_default();
         assert_eq!(cfg.voice_target, VoiceTarget::WindowsVoice);
+    }
+
+    #[test]
+    fn corrupt_primary_falls_back_to_backup() {
+        let (_dir, store) = temp_store();
+        let cfg = Config {
+            hid_tap_eat: false,
+            selected_device_id: Some("backup-device".into()),
+            ..Config::default()
+        };
+        store.save(&cfg).unwrap();
+        // 第二次保存才会产生 .bak（内容与第一次一致）。
+        store.save(&cfg).unwrap();
+        assert!(store.backup_path().exists());
+        // 把主文件写坏，应能从备份恢复。
+        fs::write(store.config_path(), "{broken").unwrap();
+        let loaded = store.load().expect("应回退到备份");
+        assert_eq!(loaded.selected_device_id.as_deref(), Some("backup-device"));
+        assert!(!loaded.hid_tap_eat);
     }
 
     #[test]

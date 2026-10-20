@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { RemoteKeyTester } from "../components/RemoteKeyTester";
 import { IconSearch } from "../components/icons";
+import { OUTPUT_DEVICE } from "../constants";
 
 type Diagnostics = {
   has_vb_cable: boolean;
@@ -146,7 +147,7 @@ export function DiagnosticsPage() {
     setStatus("循环播放测试音中…");
     try {
       const result = await invoke<string>("play_test_tone_loop", {
-        deviceName: "CABLE Input",
+        deviceName: OUTPUT_DEVICE,
         repetitions: 3,
       });
       setStatus(result);

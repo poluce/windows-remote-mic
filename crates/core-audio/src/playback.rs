@@ -84,21 +84,33 @@ pub(crate) fn pick_output_device_public(
     pick_output_device(host, name)
 }
 
-fn pick_output_device(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
-    if let Some(name) = name {
-        let name = name.trim();
-        if !name.is_empty() {
-            for device in host
-                .output_devices()
-                .map_err(|e| AudioError::Windows(format!("output_devices: {e}")))?
-            {
-                if let Ok(dev_name) = device.name() {
-                    if dev_name.contains(name) {
-                        return Ok(device);
-                    }
-                }
+/// 按名称严格查找输出设备：找不到返回 `None`，**不**回退默认设备。
+///
+/// 语音输出链路必须用这个版本：名称写的是 `CABLE Input` 时如果静默回退到
+/// 系统默认播放设备，声音会从扬声器放出来，而豆包/语音输入完全收不到。
+pub(crate) fn find_output_device_by_name(host: &cpal::Host, name: &str) -> Option<cpal::Device> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    for device in host.output_devices().ok()? {
+        if let Ok(dev_name) = device.name() {
+            if dev_name.contains(name) {
+                return Some(device);
             }
         }
+    }
+    None
+}
+
+fn pick_output_device(host: &cpal::Host, name: Option<&str>) -> Result<cpal::Device> {
+    if let Some(name) = name {
+        if let Some(device) = find_output_device_by_name(host, name) {
+            return Ok(device);
+        }
+        core_log::log_warn(&format!(
+            "[audio] 未找到名为「{name}」的输出设备，测试音将回退到系统默认输出"
+        ));
     }
 
     host.default_output_device().ok_or(AudioError::NoEndpoint)

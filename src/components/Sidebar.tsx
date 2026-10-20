@@ -1,4 +1,8 @@
-import { tapStatusLabel, useRuntimeStatus } from "../store/runtimeStatus";
+import {
+  tapStatusLabel,
+  useEffectiveConnected,
+  useRuntimeStatus,
+} from "../store/runtimeStatus";
 import {
   IconActivity,
   IconBluetooth,
@@ -37,7 +41,11 @@ export function Sidebar({
   page: PageId;
   onChange: (page: PageId) => void;
 }) {
-  const { connected, bridgeStatus, tapStatus, tapMessage } = useRuntimeStatus();
+  const { bridgeState, tapStatus, tapMessage } = useRuntimeStatus();
+  // 派生视图：等待遥控器上线时绝不能显示「遥控器已连接」。
+  const connected = useEffectiveConnected();
+  const bridgeRunning = bridgeState === "running";
+  const bridgeWaiting = bridgeState === "waiting";
 
   const statusRows = [
     {
@@ -47,8 +55,12 @@ export function Sidebar({
     },
     {
       key: "bridge",
-      label: bridgeStatus === "running" ? "语音桥运行中" : "语音桥未运行",
-      tone: bridgeStatus === "running" ? "ok" : "off",
+      label: bridgeRunning
+        ? "语音桥运行中"
+        : bridgeWaiting
+          ? "等待遥控器上线"
+          : "语音桥未运行",
+      tone: bridgeRunning ? "ok" : bridgeWaiting ? "warn" : "off",
     },
     {
       key: "tap",

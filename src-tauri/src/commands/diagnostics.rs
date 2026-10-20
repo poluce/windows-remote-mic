@@ -83,6 +83,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         let _ = std::fs::remove_dir_all(&dir);
         if let Ok(store) = core_stats::StatsStore::new(&dir) {
             let ok = store.record_key("self_test").is_ok()
+                && store.flush().is_ok()
                 && store
                     .load()
                     .map(|m| {
@@ -108,7 +109,94 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
         }
     }
 
-    // 5) 测试音播放（仅 Windows）
+    // 5) VB-CABLE 输入/输出端点是否配对齐全
+    #[cfg(target_os = "windows")]
+    {
+        let d = core_audio::diagnostics::run();
+        items.push(SelfTestItem {
+            name: "VB-CABLE 虚拟声卡".into(),
+            status: if d.has_vb_cable { "pass" } else { "fail" }.into(),
+            detail: format!(
+                "CABLE Input（输出端点）={}，CABLE Output（输入端点）={}；语音输出需要两者都存在",
+                if d.cable_input_present {
+                    "存在"
+                } else {
+                    "缺失"
+                },
+                if d.cable_output_present {
+                    "存在"
+                } else {
+                    "缺失"
+                },
+            ),
+        });
+    }
+
+    // 6) 配置目录可写（写不进去会导致映射/校准无法保存）
+    {
+        let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let dir = std::path::Path::new(&base).join("RemoteMic/RC003");
+        let probe = dir.join(".write-probe");
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && std::fs::write(&probe, b"ok").is_ok()
+            && std::fs::remove_file(&probe).is_ok();
+        items.push(SelfTestItem {
+            name: "配置目录可写".into(),
+            status: if ok { "pass" } else { "fail" }.into(),
+            detail: dir.display().to_string(),
+        });
+    }
+
+    // 7) 日志目录可写（日志写不进去会失去排障能力）
+    {
+        let dir = core_log::log_dir();
+        let probe = dir.join(".write-probe");
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && std::fs::write(&probe, b"ok").is_ok()
+            && std::fs::remove_file(&probe).is_ok();
+        items.push(SelfTestItem {
+            name: "日志目录可写".into(),
+            status: if ok { "pass" } else { "fail" }.into(),
+            detail: dir.display().to_string(),
+        });
+    }
+
+    // 8) 最近语音会话健康（识别「链路通但零数据」的遥控器固件挂起）
+    #[cfg(target_os = "windows")]
+    {
+        let silent = crate::commands::audio::current_silent_sessions();
+        match core_voice::last_session_report() {
+            Some(report) if silent >= 3 => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "fail".into(),
+                detail: format!(
+                    "连续 {} 次会话未收到任何语音数据（上次 {:.0}s / 控制包 {} / 音频包 {}）。\n建议：给遥控器断电重启（抠电池 10 秒）后重新连接。",
+                    silent, report.duration_secs, report.control_pkts, report.audio_pkts
+                ),
+            }),
+            Some(report) => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "pass".into(),
+                detail: format!(
+                    "上次会话 {:.0}s、控制包 {}、音频包 {}；连续零数据会话 {} 次",
+                    report.duration_secs, report.control_pkts, report.audio_pkts, silent
+                ),
+            }),
+            None => items.push(SelfTestItem {
+                name: "最近语音会话健康".into(),
+                status: "skip".into(),
+                detail: "本次启动还没有发生过语音会话（连接并使用一次麦克风后再测）".into(),
+            }),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    items.push(SelfTestItem {
+        name: "最近语音会话健康".into(),
+        status: "skip".into(),
+        detail: "仅限 Windows".into(),
+    });
+
+    // 9) 测试音播放（仅 Windows）
     #[cfg(target_os = "windows")]
     {
         match core_audio::playback::play_test_tone(None) {

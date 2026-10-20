@@ -9,5 +9,5 @@ pub mod session;
 pub use adpcm::{ImaAdpcmDecoder, ImaAdpcmEncoder};
 pub use error::{AtvvError, Result};
 pub use frame::AudioFrameAssembler;
-pub use protocol::{AtvvCapabilities, ControlEvent};
+pub use protocol::{AtvvCapabilities, ControlEvent, DEFAULT_FRAME_BYTES};
 pub use session::{VoiceSession, VoiceState};

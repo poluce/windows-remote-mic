@@ -188,6 +188,87 @@ pub fn send_key_up(tokens: &[&str]) -> Result<()> {
     crate::vhid::key_up(tokens)
 }
 
+/// 强制释放全部虚拟键（键盘 + 媒体键），回到「什么都没按」。
+///
+/// 兜底路径专用：物理按键的松开事件丢失时（BLE 断链、调度暂停、映射热更新、
+/// 应用退出），已注入的修饰键会一直按住，把用户的**物理键盘**拖成 Ctrl+ 组合。
+/// 本函数直接提交全零报告，不依赖「知道按住了哪些键」。
+///
+/// 不会为了释放去创建虚拟 HID 设备；返回是否真的清理过处于按下状态的键。
+#[cfg(target_os = "windows")]
+pub fn release_all_keys() -> bool {
+    crate::vhid::release_all()
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn release_all_keys() -> bool {
+    false
+}
+
+/// 单实例互斥量句柄在进程生命周期内一直持有（不主动关闭）。
+#[cfg(target_os = "windows")]
+static SINGLE_INSTANCE_HANDLE: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
+
+/// 尝试获取单实例互斥量。
+///
+/// 返回 `false` 表示本机已经有 Remote Mic 在运行；调用方应提示并退出。
+/// 创建失败时返回 `true`（宁可允许启动，也不要因为权限/命名问题打不开应用）。
+#[cfg(target_os = "windows")]
+pub fn acquire_single_instance() -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
+
+    let name: Vec<u16> = "Global\\RemoteMic-SingleInstance\0"
+        .encode_utf16()
+        .collect();
+    unsafe {
+        match CreateMutexW(None, true, PCWSTR(name.as_ptr())) {
+            Ok(handle) => {
+                if GetLastError() == ERROR_ALREADY_EXISTS {
+                    let _ = CloseHandle(handle);
+                    false
+                } else {
+                    if let Ok(mut guard) = SINGLE_INSTANCE_HANDLE.lock() {
+                        *guard = Some(handle.0 as usize);
+                    }
+                    true
+                }
+            }
+            Err(e) => {
+                core_log::log_warn(&format!("[app] 单实例互斥量创建失败，跳过单实例保护: {e}"));
+                true
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn acquire_single_instance() -> bool {
+    true
+}
+
+/// 提示用户「应用已在运行」。
+#[cfg(target_os = "windows")]
+pub fn notify_already_running() {
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_OK};
+    let text: Vec<u16> = "Remote Mic 已在运行，请切换到已打开的窗口。\0"
+        .encode_utf16()
+        .collect();
+    let title: Vec<u16> = "Remote Mic\0".encode_utf16().collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            windows::core::PCWSTR(text.as_ptr()),
+            windows::core::PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn notify_already_running() {}
+
 #[cfg(target_os = "windows")]
 pub fn vhid_probe() -> String {
     crate::vhid::probe()

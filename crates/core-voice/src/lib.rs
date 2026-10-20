@@ -8,15 +8,13 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-/// ATVV 音频帧的默认长度（字节）——可能需要根据真实设备调整。
-pub const ATVV_FRAME_BYTES: usize = 120;
-
 /// 当前 ATVV/BLE 链路是否处于已连接状态。
 /// 由 [`run_bridge`] 在连接成功/断开时更新，供 UI 查询初始状态。
 static CONNECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// 当前语音桥是否处于运行状态。
-static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
+/// 当前语音桥**会话**是否处于运行状态（单次 run_bridge 生命周期）。
+/// 注意：与 `src-tauri` 里「监督线程是否存活」是两个不同的事实。
+static BRIDGE_SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// 用户请求停止当前语音桥会话（断开连接）。
 static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -34,14 +32,14 @@ pub fn set_connection_active(active: bool) {
     CONNECTION_ACTIVE.store(active, Ordering::Relaxed);
 }
 
-/// 查询当前语音桥是否运行中。
-pub fn bridge_running() -> bool {
-    BRIDGE_RUNNING.load(Ordering::Relaxed)
+/// 查询当前语音桥**会话**是否运行中。
+pub fn bridge_session_active() -> bool {
+    BRIDGE_SESSION_ACTIVE.load(Ordering::Relaxed)
 }
 
-/// 设置当前语音桥运行状态（内部使用）。
-pub fn set_bridge_running(running: bool) {
-    BRIDGE_RUNNING.store(running, Ordering::Relaxed);
+/// 设置当前语音桥会话运行状态（内部使用）。
+pub fn set_bridge_session_active(active: bool) {
+    BRIDGE_SESSION_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 /// 请求停止当前语音桥（主循环下一次超时内退出并释放 GATT）。
@@ -101,7 +99,7 @@ impl VoiceEngine {
     pub fn new() -> Self {
         Self {
             decoder: ImaAdpcmDecoder::new(),
-            assembler: AudioFrameAssembler::new(ATVV_FRAME_BYTES),
+            assembler: AudioFrameAssembler::new(core_atvv::DEFAULT_FRAME_BYTES),
             session: VoiceSession::new(),
             now_ms: 0,
         }
@@ -152,6 +150,21 @@ impl VoiceEngine {
         }
 
         chunk
+    }
+
+    /// 按 CAPS 协商结果切换音频帧长（不同固件 120/126/134/160 字节）。
+    ///
+    /// 帧长会被夹到合理区间，避免异常包把累积缓冲撑大。
+    pub fn set_frame_bytes(&mut self, frame_bytes: usize) {
+        let clamped = frame_bytes.clamp(8, 1024);
+        if clamped != self.assembler.frame_len() {
+            core_log::log_info(&format!(
+                "[voice] 按 CAPS 适配音频帧长: {} -> {} 字节",
+                self.assembler.frame_len(),
+                clamped
+            ));
+            self.assembler.set_frame_len(clamped);
+        }
     }
 
     /// 会话当前是否正在流式传输（streaming）。
@@ -205,6 +218,21 @@ mod tests {
     }
 
     #[test]
+    fn frame_bytes_can_be_adapted_from_caps() {
+        // 默认 120 字节帧：喂 126 字节会产出 1 帧 + 6 字节残留。
+        let mut engine = VoiceEngine::new();
+        engine.on_control(ControlEvent::StreamStart).unwrap();
+        let chunk = engine.feed(&[0x22; 126]);
+        assert_eq!(chunk.complete_frames, 1);
+
+        // 按 CAPS 协商为 126 字节后，再喂 126 字节应恰好产出 1 帧。
+        engine.set_frame_bytes(126);
+        let chunk = engine.feed(&[0x22; 126]);
+        assert_eq!(chunk.complete_frames, 1);
+        assert_eq!(chunk.pcm_samples, 126 * 2);
+    }
+
+    #[test]
     fn feed_pcm_produces_48k_stereo_output() {
         let mut engine = VoiceEngine::new();
         let chunk = engine.feed_pcm(&[0i16; 240]);
@@ -228,7 +256,7 @@ mod tests {
 pub mod bridge;
 
 #[cfg(target_os = "windows")]
-pub use bridge::run_bridge;
+pub use bridge::{last_session_report, run_bridge, SessionReport};
 
 #[cfg(target_os = "windows")]
 pub mod simulate;

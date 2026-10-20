@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  bridgeStateLabel,
   markConnected,
   markDisconnected,
+  useEffectiveConnected,
   tapStatusLabel,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
+
+/** `stop_voice_bridge` 的返回：是否真的停下 + 提示文案。 */
+type BridgeStopResult = {
+  stopped: boolean;
+  message: string;
+};
 import { IconBluetooth } from "../components/icons";
+import { OUTPUT_DEVICE } from "../constants";
 
 type Rc003Device = {
   id: string;
@@ -22,6 +31,8 @@ type AtvvEndpoints = {
 type Rc003Connection = {
   device: Rc003Device;
   endpoints: AtvvEndpoints;
+  /** 真实 BLE 链路状态（GATT 缓存发现成功 ≠ 链路已连接）。 */
+  link_connected: boolean;
 };
 
 type VbCableStatus = {
@@ -44,7 +55,18 @@ function tapStatusTone(status: string): string {
 
 export function ConnectionPage() {
   const runtime = useRuntimeStatus();
-  const { connected, bridgeStatus, tapStatus, tapMessage, endpointsReady } = runtime;
+  const {
+    tapStatus,
+    tapMessage,
+    endpointsReady,
+    bridgeState,
+    bridgeAttempt,
+    bridgeFailures,
+    bridgeNextRetrySecs,
+    bridgeLastError,
+  } = runtime;
+  // 连接状态派生视图：等待态一定未连接（页面与 Sidebar 共用同一判断）。
+  const effectiveConnected = useEffectiveConnected();
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -103,17 +125,21 @@ export function ConnectionPage() {
     }
   }
 
-  async function connect() {
+  async function connect(options?: { auto?: boolean }) {
     if (!isTauri()) {
       setFeedback("请在桌面应用内连接");
       return;
     }
     setConnecting(true);
-    setFeedback("正在连接并枚举 GATT 特征…");
+    setFeedback(
+      options?.auto
+        ? "检测到上次使用的遥控器，正在自动连接…"
+        : "正在连接并枚举 GATT 特征…",
+    );
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
-      markConnected(endpointsReady);
+      markConnected(endpointsReady, result.link_connected);
       setFeedback("");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });
@@ -125,17 +151,100 @@ export function ConnectionPage() {
       try {
         await invoke<string>("start_voice_bridge", {
           deviceId: result.device.id,
-          outputDevice: "CABLE Input",
+          outputDevice: OUTPUT_DEVICE,
         });
       } catch (bridgeErr) {
         setFeedback(`语音桥启动失败：${bridgeErr}`);
       }
     } catch (err) {
-      setFeedback(`连接失败：${err}`);
+      // 设备当前不可达（休眠 / 被另一台电脑占用 / 蓝牙未开）：
+      // 只要本机还留着配对信息，就进入「等待遥控器上线」模式——
+      // 监督线程只监听链路事件，系统连上后会自动恢复语音，不再定时盲试。
+      const savedId = await invoke<string | null>("get_saved_device_id").catch(
+        () => null,
+      );
+      if (savedId) {
+        try {
+          await invoke<string>("start_voice_bridge", {
+            deviceId: savedId,
+            outputDevice: OUTPUT_DEVICE,
+          });
+          setFeedback(
+            options?.auto
+              ? "遥控器当前不在线，已进入等待（系统连上后自动恢复）"
+              : "遥控器当前不在线，已进入等待：请唤醒遥控器，系统连接后会自动恢复语音",
+          );
+          return;
+        } catch (bridgeErr) {
+          setFeedback(`语音桥启动失败：${bridgeErr}`);
+          return;
+        }
+      }
+      setFeedback(
+        options?.auto
+          ? "自动连接未成功，请唤醒遥控器后点「连接」重试"
+          : `连接失败：${err}`,
+      );
     } finally {
       setConnecting(false);
     }
   }
+
+  /** 失败状态下重试：先停旧监督线程，再重新启动。 */
+  async function retryBridge() {
+    const savedId = await invoke<string | null>("get_saved_device_id").catch(
+      () => null,
+    );
+    if (!savedId) {
+      setFeedback("没有已保存的遥控器，请先重新配对后再连接");
+      return;
+    }
+    setConnecting(true);
+    setFeedback("正在重试连接…");
+    try {
+      const message = await invoke<string>("retry_voice_bridge", {
+        deviceId: savedId,
+        outputDevice: OUTPUT_DEVICE,
+      });
+      setFeedback(message);
+    } catch (err) {
+      setFeedback(`重试失败：${err}`);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  // 启动时自动尝试连接「上次成功连接的设备」，省掉每次开机手动点连接。
+  // 仅挂载时尝试一次；失败保持安静（手动点连接会给出明确错误）。
+  // 注意：React StrictMode 会「挂载→卸载→再挂载」跑两次 effect，
+  // 这里不设 cancelled 短路，否则第一次的异步请求会被取消、第二次又被
+  // autoConnectTried 拦住，导致自动连接永远不生效（开发模式实测）。
+  const autoConnectTried = useRef(false);
+  useEffect(() => {
+    if (autoConnectTried.current || !isTauri() || effectiveConnected || connecting) {
+      return;
+    }
+    autoConnectTried.current = true;
+    void (async () => {
+      try {
+        const savedId = await invoke<string | null>("get_saved_device_id");
+        void invoke("log_message", {
+          message: `[auto-connect] 启动自动连接：saved_device_id=${savedId ?? "null"}`,
+        }).catch(() => {});
+        if (!savedId) {
+          return;
+        }
+        await connect({ auto: true });
+      } catch (err) {
+        // 忽略：自动连接只是锦上添花，不打扰用户。
+        void invoke("log_message", {
+          message: `[auto-connect] 自动连接异常：${String(err)}`,
+        }).catch(() => {});
+      }
+    })();
+    // 只在挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function disconnect() {
     if (!isTauri()) {
@@ -145,8 +254,14 @@ export function ConnectionPage() {
     setDisconnecting(true);
     setFeedback("");
     try {
-      await invoke<string>("stop_voice_bridge");
-      markDisconnected();
+      const result = await invoke<BridgeStopResult>("stop_voice_bridge");
+      if (result.stopped) {
+        markDisconnected();
+        setFeedback(result.message);
+      } else {
+        // 后端没真正停下：不要假装断开，否则用户会以为已经停止而实际仍在重连。
+        setFeedback(result.message);
+      }
     } catch (err) {
       setFeedback(`断开失败：${err}`);
     } finally {
@@ -154,11 +269,38 @@ export function ConnectionPage() {
     }
   }
 
+  const bridgeTone =
+    bridgeState === "running"
+      ? "ok"
+      : bridgeState === "failed"
+        ? "err"
+        : "warn";
+  const bridgeLabel =
+    bridgeState === "waiting"
+      ? "等待遥控器上线"
+      : bridgeStateLabel(bridgeState, bridgeAttempt);
+
+  // 遥控器语音固件挂起的专属提示（后端在连续零数据会话后给出该文案）。
+  const silentSessionHint = bridgeLastError.includes("语音固件可能挂起");
+  // 监督线程活着（等待链路/建会话/运行/重试）→ 按钮显示「停止」而不是「连接」。
+  const bridgeActive =
+    bridgeState === "starting" ||
+    bridgeState === "running" ||
+    bridgeState === "retrying" ||
+    bridgeState === "waiting";
+  const showBridgeHint =
+    (bridgeState === "retrying" ||
+      bridgeState === "failed" ||
+      bridgeState === "starting" ||
+      bridgeState === "waiting") &&
+    !silentSessionHint;
+
   const briefs: { key: string; label: string; tone: string; title?: string }[] = [
     {
       key: "bridge",
-      label: "ATVV 语音桥",
-      tone: bridgeStatus === "running" ? "ok" : "warn",
+      label: bridgeLabel,
+      tone: bridgeTone,
+      title: bridgeLastError || undefined,
     },
     {
       key: "tap",
@@ -189,29 +331,35 @@ export function ConnectionPage() {
             </div>
           </div>
           <div className="device-actions">
-            <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-              {connected ? "已连接" : "未连接"}
+            <span
+              className={`badge ${effectiveConnected ? "badge-ok" : "badge-warn"}`}
+            >
+              {effectiveConnected ? "已连接" : "未连接"}
             </span>
             <div className="actions">
               <button
                 className="btn"
                 onClick={scan}
-                disabled={!isTauri() || scanning || connected}
+                disabled={!isTauri() || scanning || effectiveConnected}
               >
                 {scanning ? "扫描中…" : "扫描"}
               </button>
-              {connected ? (
+              {effectiveConnected || bridgeActive ? (
                 <button
                   className="btn"
                   onClick={disconnect}
                   disabled={!isTauri() || disconnecting}
                 >
-                  {disconnecting ? "断开中…" : "断开"}
+                  {disconnecting
+                    ? "停止中…"
+                    : effectiveConnected
+                      ? "断开"
+                      : "停止等待"}
                 </button>
               ) : (
                 <button
                   className="btn primary"
-                  onClick={connect}
+                  onClick={() => connect()}
                   disabled={!isTauri() || connecting}
                 >
                   {connecting ? "连接中…" : "连接"}
@@ -233,6 +381,61 @@ export function ConnectionPage() {
             </span>
           ))}
         </div>
+        {silentSessionHint && (
+          <div className="bridge-hint err">
+            <span className="bridge-hint-title">遥控器语音服务可能已挂起</span>
+            <span className="bridge-hint-body">
+              蓝牙链路正常，但连续多次会话都收不到遥控器的语音数据。请按顺序操作：
+              <br />
+              1. 取下遥控器电池，等待约 10 秒后装回（或长按电源键重启遥控器）；
+              <br />
+              2. 回到本页点「断开」，再点「连接」；
+              <br />
+              3. 长按麦克风键说话，确认语音条有反应。
+            </span>
+          </div>
+        )}
+        {showBridgeHint && (
+          <div
+            className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}
+          >
+            <span className="bridge-hint-title">
+              {bridgeState === "failed"
+                ? "语音桥连接失败"
+                : bridgeState === "waiting"
+                  ? "等待遥控器上线"
+                  : bridgeState === "starting"
+                    ? "正在建立语音链路…"
+                    : "语音桥正在重试"}
+            </span>
+            <span className="bridge-hint-body">
+              {bridgeState === "waiting"
+                ? bridgeLastError
+                  ? `${bridgeLastError}（系统连上后会自动恢复；若已在系统里删除配对，请重新配对）`
+                  : "遥控器当前不在本机（可能休眠，或正在被另一台电脑使用）。系统连上它之后会自动恢复语音，无需重复点击；点「停止等待」可退出。"
+                : bridgeState === "starting"
+                  ? "正在建立蓝牙语音链路，请稍候…"
+                  : bridgeLastError
+                    ? `最近错误：${bridgeLastError}`
+                    : "语音会话中断，正在有限次重试"}
+              {bridgeFailures > 0 && ` · 连续失败 ${bridgeFailures} 次`}
+              {bridgeState === "retrying" &&
+                bridgeNextRetrySecs > 0 &&
+                ` · 约 ${bridgeNextRetrySecs} 秒后重试`}
+            </span>
+            {bridgeState === "failed" && (
+              <div className="bridge-hint-actions">
+                <button
+                  className="btn"
+                  onClick={retryBridge}
+                  disabled={!isTauri() || connecting}
+                >
+                  {connecting ? "重试中…" : "重试连接"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
       </div>
 
@@ -282,6 +485,36 @@ export function ConnectionPage() {
             )}
           </div>
         </div>
+        <div className="form-row">
+          <span className="form-label">语音桥</span>
+          <div className="form-control bridge-inline">
+            <span
+              className={`status-dot ${
+                bridgeState === "running"
+                  ? "ready"
+                  : bridgeState === "failed"
+                    ? "missing"
+                    : bridgeState === "retrying" ||
+                        bridgeState === "starting" ||
+                        bridgeState === "waiting"
+                      ? "warn"
+                      : "preview"
+              }`}
+            />
+            <span className="bridge-inline-text">
+              {bridgeLabel}
+              {bridgeState === "retrying" && bridgeNextRetrySecs > 0
+                ? ` · 约 ${bridgeNextRetrySecs} 秒后重试`
+                : ""}
+              {bridgeState === "failed" && bridgeFailures > 0
+                ? ` · 已连续失败 ${bridgeFailures} 次`
+                : ""}
+            </span>
+          </div>
+        </div>
+        {bridgeLastError && (
+          <p className="hint bridge-last-error">最近错误：{bridgeLastError}</p>
+        )}
       </section>
       </div>
     </div>

@@ -13,10 +13,16 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{hogp_ioctl_payload, hogp_payload_usages, raw_input, usage_to_vkey};
+use crate::{
+    hogp_ioctl_payload, hogp_payload_usages, lock_or_recover, panic_payload_text, raw_input,
+    usage_to_vkey,
+};
 
 const TAP_PORT: u16 = 17331;
 const INPUT_GRACE: Duration = Duration::from_millis(800);
+/// 旁路 IPC 读超时。Frida 脚本每 5 秒发一次心跳，超过 20 秒没有任何数据
+/// 说明对端已卡死（socket 未关但不再工作），必须断开重连/重新注入。
+const TAP_READ_TIMEOUT: Duration = Duration::from_secs(20);
 const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 
 /// 看门狗自动释放超时：仅作为「松开报告丢失」的兜底。
@@ -25,6 +31,9 @@ const GADGET_SCRIPT: &str = include_str!("rc003_hid_tap.js");
 /// 因此该值必须大于长按阈值（550ms），否则长按会被看门狗截断成单击。
 /// 可通过环境变量 `REMOTE_MIC_HID_TAP_RELEASE_MS` 覆盖调参。
 const AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(2000);
+/// 麦克风按住说话超时兜底（遥控器硬件推流上限约 15s，日常说话通常不超过 10s）。
+/// 超过该时间必然是松开报告丢失（无线丢包），由看门狗兜底释放。
+const MIC_AUTO_RELEASE_TIMEOUT: Duration = Duration::from_millis(10_000);
 /// 看门狗轮询检查间隔。
 const WATCHDOG_INTERVAL: Duration = Duration::from_millis(30);
 
@@ -34,6 +43,14 @@ fn auto_release_timeout() -> Duration {
         .and_then(|s| s.parse::<u64>().ok())
         .map(Duration::from_millis)
         .unwrap_or(AUTO_RELEASE_TIMEOUT)
+}
+
+fn mic_release_timeout() -> Duration {
+    std::env::var("REMOTE_MIC_HID_TAP_MIC_RELEASE_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(MIC_AUTO_RELEASE_TIMEOUT)
 }
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -77,6 +94,31 @@ static WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
 type HookStatsKey = (u64, u64, u64, u64, u64);
 /// 上次已记录的 hook 统计，避免心跳每 5 秒重复刷屏。
 static LAST_HOOK_STATS: Mutex<Option<HookStatsKey>> = Mutex::new(None);
+/// 「吃掉报告」日志的限流状态：最多每秒 1 条，其余合并计数。
+static EATEN_LOG_LAST: Mutex<Option<Instant>> = Mutex::new(None);
+static EATEN_LOG_SUPPRESSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 写一条「吃掉报告」日志，但最多每秒一条，避免按住说话时数百行/秒刷屏。
+fn log_eaten_report(message: &str) {
+    let now = Instant::now();
+    let mut last = lock_or_recover(&EATEN_LOG_LAST);
+    let should_log = last
+        .map(|t| now.duration_since(t) >= Duration::from_secs(1))
+        .unwrap_or(true);
+    if !should_log {
+        EATEN_LOG_SUPPRESSED.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    let suppressed = EATEN_LOG_SUPPRESSED.swap(0, Ordering::Relaxed);
+    *last = Some(now);
+    if suppressed > 0 {
+        core_log::log_info(&format!(
+            "[hid-tap] 吃掉报告：{message}（期间另有 {suppressed} 条同类日志被限流合并）"
+        ));
+    } else {
+        core_log::log_info(&format!("[hid-tap] 吃掉报告：{message}"));
+    }
+}
 
 #[derive(Deserialize)]
 struct HubMessage {
@@ -218,12 +260,15 @@ pub fn gadget_available() -> bool {
 }
 
 pub fn set_status_callback(cb: impl Fn(TapStatusEvent) + Send + 'static) {
-    *STATUS_CB.lock().unwrap() = Some(Box::new(cb));
+    *STATUS_CB.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(cb));
 }
 
 /// 返回最近一次旁路状态，供页面挂载时恢复显示。
 pub fn last_status() -> Option<TapStatusEvent> {
-    LAST_STATUS.lock().unwrap().clone()
+    LAST_STATUS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 fn status(state: TapState, msg: &str) {
@@ -243,11 +288,11 @@ fn status(state: TapState, msg: &str) {
 }
 
 fn arm_grace() {
-    *GRACE_UNTIL.lock().unwrap() = Some(Instant::now() + INPUT_GRACE);
+    *GRACE_UNTIL.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + INPUT_GRACE);
 }
 
 fn in_grace() -> bool {
-    let mut guard = GRACE_UNTIL.lock().unwrap();
+    let mut guard = GRACE_UNTIL.lock().unwrap_or_else(|e| e.into_inner());
     match *guard {
         Some(until) if Instant::now() < until => true,
         Some(_) => {
@@ -297,7 +342,7 @@ pub fn start_after_atvv() {
     }
     // 恢复上次已注入的 WUDFHost PID：若宿主进程未变，则跳过注入，不再弹 UAC。
     if let Some(pid) = load_injected_pid() {
-        *INJECTED_PID.lock().unwrap() = Some(pid);
+        *INJECTED_PID.lock().unwrap_or_else(|e| e.into_inner()) = Some(pid);
     }
 
     if gadget_available() {
@@ -312,21 +357,40 @@ pub fn start_after_atvv() {
     std::thread::Builder::new()
         .name("rc003-hid-tap".into())
         .spawn(|| {
-            if let Err(e) = prepare_runtime() {
-                status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
-                RUNNING.store(false, Ordering::SeqCst);
-                return;
+            // 旁路线程是「守护型」服务：任何一次 panic 都不能让它静默消失，
+            // 这里兜住并自动重启（UAC/注入都带幂等重试，重启是安全的）。
+            loop {
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    if let Err(e) = prepare_runtime() {
+                        status(TapState::Unavailable, &format!("返回/音量旁路未启用：{e}"));
+                        return false;
+                    }
+                    if !gadget_available() {
+                        status(
+                            TapState::Unavailable,
+                            "返回/音量旁路未启用：自动安装 Frida Gadget 后仍未找到 DLL",
+                        );
+                        return false;
+                    }
+                    status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
+                    hub_loop();
+                    true
+                }));
+                match outcome {
+                    Ok(true) => break,
+                    Ok(false) => {
+                        RUNNING.store(false, Ordering::SeqCst);
+                        break;
+                    }
+                    Err(payload) => {
+                        core_log::log_error(&format!(
+                            "[hid-tap] 旁路线程 panic 已隔离，2s 后自动重启：{}",
+                            panic_payload_text(payload.as_ref())
+                        ));
+                        std::thread::sleep(Duration::from_secs(2));
+                    }
+                }
             }
-            if !gadget_available() {
-                status(
-                    TapState::Unavailable,
-                    "返回/音量旁路未启用：自动安装 Frida Gadget 后仍未找到 DLL",
-                );
-                RUNNING.store(false, Ordering::SeqCst);
-                return;
-            }
-            status(TapState::Pending, "返回/音量旁路已启动（首次可能弹出 UAC）");
-            hub_loop();
         })
         .ok();
 }
@@ -466,8 +530,10 @@ fn hub_loop() {
         };
 
         {
-            let mut attempted = INJECT_ATTEMPTED_PID.lock().unwrap();
-            let mut injected = INJECTED_PID.lock().unwrap();
+            let mut attempted = INJECT_ATTEMPTED_PID
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let mut injected = INJECTED_PID.lock().unwrap_or_else(|e| e.into_inner());
             if *attempted == Some(pid) && *injected != Some(pid) {
                 drop(listener);
                 std::thread::sleep(retry);
@@ -510,8 +576,10 @@ fn hub_loop() {
         let mut client = None;
         while Instant::now() < deadline {
             if find_rc003_host_pid() != Some(pid) {
-                let mut attempted = INJECT_ATTEMPTED_PID.lock().unwrap();
-                let mut injected = INJECTED_PID.lock().unwrap();
+                let mut attempted = INJECT_ATTEMPTED_PID
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let mut injected = INJECTED_PID.lock().unwrap_or_else(|e| e.into_inner());
                 *attempted = None;
                 *injected = None;
                 break;
@@ -519,9 +587,9 @@ fn hub_loop() {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let _ = stream.set_nonblocking(false);
-                    // 不设置读超时：Frida 脚本每 5 秒发心跳维持连接，
-                    // 只有对端真正关闭时 read_line 才返回 Ok(0)，避免误报“关闭”。
-                    let _ = stream.set_read_timeout(None);
+                    // Frida 脚本每 5 秒发一次心跳；设 20s 读超时用于检测
+                    // 「socket 还开着但对端已卡死」的情况，避免 serve_client 永久阻塞。
+                    let _ = stream.set_read_timeout(Some(TAP_READ_TIMEOUT));
                     client = Some(stream);
                     break;
                 }
@@ -541,7 +609,18 @@ fn hub_loop() {
             &format!("返回/音量旁路已附着 pid={pid}，请按返回或音量键验证"),
         );
         arm_grace();
-        serve_client(stream);
+        {
+            // Frida 侧消息处理同样不能 panic 出去：出问题只断这条连接，
+            // hub_loop 会重新 accept / 重新注入。
+            let outcome =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| serve_client(stream)));
+            if let Err(payload) = outcome {
+                core_log::log_error(&format!(
+                    "[hid-tap] 旁路连接处理 panic 已隔离：{}",
+                    panic_payload_text(payload.as_ref())
+                ));
+            }
+        }
         if let Ok(mut guard) = ACTIVE_USAGES.lock() {
             *guard = None;
         }
@@ -559,6 +638,14 @@ fn serve_client(stream: std::net::TcpStream) {
         match reader.read_line(&mut line) {
             Ok(0) => break "对端关闭（EOF）".to_string(),
             Ok(_) => {}
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                // 心跳超时：对端可能仍在连接但已停止工作（WUDFHost 挂起等）。
+                // 断开后 hub_loop 会重新 accept，必要时重新注入。
+                break format!("心跳超时（{}s 无数据）", TAP_READ_TIMEOUT.as_secs());
+            }
             Err(e) => break format!("读取错误: {e}"),
         }
         let Ok(msg) = serde_json::from_str::<HubMessage>(line.trim()) else {
@@ -585,7 +672,7 @@ fn serve_client(stream: std::net::TcpStream) {
                         stats.pending,
                         stats.other_status,
                     );
-                    let mut last = LAST_HOOK_STATS.lock().unwrap();
+                    let mut last = LAST_HOOK_STATS.lock().unwrap_or_else(|e| e.into_inner());
                     if *last != Some(key) {
                         *last = Some(key);
                         core_log::log_debug(&format!(
@@ -619,7 +706,7 @@ fn serve_client(stream: std::net::TcpStream) {
                 ));
             }
             "eaten_report" => {
-                core_log::log_info(&format!("[hid-tap] 吃掉报告: {}", msg.message));
+                log_eaten_report(&msg.message);
             }
             "eat_mode_changed" => {
                 core_log::log_info(&format!(
@@ -677,41 +764,55 @@ fn ensure_watchdog() {
         .name("hogp-watchdog".into())
         .spawn(|| loop {
             std::thread::sleep(WATCHDOG_INTERVAL);
-            let now = Instant::now();
-            let mut expired = Vec::new();
-            {
-                if let Ok(mut guard) = ACTIVE_USAGES.lock() {
-                    if let Some(active) = guard.as_mut() {
-                        active.retain(|&usage, &mut last_seen| {
-                            // 麦克风键是 PTT：长按期间遥控器不重复发 HID 报告，
-                            // 只持续推 ATVV 音频；真正结束由 HID 松开报告或
-                            // ATVV AudioStopped 负责。若按通用超时自动释放，
-                            // 会在长按中把 Release 提前触发（Win+H 被二次按下
-                            // 导致语音输入被取消）。因此对 0x3E 禁用看门狗兜底。
-                            if usage == MIC_FALLBACK_USAGE {
-                                return true;
-                            }
-                            if now.duration_since(last_seen) > auto_release_timeout() {
-                                expired.push(usage);
-                                false
-                            } else {
-                                true
-                            }
-                        });
-                    }
-                }
-            }
-            if in_grace() {
-                continue;
-            }
-            for usage in expired {
-                core_log::log_debug(&format!(
-                    "[hid-tap] 看门狗自动释放 usage=0x{usage:04X}（松开报告丢失兜底）"
+            // 看门狗是卡键兜底的最后一道闸，绝不能被一次 panic 整体带走。
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(watchdog_tick));
+            if let Err(payload) = outcome {
+                core_log::log_error(&format!(
+                    "[hid-tap] 看门狗 panic 已隔离（继续运行）：{}",
+                    panic_payload_text(payload.as_ref())
                 ));
-                emit_usage(usage, false);
+                std::thread::sleep(Duration::from_secs(1));
             }
         })
         .ok();
+}
+
+/// 看门狗单次巡检：把超时未松开的按键补发松开。
+fn watchdog_tick() {
+    let now = Instant::now();
+    let mut expired = Vec::new();
+    {
+        let mut guard = lock_or_recover(&ACTIVE_USAGES);
+        if let Some(active) = guard.as_mut() {
+            active.retain(|&usage, &mut last_seen| {
+                // 麦克风键是 PTT：长按期间遥控器不重复发 HID 报告，
+                // 只持续推 ATVV 音频；正常结束由 HID 松开报告或
+                // ATVV AudioStopped 负责。为避免长按被 2s 看门狗提前打断，
+                // 麦克风使用专用的 10s 超时兜底（遥控器硬件推流上限约 15s），
+                // 既保障长语音连续性，又防止无线丢包导致按键永久卡死。
+                let timeout = if usage == MIC_FALLBACK_USAGE {
+                    mic_release_timeout()
+                } else {
+                    auto_release_timeout()
+                };
+                if now.duration_since(last_seen) > timeout {
+                    expired.push(usage);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+    }
+    if in_grace() {
+        return;
+    }
+    for usage in expired {
+        core_log::log_debug(&format!(
+            "[hid-tap] 看门狗自动释放 usage=0x{usage:04X}（松开报告丢失兜底）"
+        ));
+        emit_usage(usage, false);
+    }
 }
 
 fn on_ioctl_bytes(data: &[u8], eaten: bool) {
@@ -753,7 +854,7 @@ fn on_ioctl_bytes(data: &[u8], eaten: bool) {
     let mut explicitly_released = Vec::new();
 
     {
-        let mut guard = ACTIVE_USAGES.lock().unwrap();
+        let mut guard = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
         let active = guard.get_or_insert_with(HashMap::new);
 
         // 1. 如果收到了全 0 的报告（显式松开）
@@ -804,6 +905,59 @@ fn emit_usage(usage: u16, pressed: bool) {
         make_code: 0,
         pressed,
     });
+}
+
+/// 遥控器推流停止（ATVV AudioStopped）时联动释放麦克风键。
+///
+/// 正常情况下 HID 0x3E 松开报告与 AudioStopped 几乎同一毫秒到达；
+/// 若因 BLE 丢包或驱动钩子遗漏导致 HID 松开报告丢失，AudioStopped
+/// 能作为权威的硬件松手信号将麦克风键及时释放，避免修饰键或语音输入卡死。
+pub fn release_mic_on_audio_stop() {
+    let held = {
+        let mut guard = match ACTIVE_USAGES.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        guard
+            .as_mut()
+            .map(|m| m.remove(&MIC_FALLBACK_USAGE).is_some())
+            .unwrap_or(false)
+    };
+    if held {
+        core_log::log_info("[hid-tap] 收到 AudioStopped，联动释放活跃中的麦克风键 (0x3E)");
+        emit_usage(MIC_FALLBACK_USAGE, false);
+    } else {
+        // 即使旁路活跃表中没有 0x3E（例如走 Raw Input 路径或已被释放），
+        // 也向 raw_input 补发一条麦克风松开事件；调度器对未按下的按键会天然幂等忽略。
+        raw_input::emit(raw_input::RawInputEvent {
+            vkey: 116,
+            make_code: 0,
+            pressed: false,
+        });
+    }
+}
+
+/// 清空所有驱动层正在按住的按键，并向调度器补发松开事件。
+///
+/// 兜底路径专用（BLE 断链、应用退出、调度器重置）：
+/// 避免驱动层 ACTIVE_USAGES 滞留旧状态导致断链后或重连后按键错乱。
+pub fn clear_active_usages() {
+    let mut released = Vec::new();
+    if let Ok(mut guard) = ACTIVE_USAGES.lock() {
+        if let Some(active) = guard.as_mut() {
+            released.extend(active.keys().copied());
+            active.clear();
+        }
+    }
+    if !released.is_empty() {
+        core_log::log_warn(&format!(
+            "[hid-tap] 清空驱动层活跃按键并补发松开: {:?}",
+            released
+        ));
+    }
+    for usage in released {
+        emit_usage(usage, false);
+    }
 }
 
 fn hex_bytes(data: &[u8]) -> String {
@@ -1236,4 +1390,37 @@ fn elevate_and_inject(pid: u32) -> Result<bool, String> {
 #[cfg(not(windows))]
 fn elevate_and_inject(_pid: u32) -> Result<bool, String> {
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tap_active_usages_clear_and_mic_release() {
+        // 单个测试内串行验证，避免多线程并行测试竞争全局静态变量
+        {
+            let mut g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
+            let m = g.get_or_insert_with(HashMap::new);
+            m.clear();
+            m.insert(0x0052, Instant::now());
+            m.insert(MIC_FALLBACK_USAGE, Instant::now());
+        }
+
+        // 验证 release_mic_on_audio_stop 只移除麦克风键 0x3E
+        release_mic_on_audio_stop();
+        {
+            let g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
+            let m = g.as_ref().unwrap();
+            assert!(!m.contains_key(&MIC_FALLBACK_USAGE));
+            assert!(m.contains_key(&0x0052));
+        }
+
+        // 验证 clear_active_usages 清空剩余按键
+        clear_active_usages();
+        {
+            let g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(g.as_ref().map(|m| m.is_empty()).unwrap_or(true));
+        }
+    }
 }

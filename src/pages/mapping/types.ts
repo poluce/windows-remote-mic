@@ -17,6 +17,22 @@ export type TriggerOption = {
   desc: string;
 };
 
+/** 目录里的按键（含该按键允许的触发方式）。 */
+export type CatalogButton = {
+  key: string;
+  name: string;
+  triggers: string[];
+};
+
+/** 后端 `get_mapping_catalog` 下发的完整映射目录（唯一事实来源）。 */
+export type MappingCatalog = {
+  buttons: CatalogButton[];
+  triggers: TriggerOption[];
+  categories: ActionCategory[];
+  /** `config.json` 中没有任何绑定时使用的默认绑定。 */
+  default_bindings: MappingEntry[];
+};
+
 export type ActionItem = {
   key: string;
   label: string;

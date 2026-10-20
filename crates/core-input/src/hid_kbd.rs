@@ -75,6 +75,11 @@ impl ConsumerState {
             self.bits &= !bit;
         }
     }
+
+    /// 无条件清空全部媒体键位（兜底：不需要知道按住了哪些键）。
+    pub fn release_all(&mut self) {
+        self.bits = 0;
+    }
 }
 
 const MOD_LCTRL: u8 = 0x01;
@@ -267,6 +272,20 @@ impl KeyboardState {
             self.keys[5] = 0;
         }
     }
+
+    /// 无条件清空修饰键与 6 个按键槽位，回到「什么都没按」。
+    ///
+    /// 这是**兜底**用的：正常路径按 token 精确松开，但物理按键的松开事件
+    /// 可能永远收不到（BLE 断链、调度暂停、映射热更新、应用退出）。此时
+    /// 已注入的修饰键会一直按住并影响用户的**物理键盘**（例如 rctrl 卡住
+    /// 后所有按键都变成 Ctrl+），只能在报告层强制归零。
+    ///
+    /// 与逐 token 松开不同，本方法不挑 token：report 全零必然代表「全部松开」，
+    /// 多清不会清错。
+    pub fn release_all(&mut self) {
+        self.modifiers = 0;
+        self.keys = [0; 6];
+    }
 }
 
 #[cfg(test)]
@@ -318,6 +337,41 @@ mod tests {
         c.press_token("play_pause");
         assert_eq!(c.report(), [CONSUMER_PLAY_PAUSE]);
         c.release_token("play_pause");
+        assert!(c.is_empty());
+        assert_eq!(c.report(), [0]);
+    }
+
+    #[test]
+    fn keyboard_release_all_clears_modifiers_and_keys() {
+        let mut s = KeyboardState::default();
+        // 修饰键卡住 + 按键槽位占满，是「虚拟键盘卡住」最坏的情况。
+        s.press_tokens(&["rctrl", "lshift", "a", "b", "c", "d", "e", "f"])
+            .unwrap();
+        assert!(!s.is_empty());
+        s.release_all();
+        assert!(s.is_empty());
+        assert_eq!(s.report(), [0; 8]);
+    }
+
+    #[test]
+    fn keyboard_release_all_is_idempotent_and_keeps_usable() {
+        let mut s = KeyboardState::default();
+        s.press_tokens(&["lctrl"]).unwrap();
+        s.release_all();
+        s.release_all();
+        // 兜底清空之后仍要能正常继续按键，否则等于把虚拟键盘弄坏。
+        s.press_tokens(&["rctrl"]).unwrap();
+        assert_eq!(s.report(), [MOD_RCTRL, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn consumer_release_all_clears_all_bits() {
+        let mut c = ConsumerState::default();
+        c.press_token("play_pause");
+        c.press_token("next_track");
+        c.press_token("media_stop");
+        assert!(!c.is_empty());
+        c.release_all();
         assert!(c.is_empty());
         assert_eq!(c.report(), [0]);
     }

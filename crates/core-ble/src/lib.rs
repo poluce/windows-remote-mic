@@ -49,10 +49,13 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
 }
 
 #[cfg(target_os = "windows")]
+mod async_wait;
+
+#[cfg(target_os = "windows")]
 pub mod gatt;
 
 #[cfg(target_os = "windows")]
-pub use gatt::{discover_atvv, AtvvEndpoints};
+pub use gatt::{discover_atvv, is_link_connected, AtvvEndpoints, LinkWatcher};
 #[cfg(target_os = "windows")]
 mod winrt;
 

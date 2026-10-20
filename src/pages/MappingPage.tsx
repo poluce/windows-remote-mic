@@ -4,13 +4,7 @@ import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { NewProfileDialog } from "../components/NewProfileDialog";
 import { ShortcutDialog } from "../components/ShortcutDialog";
-import {
-  ACTION_CATEGORIES,
-  FALLBACK_MAPPING,
-  REMOTE_BUTTONS,
-  TRIGGER_LABEL,
-  triggersFor,
-} from "./mapping/constants";
+import { FALLBACK_CATALOG } from "./mapping/constants";
 import {
   COMBO_CATEGORY,
   CUSTOM_COMBO_ACTION,
@@ -37,10 +31,24 @@ import {
   shortcutNameFor,
   type NamedShortcut,
 } from "./mapping/shortcuts";
-import { GLOBAL_SCOPE, type AppProfileView, type MappingEntry, type ScopeId } from "./mapping/types";
+import {
+  GLOBAL_SCOPE,
+  type AppProfileView,
+  type MappingCatalog,
+  type MappingEntry,
+  type ScopeId,
+  type TriggerOption,
+} from "./mapping/types";
 
 export function MappingPage() {
-  const [mapping, setMapping] = useState<MappingEntry[]>(FALLBACK_MAPPING);
+  // 按键/触发/动作类别/默认绑定都由后端 `get_mapping_catalog` 单一来源提供；
+  // 本地 FALLBACK_CATALOG 只用于浏览器预览与后端异常降级。
+  const [catalog, setCatalog] = useState<MappingCatalog>(FALLBACK_CATALOG);
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
+  const [mapping, setMapping] = useState<MappingEntry[]>(
+    FALLBACK_CATALOG.default_bindings,
+  );
   const [profiles, setProfiles] = useState<AppProfileView[]>([]);
   const [shortcuts, setShortcuts] = useState<NamedShortcut[]>([]);
   const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
@@ -89,17 +97,64 @@ export function MappingPage() {
     setProfiles(await loadProfiles());
   }, []);
 
+  // 全局映射的唯一事实来源在后端（config.json → 调度器），保存后统一从这里重读，
+  // 前端不再自己拼一份「应该是这样」的副本。
+  const refreshMappings = useCallback(async () => {
+    const list = await invoke<MappingEntry[]>("get_mappings");
+    setMapping(list.length ? list : catalogRef.current.default_bindings);
+  }, []);
+
   useEffect(() => {
     if (!isTauri()) {
-      setMapping(FALLBACK_MAPPING);
+      setMapping(FALLBACK_CATALOG.default_bindings);
       return;
     }
-    invoke<MappingEntry[]>("get_mappings")
-      .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
-      .catch(() => setMapping(FALLBACK_MAPPING));
+    void (async () => {
+      // 先取目录（唯一事实来源），再取当前绑定；绑定为空时用目录里的默认绑定。
+      let remoteCatalog = FALLBACK_CATALOG;
+      try {
+        remoteCatalog = await invoke<MappingCatalog>("get_mapping_catalog");
+        setCatalog(remoteCatalog);
+      } catch (err) {
+        void invoke("log_message", {
+          message: `[mapping] 读取映射目录失败，使用本地兜底：${String(err)}`,
+        }).catch(() => {});
+      }
+      try {
+        const list = await invoke<MappingEntry[]>("get_mappings");
+        setMapping(
+          list.length ? list : remoteCatalog.default_bindings,
+        );
+      } catch {
+        setMapping(remoteCatalog.default_bindings);
+      }
+    })();
     refreshProfiles();
     loadShortcuts().then(setShortcuts);
-  }, [refreshProfiles]);
+  }, [refreshProfiles, refreshMappings]);
+
+  // ---- 目录派生值（唯一事实来源：catalog） ----
+  const { buttons, categories, triggers } = catalog;
+
+  /** 触发方式随按键变化：麦克风只有按下/松开，其它键只有单击/双击/长按。 */
+  const triggersFor = useCallback(
+    (button: string): TriggerOption[] => {
+      const allowed = buttons.find((b) => b.key === button)?.triggers;
+      return allowed
+        ? triggers.filter((t) => allowed.includes(t.key))
+        : triggers;
+    },
+    [buttons, triggers],
+  );
+
+  const triggerLabel = useMemo(
+    () =>
+      Object.fromEntries(triggers.map((t) => [t.key, t.label])) as Record<
+        string,
+        string
+      >,
+    [triggers],
+  );
 
   // 组合键在界面上显示名字而不是「快捷键 左Ctrl+K」。库纯粹是显示层，
   // 在这里一次性把标签换掉，矩阵和下面的保存逻辑都不用认识「自定义快捷键」。
@@ -151,13 +206,13 @@ export function MappingPage() {
       setComboTokens(combo);
       return;
     }
-    const cat = ACTION_CATEGORIES.find((c) =>
+    const cat = categories.find((c) =>
       c.actions.some((a) => a.key === actionKey)
     );
     setCategory(cat?.key || "other");
     setAction(actionKey);
     setComboTokens([]);
-  }, [globalCells, overrideCells, selected, trigger]);
+  }, [globalCells, overrideCells, selected, trigger, categories]);
 
   // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
   useEffect(() => {
@@ -165,16 +220,17 @@ export function MappingPage() {
     if (!available.some((t) => t.key === trigger)) {
       setTrigger(available[0]?.key || "single_click");
     }
-  }, [selected, trigger]);
+  }, [selected, trigger, triggersFor]);
 
   const availableTriggers = triggersFor(selected);
 
-  const selectedName = REMOTE_BUTTONS.find((b) => b.key === selected)?.name || selected;
+  const selectedName = buttons.find((b) => b.key === selected)?.name || selected;
   const actionLabel =
     category === COMBO_CATEGORY
       ? comboLabel(shortcuts, comboTokens)
-      : ACTION_CATEGORIES.find((c) => c.key === category)
-          ?.actions.find((a) => a.key === action)?.label || action;
+      : categories.find((c) => c.key === category)?.actions.find(
+          (a) => a.key === action,
+        )?.label || action;
 
   const selectedCell = cellKey(selected, trigger);
   // 这两条只用于显示（覆盖说明里的「全局是〈什么〉」），所以取带名字的那套
@@ -205,30 +261,14 @@ export function MappingPage() {
     }
     if (!isTauri()) return;
 
-    const where = `${selectedName} · ${TRIGGER_LABEL[trigger]}`;
+    const where = `${selectedName} · ${triggerLabel[trigger]}`;
     try {
       if (isGlobalScope) {
         await invoke("save_mapping", {
           edit: { button: selected, trigger, action: actionToSave },
         });
-        const entry: MappingEntry = {
-          button: selected,
-          name: selectedName,
-          trigger,
-          action: savedLabel,
-          action_key: actionToSave,
-        };
-        setMapping((prev) => {
-          const idx = prev.findIndex(
-            (m) => m.button === selected && m.trigger === trigger
-          );
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = entry;
-            return next;
-          }
-          return [...prev, entry];
-        });
+        // 后端写文件并热更新调度器后，把结果读回来当唯一事实来源。
+        await refreshMappings();
         setSaveMsg(`已保存：${where} → ${savedLabel}`);
       } else {
         await saveProfileBinding(scope, selected, trigger, actionToSave);
@@ -245,7 +285,7 @@ export function MappingPage() {
   /** 「改用全局」：只撤掉选中的这一格，这份配置的其它格子不动。 */
   async function useGlobal() {
     if (isGlobalScope) return;
-    const where = `${selectedName} · ${TRIGGER_LABEL[trigger]}`;
+    const where = `${selectedName} · ${triggerLabel[trigger]}`;
     try {
       await clearProfileBinding(scope, selected, trigger);
       await refreshProfiles();
@@ -366,7 +406,7 @@ export function MappingPage() {
               <div className="wizard-group">
                 <div className="wizard-label">动作分类</div>
                 <div className="category-tabs">
-                  {ACTION_CATEGORIES.map((c) => (
+                  {categories.map((c) => (
                     <button
                       key={c.key}
                       className={`btn small ${category === c.key ? "primary" : ""}`}
@@ -416,7 +456,7 @@ export function MappingPage() {
                   </div>
                 ) : (
                   <div className="action-grid">
-                    {ACTION_CATEGORIES.find((c) => c.key === category)?.actions.map((a) => (
+                    {categories.find((c) => c.key === category)?.actions.map((a) => (
                       <button
                         key={a.key}
                         className={`btn small ${action === a.key ? "primary" : ""}`}
@@ -461,7 +501,7 @@ export function MappingPage() {
                     ? undefined
                     : `蓝底 ＝ 这份配置改过的，其余沿用全局`
                 }
-                buttons={REMOTE_BUTTONS}
+                buttons={buttons}
                 triggers={triggersFor("ok")}
                 global={globalView}
                 override={overrideView}
