@@ -51,10 +51,17 @@ export function SettingsPage() {
     setDoubleClickMs(nextDouble);
     if (!isTauri()) return;
     try {
-      await invoke("set_trigger_timing", {
+      const saved = await invoke<{
+        long_press_ms: number;
+        double_click_ms: number;
+      }>("set_trigger_timing", {
         longPressMs: nextLong,
         doubleClickMs: nextDouble,
       });
+      // 后端会把数值夹到合法区间（200~2000 / 150~1000）：以返回值回写，
+      // 避免前端显示超范围数值、与后端实际生效值不一致。
+      setLongPressMs(saved.long_press_ms);
+      setDoubleClickMs(saved.double_click_ms);
       setMsg("");
     } catch (err) {
       setMsg(`保存失败：${err}`);

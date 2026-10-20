@@ -4,6 +4,7 @@ import {
   bridgeStateLabel,
   markConnected,
   markDisconnected,
+  useEffectiveConnected,
   tapStatusLabel,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
@@ -14,6 +15,7 @@ type BridgeStopResult = {
   message: string;
 };
 import { IconBluetooth } from "../components/icons";
+import { OUTPUT_DEVICE } from "../constants";
 
 type Rc003Device = {
   id: string;
@@ -54,8 +56,6 @@ function tapStatusTone(status: string): string {
 export function ConnectionPage() {
   const runtime = useRuntimeStatus();
   const {
-    connected,
-    bridgeStatus,
     tapStatus,
     tapMessage,
     endpointsReady,
@@ -65,6 +65,8 @@ export function ConnectionPage() {
     bridgeNextRetrySecs,
     bridgeLastError,
   } = runtime;
+  // 连接状态派生视图：等待态一定未连接（页面与 Sidebar 共用同一判断）。
+  const effectiveConnected = useEffectiveConnected();
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -149,7 +151,7 @@ export function ConnectionPage() {
       try {
         await invoke<string>("start_voice_bridge", {
           deviceId: result.device.id,
-          outputDevice: "CABLE Input",
+          outputDevice: OUTPUT_DEVICE,
         });
       } catch (bridgeErr) {
         setFeedback(`语音桥启动失败：${bridgeErr}`);
@@ -165,7 +167,7 @@ export function ConnectionPage() {
         try {
           await invoke<string>("start_voice_bridge", {
             deviceId: savedId,
-            outputDevice: "CABLE Input",
+            outputDevice: OUTPUT_DEVICE,
           });
           setFeedback(
             options?.auto
@@ -202,7 +204,7 @@ export function ConnectionPage() {
     try {
       const message = await invoke<string>("retry_voice_bridge", {
         deviceId: savedId,
-        outputDevice: "CABLE Input",
+        outputDevice: OUTPUT_DEVICE,
       });
       setFeedback(message);
     } catch (err) {
@@ -219,7 +221,7 @@ export function ConnectionPage() {
   // autoConnectTried 拦住，导致自动连接永远不生效（开发模式实测）。
   const autoConnectTried = useRef(false);
   useEffect(() => {
-    if (autoConnectTried.current || !isTauri() || connected || connecting) {
+    if (autoConnectTried.current || !isTauri() || effectiveConnected || connecting) {
       return;
     }
     autoConnectTried.current = true;
@@ -270,17 +272,13 @@ export function ConnectionPage() {
   const bridgeTone =
     bridgeState === "running"
       ? "ok"
-      : bridgeState === "failed" || bridgeStatus === "failed"
+      : bridgeState === "failed"
         ? "err"
         : "warn";
   const bridgeLabel =
     bridgeState === "waiting"
       ? "等待遥控器上线"
       : bridgeStateLabel(bridgeState, bridgeAttempt);
-  // 单一事实来源：supervisor 处于 waiting 说明链路一定不在。
-  // 即使 connected 因缓存发现/事件时序暂时为 true，也不能显示「已连接」，
-  // 否则会和「等待遥控器上线」同屏出现（实测过的矛盾状态）。
-  const effectiveConnected = connected && bridgeState !== "waiting";
 
   // 遥控器语音固件挂起的专属提示（后端在连续零数据会话后给出该文案）。
   const silentSessionHint = bridgeLastError.includes("语音固件可能挂起");

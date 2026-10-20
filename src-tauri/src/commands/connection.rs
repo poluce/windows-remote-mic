@@ -8,7 +8,6 @@ use crate::{config_store, AppState};
 #[derive(Serialize)]
 pub struct RuntimeStatus {
     pub connected: bool,
-    pub bridge_running: bool,
     pub tap_status: Option<core_hid::tap::TapStatusEvent>,
     pub endpoints_ready: bool,
     /// 最近一次语音桥状态（连接页恢复「重连中/失败」展示用）。
@@ -19,7 +18,6 @@ pub struct RuntimeStatus {
 pub fn get_runtime_status() -> RuntimeStatus {
     RuntimeStatus {
         connected: core_voice::connection_active(),
-        bridge_running: core_voice::bridge_running(),
         tap_status: core_hid::tap::last_status(),
         endpoints_ready: core_voice::atvv_endpoints_ready(),
         bridge_status: current_bridge_status(),

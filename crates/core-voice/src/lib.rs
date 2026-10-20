@@ -8,15 +8,13 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-/// ATVV 音频帧的默认长度（字节）——可能需要根据真实设备调整。
-pub const ATVV_FRAME_BYTES: usize = 120;
-
 /// 当前 ATVV/BLE 链路是否处于已连接状态。
 /// 由 [`run_bridge`] 在连接成功/断开时更新，供 UI 查询初始状态。
 static CONNECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// 当前语音桥是否处于运行状态。
-static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
+/// 当前语音桥**会话**是否处于运行状态（单次 run_bridge 生命周期）。
+/// 注意：与 `src-tauri` 里「监督线程是否存活」是两个不同的事实。
+static BRIDGE_SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// 用户请求停止当前语音桥会话（断开连接）。
 static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -34,14 +32,14 @@ pub fn set_connection_active(active: bool) {
     CONNECTION_ACTIVE.store(active, Ordering::Relaxed);
 }
 
-/// 查询当前语音桥是否运行中。
-pub fn bridge_running() -> bool {
-    BRIDGE_RUNNING.load(Ordering::Relaxed)
+/// 查询当前语音桥**会话**是否运行中。
+pub fn bridge_session_active() -> bool {
+    BRIDGE_SESSION_ACTIVE.load(Ordering::Relaxed)
 }
 
-/// 设置当前语音桥运行状态（内部使用）。
-pub fn set_bridge_running(running: bool) {
-    BRIDGE_RUNNING.store(running, Ordering::Relaxed);
+/// 设置当前语音桥会话运行状态（内部使用）。
+pub fn set_bridge_session_active(active: bool) {
+    BRIDGE_SESSION_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 /// 请求停止当前语音桥（主循环下一次超时内退出并释放 GATT）。
@@ -101,7 +99,7 @@ impl VoiceEngine {
     pub fn new() -> Self {
         Self {
             decoder: ImaAdpcmDecoder::new(),
-            assembler: AudioFrameAssembler::new(ATVV_FRAME_BYTES),
+            assembler: AudioFrameAssembler::new(core_atvv::DEFAULT_FRAME_BYTES),
             session: VoiceSession::new(),
             now_ms: 0,
         }

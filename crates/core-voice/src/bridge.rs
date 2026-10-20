@@ -95,7 +95,7 @@ impl BridgeDiag {
         let last_audio = self.last_audio_at.lock().ok().and_then(|g| *g);
         let last_mic = self.last_mic_at.lock().ok().and_then(|g| *g);
         format!(
-            "[bridge] 断链诊断: reason={reason}, 会话时长={:.1}s, 距上次控制通知={}, 距上次音频={}, 距上次麦克风事件={}, 控制包={}, 音频包={}, 语音输入中={}, bridge_running={}",
+            "[bridge] 断链诊断: reason={reason}, 会话时长={:.1}s, 距上次控制通知={}, 距上次音频={}, 距上次麦克风事件={}, 控制包={}, 音频包={}, 语音输入中={}, session_active={}",
             self.started_at.elapsed().as_secs_f32(),
             Self::age_label(last_control),
             Self::age_label(last_audio),
@@ -103,7 +103,7 @@ impl BridgeDiag {
             self.control_pkts.load(Ordering::Relaxed),
             self.audio_pkts.load(Ordering::Relaxed),
             self.voice_active.load(Ordering::Relaxed),
-            crate::bridge_running(),
+            crate::bridge_session_active(),
         )
     }
 }
@@ -118,9 +118,9 @@ where
     core_log::log_info(&format!(
         "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
     ));
-    if crate::bridge_running() {
+    if crate::bridge_session_active() {
         core_log::log_warn(
-            "[bridge] 启动时 bridge_running 已为 true（疑似并发双桥，可能争用同一 GATT 会话）",
+            "[bridge] 启动时已有语音桥会话在运行（疑似并发双桥，可能争用同一 GATT 会话）",
         );
     }
 
@@ -130,7 +130,7 @@ where
     })?;
     core_log::log_info("[bridge] ATVV 链路已连接");
     crate::set_connection_active(true);
-    crate::set_bridge_running(true);
+    crate::set_bridge_session_active(true);
     // 连接建立时连接状态事件不一定再触发（注册回调前链路已是 Connected），
     // 这里主动回调一次，保证 UI 能从「启动中」切换到「运行中」。
     on_status(true);
@@ -415,7 +415,7 @@ where
         "[bridge] 会话结束: exit_reason={exit_reason}, 即将 Drop AtvvLink（若随后看到 ble/gatt Drop 日志可对照时序）"
     ));
     crate::set_connection_active(false);
-    crate::set_bridge_running(false);
+    crate::set_bridge_session_active(false);
 
     // 留一份会话统计给外层重连循环：用于识别「链路已连接但从未收到任何
     // 控制/音频通知」的半死状态（实测遥控器语音固件挂起时会连续数小时如此）。

@@ -8,10 +8,10 @@ use crate::find_install_script;
 
 /// 已 spawn 的语音桥重连循环数（每次调用 start_voice_bridge +1，永不减）。
 static BRIDGE_LOOP_SEQ: AtomicU64 = AtomicU64::new(0);
-/// 语音桥重连循环是否正在运行（互斥：同一时刻只允许一条循环，防止并发双桥争用 GATT）。
+/// 语音桥**监督线程**是否正在运行（互斥：同一时刻只允许一条监督线程，
+/// 防止并发双桥争用 GATT）。注意：与 `core_voice::bridge_session_active()`
+/// （单次 ATVV 会话是否运行）是两个不同的事实，不要混用。
 static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
-/// 请求停止当前语音桥循环（stop_voice_bridge 置位，循环在安全点检查后退出）。
-static BRIDGE_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 /// 最近一次语音桥状态快照（供前端恢复状态 / 事件推送）。
 static BRIDGE_STATE: Mutex<Option<BridgeStatus>> = Mutex::new(None);
 /// 连续「链路通但零数据」会话计数（供诊断页展示）。
@@ -33,6 +33,12 @@ pub struct BridgeStatus {
     pub next_retry_secs: u64,
     /// 最近一次失败原因（无则空串）。
     pub last_error: String,
+    /// ATVV 端点是否已就绪（audio + control 均存在）。
+    ///
+    /// 前端不再自己维护一份「端点就绪」状态，而是随 bridge-status 快照同步，
+    /// 避免出现「页面显示未就绪、实际会话已在跑」的陈旧副本。
+    #[serde(default)]
+    pub endpoints_ready: bool,
 }
 
 impl BridgeStatus {
@@ -49,11 +55,14 @@ impl BridgeStatus {
             failures,
             next_retry_secs,
             last_error,
+            endpoints_ready: false,
         }
     }
 }
 
-fn set_bridge_status(app: &tauri::AppHandle, status: BridgeStatus) {
+fn set_bridge_status(app: &tauri::AppHandle, mut status: BridgeStatus) {
+    // ATVV 端点就绪是后端事实，统一在这一处注入快照，前端只消费不维护。
+    status.endpoints_ready = core_voice::atvv_endpoints_ready();
     if let Ok(mut guard) = BRIDGE_STATE.lock() {
         *guard = Some(status.clone());
     }
@@ -113,7 +122,6 @@ pub fn start_voice_bridge(
             core_log::log_warn("[commands/audio] 拒绝重复启动：语音桥已在运行");
             return "语音桥已在运行（请勿重复启动）".to_string();
         }
-        BRIDGE_STOP_REQUESTED.store(false, Ordering::SeqCst);
         core_voice::clear_bridge_stop_request();
         let loop_id = BRIDGE_LOOP_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
         core_log::log_info(&format!(
@@ -144,7 +152,6 @@ pub fn retry_voice_bridge(
     #[cfg(target_os = "windows")]
     {
         if BRIDGE_RUNNING.load(Ordering::SeqCst) {
-            BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
             core_voice::request_bridge_stop();
             for _ in 0..50 {
                 if !BRIDGE_RUNNING.load(Ordering::SeqCst) {
@@ -185,7 +192,7 @@ fn run_bridge_supervisor(
     // 多为可恢复，不能直接判死。这里每 5 秒重试，期间保持「等待遥控器上线」。
     let mut open_attempts: u64 = 0;
     let watcher = loop {
-        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+        if core_voice::bridge_stop_requested() {
             core_voice::set_connection_active(false);
             BRIDGE_RUNNING.store(false, Ordering::SeqCst);
             set_bridge_status(&app, BridgeStatus::new("stopped", 0, 0, 0, String::new()));
@@ -208,7 +215,7 @@ fn run_bridge_supervisor(
                     let _ = app.emit("ble-connection-status", false);
                 }
                 for _ in 0..5 {
-                    if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                    if core_voice::bridge_stop_requested() {
                         break;
                     }
                     std::thread::sleep(Duration::from_secs(1));
@@ -228,7 +235,7 @@ fn run_bridge_supervisor(
     ));
 
     'supervisor: loop {
-        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+        if core_voice::bridge_stop_requested() {
             break;
         }
 
@@ -238,7 +245,7 @@ fn run_bridge_supervisor(
                 "[commands/audio] 遥控器当前不在本机链路上，等待系统连接（期间不会抢占设备）",
             );
             loop {
-                if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+                if core_voice::bridge_stop_requested() {
                     break 'supervisor;
                 }
                 // 事件 + 轮询双保险：蓝牙无线电被关/事件丢失时，链路状态
@@ -251,7 +258,7 @@ fn run_bridge_supervisor(
                 }
             }
         }
-        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+        if core_voice::bridge_stop_requested() {
             break;
         }
 
@@ -282,7 +289,7 @@ fn run_bridge_supervisor(
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             core_voice::run_bridge(device_id, output_device, on_status)
         }));
-        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+        if core_voice::bridge_stop_requested() {
             break;
         }
 
@@ -393,7 +400,7 @@ fn run_bridge_supervisor(
         ));
         let mut slept = 0u64;
         while slept < delay {
-            if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+            if core_voice::bridge_stop_requested() {
                 break;
             }
             std::thread::sleep(Duration::from_secs(1));
@@ -418,7 +425,7 @@ fn run_bridge_supervisor(
 #[cfg(target_os = "windows")]
 fn wait_for_link_change_or_stop(watcher: &core_ble::LinkWatcher) {
     loop {
-        if BRIDGE_STOP_REQUESTED.load(Ordering::SeqCst) {
+        if core_voice::bridge_stop_requested() {
             return;
         }
         if watcher.wait_change(Duration::from_millis(500)).is_some() {
@@ -456,7 +463,6 @@ pub fn stop_voice_bridge(app: tauri::AppHandle) -> BridgeStopResult {
             message: "未在连接".to_string(),
         };
     }
-    BRIDGE_STOP_REQUESTED.store(true, Ordering::SeqCst);
     core_voice::request_bridge_stop();
     core_voice::set_connection_active(false);
     // 最长等 10s：WinRT 操作已有超时，正常会在数秒内退出。

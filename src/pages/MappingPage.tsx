@@ -89,17 +89,22 @@ export function MappingPage() {
     setProfiles(await loadProfiles());
   }, []);
 
+  // 全局映射的唯一事实来源在后端（config.json → 调度器），保存后统一从这里重读，
+  // 前端不再自己拼一份「应该是这样」的副本。
+  const refreshMappings = useCallback(async () => {
+    const list = await invoke<MappingEntry[]>("get_mappings");
+    setMapping(list.length ? list : FALLBACK_MAPPING);
+  }, []);
+
   useEffect(() => {
     if (!isTauri()) {
       setMapping(FALLBACK_MAPPING);
       return;
     }
-    invoke<MappingEntry[]>("get_mappings")
-      .then((list) => setMapping(list.length ? list : FALLBACK_MAPPING))
-      .catch(() => setMapping(FALLBACK_MAPPING));
+    refreshMappings().catch(() => setMapping(FALLBACK_MAPPING));
     refreshProfiles();
     loadShortcuts().then(setShortcuts);
-  }, [refreshProfiles]);
+  }, [refreshProfiles, refreshMappings]);
 
   // 组合键在界面上显示名字而不是「快捷键 左Ctrl+K」。库纯粹是显示层，
   // 在这里一次性把标签换掉，矩阵和下面的保存逻辑都不用认识「自定义快捷键」。
@@ -211,24 +216,8 @@ export function MappingPage() {
         await invoke("save_mapping", {
           edit: { button: selected, trigger, action: actionToSave },
         });
-        const entry: MappingEntry = {
-          button: selected,
-          name: selectedName,
-          trigger,
-          action: savedLabel,
-          action_key: actionToSave,
-        };
-        setMapping((prev) => {
-          const idx = prev.findIndex(
-            (m) => m.button === selected && m.trigger === trigger
-          );
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = entry;
-            return next;
-          }
-          return [...prev, entry];
-        });
+        // 后端写文件并热更新调度器后，把结果读回来当唯一事实来源。
+        await refreshMappings();
         setSaveMsg(`已保存：${where} → ${savedLabel}`);
       } else {
         await saveProfileBinding(scope, selected, trigger, actionToSave);

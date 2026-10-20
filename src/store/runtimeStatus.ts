@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 
-export type BridgeStatus = "idle" | "running" | "failed";
 export type TapStatus = "idle" | "attached" | "pending" | "unavailable";
 
 /** 后端语音桥的细粒度状态（重连进度 / 失败原因）。 */
@@ -21,11 +20,13 @@ export type BridgeStatusSnapshot = {
   failures: number;
   next_retry_secs: number;
   last_error: string;
+  /** ATVV 端点是否就绪（后端事实，随每次 bridge-status 快照同步）。 */
+  endpoints_ready: boolean;
 };
 
 export type RuntimeStatusState = {
+  /** 后端报告的 BLE 链路是否已连接（唯一事实来源）。 */
   connected: boolean;
-  bridgeStatus: BridgeStatus;
   tapStatus: TapStatus;
   tapMessage: string;
   endpointsReady: boolean;
@@ -44,7 +45,6 @@ type TapStatusEvent = {
 
 const initial: RuntimeStatusState = {
   connected: false,
-  bridgeStatus: "idle",
   tapStatus: "idle",
   tapMessage: "",
   endpointsReady: false,
@@ -82,6 +82,17 @@ export function useRuntimeStatus(): RuntimeStatusState {
   return useSyncExternalStore(subscribe, getRuntimeStatus);
 }
 
+/**
+ * 连接状态的**派生视图**：设备卡/Sidebar 都用它，避免各自判断。
+ *
+ * 监督线程处于 `waiting` 说明 BLE 链路一定未连接；即使 `connected`
+ * 因缓存发现/事件时序暂时为 true，也不能显示「已连接」。
+ */
+export function useEffectiveConnected(): boolean {
+  const { connected, bridgeState } = useRuntimeStatus();
+  return connected && bridgeState !== "waiting";
+}
+
 function applyTapEvent(evt: TapStatusEvent | null | undefined) {
   if (!evt) {
     setState({ tapStatus: "idle", tapMessage: "" });
@@ -110,13 +121,8 @@ function applyBridgeSnapshot(evt: BridgeStatusSnapshot | null | undefined) {
     bridgeFailures: evt.failures,
     bridgeNextRetrySecs: evt.next_retry_secs,
     bridgeLastError: evt.last_error,
-    // 让旧字段与新状态保持一致：running→running，其余非 idle 都算异常。
-    bridgeStatus:
-      evt.state === "running"
-        ? "running"
-        : evt.state === "failed"
-          ? "failed"
-          : "idle",
+    // 端点就绪状态也随语音桥状态快照同步，避免前端维护一份会过期的副本。
+    endpointsReady: evt.endpoints_ready,
   });
 }
 
@@ -143,14 +149,12 @@ export async function initRuntimeStatus() {
   try {
     const snap = await invoke<{
       connected: boolean;
-      bridge_running: boolean;
       tap_status: TapStatusEvent | null;
       endpoints_ready: boolean;
       bridge_status: BridgeStatusSnapshot | null;
     }>("get_runtime_status");
     setState({
       connected: snap.connected,
-      bridgeStatus: snap.bridge_running ? "running" : "idle",
       endpointsReady: snap.endpoints_ready,
     });
     applyTapEvent(snap.tap_status);
@@ -160,10 +164,7 @@ export async function initRuntimeStatus() {
   }
 
   await listen<boolean>("ble-connection-status", (event) => {
-    setState({
-      connected: event.payload,
-      bridgeStatus: event.payload ? "running" : "idle",
-    });
+    setState({ connected: event.payload });
   });
 
   await listen<TapStatusEvent>("hid-tap-status", (event) => {
@@ -183,7 +184,8 @@ export async function initRuntimeStatus() {
 export function markConnected(endpointsReady: boolean, linkConnected: boolean) {
   setState({
     connected: linkConnected,
-    bridgeStatus: linkConnected ? "running" : "idle",
+    // 端点是否就绪以后端 bridge-status 快照为准；连接成功时先写入本机发现结果，
+    // 后续快照会用后端事实覆盖。
     endpointsReady: linkConnected ? endpointsReady : false,
   });
 }
@@ -191,7 +193,6 @@ export function markConnected(endpointsReady: boolean, linkConnected: boolean) {
 export function markDisconnected() {
   setState({
     connected: false,
-    bridgeStatus: "idle",
     endpointsReady: false,
     bridgeState: "stopped",
     bridgeAttempt: 0,
