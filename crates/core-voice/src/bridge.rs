@@ -108,6 +108,24 @@ impl BridgeDiag {
     }
 }
 
+/// 标记会话已建立，并通知外部（UI）。
+///
+/// # 顺序很重要
+///
+/// 必须先置位「端点就绪」，再调用 `on_status(true)`。外层回调会立即生成一份
+/// `bridge-status` 快照（其中包含 `endpoints_ready`）；如果先回调后置位，
+/// 快照就会读到旧值 `false`，UI 出现「语音桥运行中 + ATVV 端点未就绪」的
+/// 自相矛盾状态（v0.6.0 实测过，用 v0.6.2 修复）。
+fn mark_session_started<F: Fn(bool)>(on_status: &F) {
+    crate::set_connection_active(true);
+    crate::set_bridge_session_active(true);
+    // ATVV 端点已由 connect_rc003 / AtvvLink::connect 发现，这里标记为就绪。
+    crate::set_atvv_endpoints_ready(true);
+    // 连接建立时连接状态事件不一定再触发（注册回调前链路已是 Connected），
+    // 这里主动回调一次，保证 UI 能从「启动中」切换到「运行中」。
+    on_status(true);
+}
+
 /// 使用真实的 ATVV 控制事件运行语音桥接。
 ///
 /// BLE 连接建立时以 `true` 调用 `on_status`，断开时以 `false` 调用。
@@ -129,13 +147,7 @@ where
         e.to_string()
     })?;
     core_log::log_info("[bridge] ATVV 链路已连接");
-    crate::set_connection_active(true);
-    crate::set_bridge_session_active(true);
-    // 连接建立时连接状态事件不一定再触发（注册回调前链路已是 Connected），
-    // 这里主动回调一次，保证 UI 能从「启动中」切换到「运行中」。
-    on_status(true);
-    // ATVV 端点已由 connect_rc003 发现并传入，这里标记为就绪。
-    crate::set_atvv_endpoints_ready(true);
+    mark_session_started(&on_status);
 
     let diag = Arc::new(BridgeDiag::new());
     let disconnected = Arc::new(AtomicBool::new(false));
@@ -431,4 +443,33 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoints_ready_is_set_before_running_callback() {
+        // 模拟一次会话建立；回调里检查 UI 快照会读到的状态。
+        crate::set_atvv_endpoints_ready(false);
+        let seen = Arc::new(AtomicBool::new(false));
+        let seen_in_cb = seen.clone();
+        mark_session_started(&move |connected: bool| {
+            assert!(connected, "running 回调必须传 true");
+            seen_in_cb.store(crate::atvv_endpoints_ready(), Ordering::SeqCst);
+            assert!(crate::connection_active(), "回调时连接状态应已置位");
+            assert!(
+                crate::bridge_session_active(),
+                "回调时语音桥会话状态应已置位"
+            );
+        });
+        assert!(
+            seen.load(Ordering::SeqCst),
+            "on_status(true) 回调发生时端点就绪标志必须已为 true（否则 UI 会显示矛盾状态）"
+        );
+        // 收尾：避免污染同进程内其他测试。
+        crate::set_connection_active(false);
+        crate::set_bridge_session_active(false);
+    }
 }
