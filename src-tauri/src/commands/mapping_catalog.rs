@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use core_mapping::{default_mapping, ActionKind, ButtonId, Trigger};
 
-use crate::{action_key, action_label, button_key, parse_action, trigger_key};
+use crate::{action_key, action_label, button_key, trigger_key};
 
 /// 一个物理按键及其允许的触发方式。
 #[derive(Debug, Clone, Serialize)]
@@ -222,6 +222,7 @@ pub fn get_mapping_catalog() -> MappingCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse_action;
     use std::collections::HashSet;
 
     #[test]

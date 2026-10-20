@@ -61,5 +61,8 @@ $setup = Get-ChildItem -Path $extract -Recurse -Filter "VBCABLE_Setup_x64.exe" |
 if (-not $setup) { throw "VBCABLE_Setup_x64.exe not found in archive" }
 
 Write-Output "Starting official installer (confirm UAC)..."
-Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Verb RunAs
-Write-Output "Installer launched. When it finishes, click Re-detect in the app."
+# The official setup is interactive (it shows its own install window and asks
+# the user to click install). VB-CABLE requires a reboot after installation.
+# Running it from our app is user-triggered, which keeps us within its EULA.
+Start-Process -FilePath $setup.FullName -Verb RunAs
+Write-Output "Official installer launched. Click install in its window, then REBOOT Windows, then re-run the check in the app."

@@ -1,11 +1,12 @@
 {
   "name": "remote-mic",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:installer": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-installer-extras.ps1",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",

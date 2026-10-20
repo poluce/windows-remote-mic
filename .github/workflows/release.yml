@@ -65,8 +65,43 @@ jobs:
           }
           Get-ChildItem $dir | Select-Object Name, Length
 
+      - name: Prepare installer extras (VB-CABLE helper scripts)
+        shell: pwsh
+        run: ./scripts/prepare-installer-extras.ps1
+
+      - name: Verify installer extras are complete
+        shell: pwsh
+        run: |
+          $dir = 'src-tauri/windows/vb-cable'
+          $required = @('install-vb-cable.ps1', 'vb-cable.sha256')
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $dir $_)) }
+          if ($missing) {
+            throw "Installer extras incomplete, missing: $($missing -join ', ')"
+          }
+          $hash = ((Get-Content (Join-Path $dir 'vb-cable.sha256') | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' }) -join '').Trim()
+          if ($hash -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "vb-cable.sha256 has no valid SHA-256 digest"
+          }
+          Get-ChildItem $dir | Select-Object Name, Length
+
       - name: Build installer
         run: npm run tauri build
+
+      - name: Verify VB-CABLE helper scripts are embedded in installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $setup) { throw "NSIS installer not found" }
+          $seven = "C:\Program Files\7-Zip\7z.exe"
+          if (-not (Test-Path $seven)) { $seven = "7z.exe" }
+          $out = Join-Path $env:RUNNER_TEMP "rm-installer-extract"
+          if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+          & $seven x $setup.FullName "-o$out" -y | Out-Null
+          foreach ($name in @('install-vb-cable.ps1', 'vb-cable.sha256')) {
+            $found = Get-ChildItem $out -Recurse -Filter $name -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $found) { throw "VB-CABLE helper '$name' is missing from installer payload" }
+            Write-Output ("embedded: " + $found.FullName)
+          }
 
       - name: Collect release artifacts and generate SHA256
         shell: pwsh

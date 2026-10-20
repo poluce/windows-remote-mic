@@ -94,7 +94,7 @@ export function DiagnosticsPage() {
       return;
     }
     setInstalling(true);
-    setInstallMsg("正在安装…请留意 UAC 弹窗确认");
+    setInstallMsg("正在下载 VB-CABLE 并启动官方安装程序…请留意 UAC 弹窗");
     try {
       const msg = await invoke<string>("install_vb_cable");
       setInstallMsg(msg);
@@ -183,8 +183,13 @@ export function DiagnosticsPage() {
         </span>
         {checked && !data.has_vb_cable && (
           <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
-            {installing ? "正在安装…" : "一键安装 VB-CABLE"}
+            {installing ? "正在下载…" : "下载并安装 VB-CABLE"}
           </button>
+        )}
+        {checked && !data.has_vb_cable && (
+          <span className="hint">
+            需网络与管理员权限；安装完成后需重启电脑，重启后点「重新检测」。
+          </span>
         )}
         {installMsg && <span className="hint vbcable-msg">{installMsg}</span>}
       </section>
