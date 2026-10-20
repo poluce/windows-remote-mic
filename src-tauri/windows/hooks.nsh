@@ -20,6 +20,12 @@
 !define VHID_SRC "${__FILEDIR__}\driver"
 !define VHID_DST "$INSTDIR\vhid"
 
+; VB-CABLE 助手脚本（不是 VB-CABLE 本体：其 EULA 禁止把它集成进别的安装流程）。
+; 用户之后在应用里点「下载并安装 VB-CABLE」时，用这里的脚本从官网下载、
+; 校验 SHA-256，再启动官方安装程序（需管理员权限，安装后需重启）。
+!define VBCABLE_SRC "${__FILEDIR__}\vb-cable"
+!define VBCABLE_DST "$INSTDIR\scripts"
+
 ; Copy the driver bundle into the install directory so the app can re-run the
 ; installer later as an in-app repair action.
 !macro RemoteMicVhidExtract
@@ -37,8 +43,16 @@
   DetailPrint "${WHAT} finished (exit $0)"
 !macroend
 
+!macro RemoteMicVbCableExtract
+  SetOutPath "${VBCABLE_DST}"
+  File /nonfatal "${VBCABLE_SRC}\install-vb-cable.ps1"
+  File /nonfatal "${VBCABLE_SRC}\vb-cable.sha256"
+  SetOutPath "$INSTDIR"
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   !insertmacro RemoteMicVhidExtract
+  !insertmacro RemoteMicVbCableExtract
   IfFileExists "${VHID_DST}\install-winuhid.ps1" 0 RemoteMicVhidSkipInstall
     !insertmacro RemoteMicVhidRunScript "install-winuhid.ps1" "Installing virtual HID keyboard driver"
   RemoteMicVhidSkipInstall:
