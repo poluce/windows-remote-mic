@@ -1,0 +1,72 @@
+/* 日志页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
+
+/* ---------- 日志预览 ---------- */
+.log-preview {
+  max-height: 300px;
+  overflow: auto;
+  padding: 12px;
+  background: #f6f8fa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 10px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+    Menlo, monospace;
+}
+
+.log-page .log-card {
+  margin-bottom: 0;
+}
+
+.log-page .log-preview {
+  max-height: calc(100vh - 240px);
+  min-height: 360px;
+}
+
+.log-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-refresh-right {
+  margin-left: auto;
+}
+
+.log-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.log-refresh-btn:hover:not(:disabled) {
+  border-color: var(--text-3);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.log-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

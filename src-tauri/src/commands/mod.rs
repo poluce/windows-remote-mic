@@ -1,5 +1,5 @@
 pub mod app_profile;
-pub mod audio;
+pub mod audio_tools;
 pub mod connection;
 pub mod diagnostics;
 pub mod log;
@@ -7,3 +7,5 @@ pub mod mapping;
 pub mod mapping_catalog;
 pub mod quick_menu;
 pub mod update;
+pub mod vb_cable;
+pub mod voice_bridge;

@@ -12,6 +12,7 @@ core-audio = { path = "../core-audio" }
 core-log = { path = "../core-log" }
 
 [dev-dependencies]
+serde_json.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 core-ble = { path = "../core-ble" }

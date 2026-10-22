@@ -43,6 +43,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 ├── src/                      # React 前端
 │   ├── App.tsx               # 主布局（无顶栏，左侧导航 + 内容区）
 │   ├── pages/                # 连接 / 按键映射 / 通用设置 / 诊断 / 日志 / 引导
+│   │   ├── connection/       # 连接页 hooks（设备动作 / 虚拟声卡下拉）
 │   │   └── mapping/          # 映射页子组件（矩阵、作用域、快捷键、校准…）
 │   ├── store/runtimeStatus.ts# 运行时状态单一事实来源（连接 / 语音桥 / 旁路）
 │   ├── store/updateStatus.ts # 更新状态单一事实来源（检查 / 下载进度 / 新版本）
@@ -55,9 +56,10 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   │   ├── driver/           # prepare-vhid-bundle.ps1 生成（gitignored，勿提交）
 │   │   └── vb-cable/         # prepare-installer-extras.ps1 生成（gitignored，勿提交）
 │   └── src/
-│       ├── lib.rs            # 启动、单实例、panic 钩子、窗口创建、调度器装配
-│       └── commands/         # connection / mapping / mapping_catalog / audio /
-│                             # diagnostics / app_profile / log / quick_menu
+│       ├── lib.rs            # 应用装配：命令注册、窗口创建、调度器装配、生命周期
+│       ├── support/          # 外壳通用支撑：路径 / 状态 / 按键兜底 / panic / 映射编解码
+│       └── commands/         # connection / mapping / mapping_catalog / voice_bridge /
+│                             # audio_tools / vb_cable / app_profile / diagnostics / log / quick_menu
 ├── crates/                   # Rust 核心库
 │   ├── core-ble              # BLE 扫描 / GATT / ATVV 服务 / LinkWatcher / wait_op
 │   ├── core-atvv             # ATVV 协议 + ADPCM 解码 + CAPS 帧长协商
@@ -65,7 +67,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-mapping          # 映射 / 触发 / 动作 / VoiceTarget 纯逻辑
 │   ├── core-dispatch         # 按键调度、应用档案匹配、运行时事件、独占输入模式
 │   ├── core-config           # 配置 JSON 原子写入 + .bak 回退
-│   ├── core-voice            # 语音桥会话（音频/控制回调、诊断、模拟链路）
+│   ├── core-voice            # 语音桥：ports（端口 trait）/ transport / sink / keys /
+│   │                         #   bridge（会话编排）/ supervisor（重连状态机）/ simulate
 │   ├── core-log              # 统一日志（分级 / 轮转 / DEBUG 开关）
 │   ├── core-stats            # 本机统计（批量写盘）
 │   ├── core-hid              # HID 捕获（Raw Input + HOGP 旁路 Frida）
@@ -109,7 +112,8 @@ npm run typecheck
 npm run build
 ```
 
-v0.7.0 基线：workspace 测试 **180** 个、app crate 测试 **8** 个。
+v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate 测试 **5** 个。
+（原 `commands/audio.rs` 的 3 个测试已随监督状态机迁到 `core-voice/supervisor.rs`。）
 
 ### 从 WSL 调用（路径按本机实际情况替换）
 
@@ -279,8 +283,25 @@ v0.7.0 基线：workspace 测试 **180** 个、app crate 测试 **8** 个。
 
 #### 6.1 事件驱动监督线程（v0.6.0 起，不再无限盲重连）
 
-- 入口：`start_voice_bridge`（`src-tauri/src/commands/audio.rs`）启动一个监督线程
-  `run_bridge_supervisor`；`retry_voice_bridge` 用于失败后手动重试；`stop_voice_bridge` 停止。
+- 入口：`start_voice_bridge`（`src-tauri/src/commands/voice_bridge.rs`，只是薄适配层）
+  启动一个监督线程；`retry_voice_bridge` 用于失败后手动重试；`stop_voice_bridge` 停止。
+- **模块边界（重要）**：
+  - 状态机与重试策略在 `crates/core-voice/src/supervisor.rs`（`run_supervisor`），
+    不依赖 Tauri，通过 `SupervisorHost` trait 向外发状态/链路事件、释放按键，可单独单测；
+  - `commands/voice_bridge.rs` 只负责：把 Tauri 事件接到 `SupervisorHost`、启停线程、
+    断开时暂停/连接时恢复按键接管；
+  - `commands/audio_tools.rs` = 诊断 / 测试音 / 语音链路模拟 / 唤出 Win+H；
+  - `commands/vb_cable.rs` = VB-CABLE 检测与一键安装（安装器相关）。
+  - 旧的 `commands/audio.rs` 已拆分删除，新增功能请按上述职责放置。
+- **端口抽象（ports）**：`core-voice/src/ports.rs` 定义 `VoiceTransport`（传输 /
+  GATT 通知 / 写 TX）、`AudioSink`（音频输出）、`KeySink`（虚拟 HID / Win+H）三个 trait；
+  真实实现分别在 `transport.rs`（ATVV）、`sink.rs`（CABLE 输出）、`keys.rs`（按键注入）。
+  `bridge` 与 `simulate` 都只依赖这组 trait，新增平台/测试假实现时不要再直接
+  调用 `core-ble` / `core-audio` / `core-hid` / `core-input` 的具体类型。
+- **`core-voice/src/bridge/` 内部拆分**：`mod.rs`（会话编排：连接 → 注册回调 →
+  输出泵 → 收尾）、`diag.rs`（断链诊断/包计数/summary）、`handlers.rs`（ATVV 音频/
+  控制通知回调：解码 / 捕获 / 诊断 / 输出通道）、`pump.rs`（输出泵：推 sink、失败重建、
+  空闲心跳、退出原因）、`report.rs`（会话统计快照）。
 - 监督线程第一步打开轻量链路监视器 `core_ble::LinkWatcher`：
   **只监听 `ConnectionStatusChanged`，不打开任何 GATT 服务**，避免抢设备。
 - 状态机（`BridgeStatus.state`，前端 `BridgeState` 同名字段）：
@@ -443,11 +464,20 @@ v0.7.0 基线：workspace 测试 **180** 个、app crate 测试 **8** 个。
 ## 约定与注意事项
 
 - **UI 全部使用简体中文。**
+- **前端结构与样式**：页面样式放 `src/pages/<Page>.css`（随页面组件按需加载），
+  共享的布局 / 表单 / 控件样式留在 `src/App.css`；页面逻辑复杂时抽成
+  `src/pages/<page>/use*.ts` hooks（参考 `pages/connection/useConnectionActions.ts`、
+  `useVbCableDriver.ts`），页面组件只负责渲染。拆分样式时保持规则原文不动，
+  用「拆分前后规则集合一致」做回归检查（本次 260 条规则一致、无跨文件重复选择器）。
 - **crate 边界**：
   - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
   - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
   - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
+    内部再分：`lib.rs`（触发判定 / 调度状态机）、`executor.rs`（动作执行线程）、`tests.rs`；
+    新增「动作怎么执行」放 executor，新增「何时触发」放 lib。
+  - `src-tauri/src/support/` 只放与 Tauri 生命周期无关的通用支撑（路径 / 状态 / 按键兜底 /
+    panic / 映射编解码）；命令、窗口、调度器装配留在 `lib.rs`。
   - 日志统一以 `core-log` 为唯一出口；`core-input` 现有的 `log_*` 薄封装仅为兼容旧调用，新代码不要再增加包装。
 - **单一事实来源**：运行时状态、端点就绪、输出设备、映射目录都以 §3 列出的后端字段 / 常量为准，
   前端不要再造副本。
@@ -463,15 +493,23 @@ v0.7.0 基线：workspace 测试 **180** 个、app crate 测试 **8** 个。
 
 ## 分支 / PR / 提交规范
 
-- 分支策略：
+- 分支策略（**一个会话 = 一个分支 = 一个正在开发的功能**）：
    - `main` 为受保护主干，始终应保持可构建、可运行。
-   - 功能 / 修复 / 文档从 `main` 切分支，命名如 `feat/xxx`、`fix/xxx`、`docs/xxx`、`chore/xxx`。
-   - 完成并通过本地验证后，通过 Pull Request 合入 `main`（文档改动也走 PR）。
+   - 每次开始一个新任务 / 新功能 / 一次集中重构，从 `main` 切**一个**长期分支，
+     命名如 `feat/xxx`、`fix/xxx`、`docs/xxx`、`refactor/xxx`；这个会话（任务）里的所有相关改动
+     （代码、文档、测试、验证记录）都提交到**这一个**分支上，最后只开**一个** PR。
+   - 不要把同一个任务拆成多个并行分支或栈式 PR；子任务在分支内用普通提交表达。
+   - 确实要同时开发两个互不相关的功能时，另开会话/分支；一个分支同一时间只做一件事。
+   - 完成并通过本地验证后，通过 Pull Request 提交审核（文档改动也走 PR）。
 - PR 要求：
-   - 标题简明，说明改动内容。
+   - 标题简明，概括这个分支（会话）的完整改动。
    - 描述关联的 issue / 任务项（如有）。
    - 必须通过 CI：前端 typecheck / build、Rust fmt / clippy / test、Tauri check。
    - 涉及 UI 改动时附上改动说明或截图。
+- **合并必须经用户明确批准**：
+   - PR 只代表「开发完成、等待审核」，**不得自动合并**；
+   - 只有用户明确说「合并 / 合入 / 可以合」后，才执行 `gh pr merge`；
+   - 合并后删除该会话分支；发版 / 打 tag 同理，必须用户明确要求才执行。
 - 提交信息规范（Conventional Commits 风格）：
   - `feat: 新功能`
   - `fix: 修复问题`

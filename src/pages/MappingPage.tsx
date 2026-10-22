@@ -39,6 +39,7 @@ import {
   type ScopeId,
   type TriggerOption,
 } from "./mapping/types";
+import "./MappingPage.css";
 
 export function MappingPage() {
   // 按键/触发/动作类别/默认绑定都由后端 `get_mapping_catalog` 单一来源提供；

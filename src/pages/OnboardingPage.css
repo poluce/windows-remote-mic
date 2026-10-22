@@ -1,0 +1,46 @@
+/* 引导页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
+
+/* ---------- 引导 ---------- */
+.onboarding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: step;
+}
+
+.onboarding-list li {
+  display: flex;
+  gap: 14px;
+  padding: 13px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.onboarding-list li:last-child {
+  border-bottom: none;
+}
+
+.step-no {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.step-detail {
+  color: var(--text-3);
+  font-size: 13px;
+  margin-top: 2px;
+}
