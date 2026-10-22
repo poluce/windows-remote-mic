@@ -293,8 +293,12 @@ npm run build
 - **端口抽象（ports）**：`core-voice/src/ports.rs` 定义 `VoiceTransport`（传输 /
   GATT 通知 / 写 TX）、`AudioSink`（音频输出）、`KeySink`（虚拟 HID / Win+H）三个 trait；
   真实实现分别在 `transport.rs`（ATVV）、`sink.rs`（CABLE 输出）、`keys.rs`（按键注入）。
-  `bridge.rs` 与 `simulate.rs` 都只依赖这组 trait，新增平台/测试假实现时不要再直接
+  `bridge` 与 `simulate` 都只依赖这组 trait，新增平台/测试假实现时不要再直接
   调用 `core-ble` / `core-audio` / `core-hid` / `core-input` 的具体类型。
+- **`core-voice/src/bridge/` 内部拆分**：`mod.rs`（会话编排：连接 → 注册回调 →
+  输出泵 → 收尾）、`diag.rs`（断链诊断/包计数/summary）、`handlers.rs`（ATVV 音频/
+  控制通知回调：解码 / 捕获 / 诊断 / 输出通道）、`pump.rs`（输出泵：推 sink、失败重建、
+  空闲心跳、退出原因）、`report.rs`（会话统计快照）。
 - 监督线程第一步打开轻量链路监视器 `core_ble::LinkWatcher`：
   **只监听 `ConnectionStatusChanged`，不打开任何 GATT 服务**，避免抢设备。
 - 状态机（`BridgeStatus.state`，前端 `BridgeState` 同名字段）：
