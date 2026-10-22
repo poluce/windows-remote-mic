@@ -1,12 +1,13 @@
 //! 仅 Windows 的模拟语音链路：无需真实遥控器。
 
 use core_atvv::protocol::ControlEvent;
-use core_input::{press_escape, press_win_h};
 use serde::Serialize;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
+use crate::keys::system_key_sink;
+use crate::sink::open_sink;
 use crate::VoiceEngine;
 
 /// PowerShell TTS 脚本：将一段中文短语合成为 WAV 文件。
@@ -70,7 +71,7 @@ pub fn simulate_voice_chain(
         })
         .unwrap_or_else(|| "TTS中文语音".to_string());
 
-    core_input::log_line(&format!(
+    core_log::log_line(&format!(
         "[simulate] start: device={}, audio={}, sample_rate={}, pcm_samples={}, duration_ms={}",
         output_device,
         audio_name,
@@ -86,7 +87,7 @@ pub fn simulate_voice_chain(
         .map(|e| e.name.clone())
         .collect();
     let default_input = core_audio::endpoint::default_input_name();
-    core_input::log_line(&format!(
+    core_log::log_line(&format!(
         "[simulate] diagnostics: has_vb_cable={}, cable_input={}, cable_output={}, default_input={:?}, input_endpoints={:?}",
         diag.has_vb_cable,
         diag.cable_input_present,
@@ -95,8 +96,12 @@ pub fn simulate_voice_chain(
         input_names
     ));
 
-    let sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| e.to_string())?;
-    core_input::log_debug("[simulate] audio sink created");
+    let sink = open_sink(output_device)?;
+    core_log::log_debug(&format!(
+        "[simulate] audio sink created: {}",
+        sink.format_label()
+    ));
+    let key_sink = system_key_sink();
 
     let mut engine = VoiceEngine::new();
     engine
@@ -104,23 +109,23 @@ pub fn simulate_voice_chain(
         .map_err(|e| e.to_string())?;
 
     // 先关闭可能残留的语音输入，让 Win+H 从已知状态启动。
-    let _ = press_escape();
+    let _ = key_sink.press_escape();
     std::thread::sleep(std::time::Duration::from_millis(150));
 
-    core_input::log_line("[simulate] Win+H start");
-    press_win_h().map_err(|e| e.to_string())?;
+    core_log::log_line("[simulate] Win+H start");
+    key_sink.press_win_h()?;
     // 播放音频前，给 Windows 语音输入一点时间准备就绪。
     std::thread::sleep(std::time::Duration::from_millis(400));
 
     let chunk = engine.feed_pcm(&samples);
-    core_input::log_line(&format!(
+    core_log::log_line(&format!(
         "[simulate] pushed output samples={}, pcm_samples={}",
         chunk.output_samples, chunk.pcm_samples
     ));
     sink.push(&chunk.output);
 
     // 让 sink 播完语音样本。
-    core_input::log_debug(&format!(
+    core_log::log_debug(&format!(
         "[simulate] sleeping {} ms for playback",
         duration_ms + 300
     ));
@@ -129,10 +134,10 @@ pub fn simulate_voice_chain(
     engine
         .on_control(ControlEvent::StreamStop)
         .map_err(|e| e.to_string())?;
-    core_input::log_line("[simulate] close voice typing (Escape)");
-    press_escape().map_err(|e| e.to_string())?;
+    core_log::log_line("[simulate] close voice typing (Escape)");
+    key_sink.press_escape()?;
 
-    core_input::log_line("[simulate] done");
+    core_log::log_line("[simulate] done");
     Ok(SimulatedVoiceResult {
         frames: chunk.complete_frames,
         pcm_samples: chunk.pcm_samples,

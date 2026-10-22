@@ -252,8 +252,20 @@ mod tests {
     }
 }
 
+/// 语音桥端口（传输 / 音频输出 / 按键注入）抽象。
+pub mod ports;
+
 /// 语音桥监督状态机（与 Tauri/平台解耦，可单测）。
 pub mod supervisor;
+
+#[cfg(target_os = "windows")]
+pub mod keys;
+
+#[cfg(target_os = "windows")]
+pub mod sink;
+
+#[cfg(target_os = "windows")]
+pub mod transport;
 
 #[cfg(target_os = "windows")]
 pub mod bridge;

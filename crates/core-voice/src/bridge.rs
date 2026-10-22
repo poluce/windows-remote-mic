@@ -1,4 +1,9 @@
 //! 仅 Windows 的真实设备桥接：BLE -> 解码 -> CABLE 输出 -> Win+H。
+//!
+//! 依赖的是 [`crate::ports`] 里的抽象端口（传输 / 音频输出 / 按键注入），
+//! 真实实现见 [`crate::transport`] / [`crate::sink`] / [`crate::keys`]。
+//! 这样桥接编排不再直接耦合 `core-ble` / `core-audio` / `core-hid` / `core-input`
+//! 的具体类型，模拟链路也能复用同一组接口。
 
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -8,8 +13,11 @@ use std::time::{Duration, Instant};
 
 use core_atvv::protocol::{parse_control, ControlEvent, RawControlEvent, GET_CAPABILITIES_V10};
 use core_ble::capture::CaptureRecorder;
-use core_ble::gatt::AtvvLink;
 
+use crate::keys::system_key_sink;
+use crate::ports::{AudioSink, KeySink, VoiceTransport};
+use crate::sink::open_sink;
+use crate::transport::AtvvTransport;
 use crate::VoiceEngine;
 
 /// 单次语音桥会话结束时留存的统计（供外层重连循环做健康判断）。
@@ -142,10 +150,13 @@ where
         );
     }
 
-    let link = AtvvLink::connect(device_id).map_err(|e| {
-        core_log::log_error(&format!("[bridge] 连接 ATVV 链路失败: {e}"));
-        e.to_string()
-    })?;
+    // 传输 / 按键 / 音频输出都通过端口 trait 使用真实实现。
+    let transport: Box<dyn VoiceTransport> =
+        Box::new(AtvvTransport::connect(device_id).map_err(|e| {
+            core_log::log_error(&format!("[bridge] 连接 ATVV 链路失败: {e}"));
+            e
+        })?);
+    let key_sink: Arc<dyn KeySink> = Arc::from(system_key_sink());
     core_log::log_info("[bridge] ATVV 链路已连接");
     mark_session_started(&on_status);
 
@@ -153,60 +164,60 @@ where
     let disconnected = Arc::new(AtomicBool::new(false));
     let disconnected_cb = disconnected.clone();
     let diag_cb = diag.clone();
-    link.register_connection_status_changed(move |connected| {
-        let msg = if connected {
-            "connected"
-        } else {
-            "disconnected"
-        };
-        core_log::log_line(&format!("[bridge] BLE 连接状态变化: {msg}"));
-        crate::set_connection_active(connected);
-        if !connected {
-            // 先打诊断再置位，确保主循环退出日志能读到同一快照语境。
-            core_log::log_info(&diag_cb.summary("winrt_ConnectionStatusChanged"));
-            disconnected_cb.store(true, Ordering::SeqCst);
-            // 蓝牙断链瞬间立即清空驱动层活跃按键并重置虚拟 HID，防止修饰键残留
-            core_hid::tap::clear_active_usages();
-            core_input::release_all_keys();
-        }
-        on_status(connected);
-    })
-    .map_err(|e| e.to_string())?;
+    let key_sink_conn = key_sink.clone();
+    transport
+        .register_connection_handler(Box::new(move |connected| {
+            let msg = if connected {
+                "connected"
+            } else {
+                "disconnected"
+            };
+            core_log::log_line(&format!("[bridge] BLE 连接状态变化: {msg}"));
+            crate::set_connection_active(connected);
+            if !connected {
+                // 先打诊断再置位，确保主循环退出日志能读到同一快照语境。
+                core_log::log_info(&diag_cb.summary("winrt_ConnectionStatusChanged"));
+                disconnected_cb.store(true, Ordering::SeqCst);
+                // 蓝牙断链瞬间立即清空驱动层活跃按键并重置虚拟 HID，防止修饰键残留
+                key_sink_conn.clear_active_usages();
+                key_sink_conn.release_all_keys();
+            }
+            on_status(connected);
+        }))
+        .map_err(|e| e.to_string())?;
     core_log::log_info("[bridge] BLE 连接状态监听已注册");
 
-    link.enable_audio_notifications().map_err(|e| {
+    transport.enable_audio_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] 启用音频通知失败: {e}"));
-        e.to_string()
+        e
     })?;
     core_log::log_info("[bridge] 音频通知已启用");
 
-    link.enable_control_notifications().map_err(|e| {
+    transport.enable_control_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] 启用控制通知失败: {e}"));
-        e.to_string()
+        e
     })?;
     core_log::log_info("[bridge] 控制通知已启用");
 
-    link.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
+    transport.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
         core_log::log_error(&format!(
             "[bridge] 发送能力查询（GET_CAPABILITIES_V10）失败: {e}"
         ));
-        e.to_string()
+        e
     })?;
     core_log::log_info("[bridge] 已向遥控器发送能力查询（GET_CAPABILITIES_V10）");
 
     // ATVV 通知已生效。仅在此时启动可选的 Back/Volume 轻触注入，
     // 以免 HOGP 注入在特征设置期间抢占 GATT 会话。
-    core_hid::tap::start_after_atvv();
+    key_sink.start_after_atvv();
 
-    let mut sink = core_audio::sink::AudioSink::new(Some(output_device)).map_err(|e| {
+    let mut sink: Box<dyn AudioSink> = open_sink(output_device).map_err(|e| {
         core_log::log_error(&format!("[bridge] 初始化音频输出（AudioSink）失败: {e}"));
-        e.to_string()
+        e
     })?;
     core_log::log_info(&format!(
-        "[bridge] 音频输出（AudioSink）已初始化：{output_device}（{}Hz/{}ch/{:?}）",
-        sink.sample_rate(),
-        sink.channels(),
-        sink.sample_format()
+        "[bridge] 音频输出（AudioSink）已初始化：{output_device}（{}）",
+        sink.format_label()
     ));
 
     let capture_dir = std::env::var("LOCALAPPDATA")
@@ -224,8 +235,8 @@ where
     // 之前从不推进，导致所有基于时间的门控实际失效。
     let feed_clock = Arc::new(Mutex::new(Instant::now()));
     let feed_clock_audio = feed_clock.clone();
-    let _audio_cookie = link
-        .register_audio_handler(move |bytes| {
+    let _audio_cookie = transport
+        .register_audio_handler(Box::new(move |bytes| {
             diag_audio.touch_audio();
             capture_audio.record("audio", &bytes);
             let mut eng = match engine_cb.lock() {
@@ -247,10 +258,10 @@ where
                 ));
                 let _ = frame_tx.send(chunk.output);
             }
-        })
+        }))
         .map_err(|e| {
             core_log::log_error(&format!("[bridge] 注册音频回调失败: {e}"));
-            e.to_string()
+            e
         })?;
     core_log::log_info("[bridge] 音频回调已注册");
 
@@ -258,8 +269,9 @@ where
     let capture_ctrl = capture.clone();
     let is_active_ctrl = is_active.clone();
     let diag_ctrl = diag.clone();
-    let _control_cookie = link
-        .register_control_handler(move |bytes| {
+    let key_sink_ctrl = key_sink.clone();
+    let _control_cookie = transport
+        .register_control_handler(Box::new(move |bytes| {
             diag_ctrl.touch_control();
             capture_ctrl.record("control", &bytes);
             core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
@@ -279,7 +291,7 @@ where
                         caps.version, caps.codecs, caps.frame_size, caps.sample_rate_hz
                     ));
                     if caps.sample_rate_hz != core_atvv::protocol::REMOTE_SAMPLE_RATE_HZ {
-                        core_input::log_warn(&format!(
+                        core_log::log_warn(&format!(
                             "[bridge] 不支持的 ATVV 采样率: {}",
                             caps.sample_rate_hz
                         ));
@@ -311,7 +323,7 @@ where
                         if *active {
                             *active = false;
                             diag_ctrl.set_voice_active(false);
-                            core_input::log_line(
+                            core_log::log_line(
                                 "[bridge] 遥控器 AudioStopped -> 停止解码（语音条保持打开）",
                             );
                             let _ = eng.on_control(ControlEvent::StreamStop);
@@ -319,14 +331,14 @@ where
                     }
                     // 联动释放麦克风按键：遥控器已停止推流（硬件已松手）。
                     // 若真实 HID 松开报告因无线丢包丢失，AudioStopped 兜底补发释放。
-                    core_hid::tap::release_mic_on_audio_stop();
+                    key_sink_ctrl.release_mic_on_audio_stop();
                 }
                 RawControlEvent::AudioSynced { .. } => {
                     // TODO: 将 predictor/step_index 提供给解码器以重新同步。
                 }
                 RawControlEvent::Unknown(_) => {}
             }
-        })
+        }))
         .map_err(|e| e.to_string())?;
 
     // 主循环：保持链路存活，并将解码后的帧推送到 sink。
@@ -367,7 +379,7 @@ where
                         .unwrap_or(true);
                     if due {
                         last_sink_recover = Some(Instant::now());
-                        match core_audio::sink::AudioSink::new(Some(output_device)) {
+                        match open_sink(output_device) {
                             Ok(new_sink) => {
                                 sink = new_sink;
                                 audio_stream_warned = false;
@@ -385,7 +397,7 @@ where
                 // 事件兜底：WinRT 的 ConnectionStatusChanged 偶尔不送达
                 // （蓝牙无线电被关、驱动卡住等）。每 30s 主动读一次链路状态，
                 // 避免会话永远挂在「以为还连着」的状态里。
-                if idle_ticks.is_multiple_of(15) && !link.is_connected() {
+                if idle_ticks.is_multiple_of(15) && !transport.is_connected() {
                     exit_reason = "winrt_status_poll_disconnected";
                     core_log::log_warn(
                         "[bridge] 链路状态轮询发现已断开（未收到状态事件），停止会话",

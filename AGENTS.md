@@ -65,7 +65,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-mapping          # 映射 / 触发 / 动作 / VoiceTarget 纯逻辑
 │   ├── core-dispatch         # 按键调度、应用档案匹配、运行时事件、独占输入模式
 │   ├── core-config           # 配置 JSON 原子写入 + .bak 回退
-│   ├── core-voice            # 语音桥会话（音频/控制回调、诊断、模拟链路）
+│   ├── core-voice            # 语音桥：ports（端口 trait）/ transport / sink / keys /
+│   │                         #   bridge（会话编排）/ supervisor（重连状态机）/ simulate
 │   ├── core-log              # 统一日志（分级 / 轮转 / DEBUG 开关）
 │   ├── core-stats            # 本机统计（批量写盘）
 │   ├── core-hid              # HID 捕获（Raw Input + HOGP 旁路 Frida）
@@ -289,6 +290,11 @@ npm run build
   - `commands/audio_tools.rs` = 诊断 / 测试音 / 语音链路模拟 / 唤出 Win+H；
   - `commands/vb_cable.rs` = VB-CABLE 检测与一键安装（安装器相关）。
   - 旧的 `commands/audio.rs` 已拆分删除，新增功能请按上述职责放置。
+- **端口抽象（ports）**：`core-voice/src/ports.rs` 定义 `VoiceTransport`（传输 /
+  GATT 通知 / 写 TX）、`AudioSink`（音频输出）、`KeySink`（虚拟 HID / Win+H）三个 trait；
+  真实实现分别在 `transport.rs`（ATVV）、`sink.rs`（CABLE 输出）、`keys.rs`（按键注入）。
+  `bridge.rs` 与 `simulate.rs` 都只依赖这组 trait，新增平台/测试假实现时不要再直接
+  调用 `core-ble` / `core-audio` / `core-hid` / `core-input` 的具体类型。
 - 监督线程第一步打开轻量链路监视器 `core_ble::LinkWatcher`：
   **只监听 `ConnectionStatusChanged`，不打开任何 GATT 服务**，避免抢设备。
 - 状态机（`BridgeStatus.state`，前端 `BridgeState` 同名字段）：
