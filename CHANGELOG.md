@@ -34,6 +34,39 @@
   - 说明与限制见 `docs/项目/自动更新.md`。**旧版本（0.6.2 及更早）需手动安装一次带更新功能的版本**，
     之后才能走自动更新。
 
+### 重构
+- 语音桥监督状态机（等链路/重试/失败等待/静默会话）从 Tauri 命令层下沉到
+  `core-voice/src/supervisor.rs`，通过 `SupervisorHost` trait 与 UI 解耦，可脱离 Tauri 单测；
+- `commands/audio.rs` 按职责拆分为 `voice_bridge`（启停与事件适配）、`audio_tools`（诊断/
+  测试音/模拟/Win+H）、`vb_cable`（虚拟声卡检测与安装）；
+- `core-voice` 新增端口抽象 `ports`（`VoiceTransport` / `AudioSink` / `KeySink`）及
+  `transport` / `sink` / `keys` 真实实现，`bridge` 与 `simulate` 共用同一组接口；
+- `core-voice/src/bridge.rs` 拆分为 `bridge/{mod,diag,handlers,pump,report}.rs`；
+- 前端 `ConnectionPage` 逻辑抽到 `pages/connection/useConnectionActions.ts` /
+  `useVbCableDriver.ts`，`App.css` 按页面拆分为 6 个页面样式文件（规则集合保持一致）；
+- `core-dispatch/src/lib.rs` 拆分：动作执行线程移到 `executor.rs`、内联测试移到 `tests.rs`，
+  触发判定与动作执行分离（lib.rs 1807 → 812 行，对外 API 不变）；
+- `src-tauri/src/lib.rs` 拆分：路径 / 状态 / 按键兜底 / panic / 映射编解码移到 `support/`，
+  lib.rs 只保留应用装配（683 → 377 行）；
+- `core-voice/src/simulate.rs` 拆分为 `simulate/{mod,tts,wav,resample}.rs`：
+  语音合成 / WAV 解析 / 重采样与链路编排各自独立；
+- `src-tauri/src/commands/connection.rs` 拆分为 `connection/{status,device,prefs,system}.rs`：
+  运行时状态 / 设备连接 / 用户偏好 / 系统集成四类命令分开；
+- `src-tauri/src/commands/app_profile.rs` 拆分为 `app_profile/{menu,editor}.rs`：
+  快捷菜单与窗口聚焦/启动 / 映射编辑器 CRUD 分开（360 → menu 150 + editor 210 行）；
+- `core-hid/src/tap.rs` 拆分为 `tap/{config,hub,inject,runtime,status,watchdog}.rs`：
+  配置与路径 / IPC 通信与分发 / 注入提权 / 启动生命周期 / 状态上报 / 看门狗与按住状态跟踪分开（tap.rs 1426 → 24 行）；
+- `core-app-profile/src/lib.rs` 拆分为 `seeds.rs`（种子管理）、`store.rs`（磁盘原子读写）、`registry.rs`（内存匹配）、`tests.rs`（单元测试），lib.rs 885 → 63 行；
+- `core-mapping/src/lib.rs` 拆分为 `combo.rs`（组合快捷键规范化与解析）、`config.rs`（映射配置结构与默认表）、`tests.rs`（单元测试），lib.rs 653 → 205 行；
+- `core-input/src/vhid.rs` 拆分为 `vhid.rs`（驱动动态加载与报告提交，852 → 430 行）、`vhid/diag.rs`（Secure Boot / HVCI 探测与环境建议）、`vhid/tests.rs`；
+- `core-ble/src/gatt.rs` 拆分出 `watcher.rs`（轻量链路监视器与快速连接检查，gatt.rs 667 → 601 行）；
+- 前端 `MappingPage.tsx` 拆分：业务状态与应用配置/快捷键逻辑抽为 `useMappingEditor.ts`，遥控器尺寸动态自适应抽为 `useRemoteZoom.ts`（MappingPage.tsx 549 → 252 行）；
+- 无用户可见行为变化。
+
+### 文档
+- TODO 移除「本地统计页」条目（保留 `core-stats` 后台统计能力）；
+- AGENTS.md 规范「一个会话 = 一个分支 = 一个功能」，合并 / 发版必须经用户明确批准。
+
 ## [0.6.2] - 2026-10-20
 
 ### 变更

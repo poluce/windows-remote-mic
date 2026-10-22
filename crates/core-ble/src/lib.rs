@@ -55,7 +55,12 @@ mod async_wait;
 pub mod gatt;
 
 #[cfg(target_os = "windows")]
-pub use gatt::{discover_atvv, is_link_connected, AtvvEndpoints, LinkWatcher};
+pub mod watcher;
+
+#[cfg(target_os = "windows")]
+pub use gatt::{discover_atvv, AtvvEndpoints};
+#[cfg(target_os = "windows")]
+pub use watcher::{is_link_connected, LinkWatcher};
 #[cfg(target_os = "windows")]
 mod winrt;
 

@@ -1,361 +1,65 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useRef } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { NewProfileDialog } from "../components/NewProfileDialog";
 import { ShortcutDialog } from "../components/ShortcutDialog";
-import { FALLBACK_CATALOG } from "./mapping/constants";
-import {
-  COMBO_CATEGORY,
-  CUSTOM_COMBO_ACTION,
-  formatComboDisplay,
-  parseComboActionKey,
-  toComboActionKey,
-} from "./mapping/combo";
-import { cellKey, toCellMap } from "./mapping/cells";
 import { MappingMatrix } from "./mapping/MappingMatrix";
-import { ScopeBar, type ScopeItem } from "./mapping/ScopeBar";
-import {
-  clearProfileBinding,
-  createProfile as createProfileRequest,
-  deleteProfile,
-  loadProfiles,
-  saveProfileBinding,
-} from "./mapping/profile";
-import {
-  comboLabel,
-  deleteShortcut,
-  keysId,
-  loadShortcuts,
-  saveShortcut,
-  shortcutNameFor,
-  type NamedShortcut,
-} from "./mapping/shortcuts";
-import {
-  GLOBAL_SCOPE,
-  type AppProfileView,
-  type MappingCatalog,
-  type MappingEntry,
-  type ScopeId,
-  type TriggerOption,
-} from "./mapping/types";
+import { ScopeBar } from "./mapping/ScopeBar";
+import { COMBO_CATEGORY, formatComboDisplay } from "./mapping/combo";
+import { keysId } from "./mapping/shortcuts";
+import { useRemoteZoom } from "./mapping/useRemoteZoom";
+import { useMappingEditor } from "./mapping/useMappingEditor";
+
+import "./MappingPage.css";
 
 export function MappingPage() {
-  // 按键/触发/动作类别/默认绑定都由后端 `get_mapping_catalog` 单一来源提供；
-  // 本地 FALLBACK_CATALOG 只用于浏览器预览与后端异常降级。
-  const [catalog, setCatalog] = useState<MappingCatalog>(FALLBACK_CATALOG);
-  const catalogRef = useRef(catalog);
-  catalogRef.current = catalog;
-  const [mapping, setMapping] = useState<MappingEntry[]>(
-    FALLBACK_CATALOG.default_bindings,
-  );
-  const [profiles, setProfiles] = useState<AppProfileView[]>([]);
-  const [shortcuts, setShortcuts] = useState<NamedShortcut[]>([]);
-  const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
-  const [selected, setSelected] = useState("ok");
-  const [trigger, setTrigger] = useState("single_click");
-  const [category, setCategory] = useState("system");
-  const [action, setAction] = useState("return");
-  const [comboTokens, setComboTokens] = useState<string[]>([]);
   const remoteArtRef = useRef<HTMLDivElement | null>(null);
-  const [saveMsg, setSaveMsg] = useState("");
-  const [newOpen, setNewOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<AppProfileView | null>(null);
-  /** 快捷键对话框：`editing` 为 null 表示新建。 */
-  const [shortcutDialog, setShortcutDialog] = useState<{
-    open: boolean;
-    editing: NamedShortcut | null;
-  }>({ open: false, editing: null });
+  useRemoteZoom(remoteArtRef);
 
-  /**
-   * 遥控器图形按卡片剩下的高度缩放。
-   *
-   * 它是定尺寸的像素图（105×345，内部全是绝对定位的按键），没法用百分比或
-   * flex 压缩，只能整体 zoom。而它默认放大 1.3 倍后有 448px 高——**这是整页
-   * 704px 底线的来源**：窗口一矮，卡片压不下去，滚动条就出来了。
-   *
-   * 所以量出 `.remote-art` 实际分到多高，反推 zoom。这样窗口怎么拉都不会把
-   * 遥控器挤出去，也不会让它把整页顶高。
-   */
-  useEffect(() => {
-    const box = remoteArtRef.current;
-    if (!box) return;
-    const BASE_HEIGHT = 345; // 遥控器未缩放的原始高度，见 Xiaomi2ProRemote.css
-    const apply = () => {
-      const zoom = Math.min(1.3, Math.max(0.4, box.clientHeight / BASE_HEIGHT));
-      box.style.setProperty("--remote-zoom", zoom.toFixed(3));
-    };
-    // 先同步量一次：只靠 ResizeObserver 的话，第一帧之前遥控器一直是
-    // 未缩放的 448px，会先闪一下、也可能正好卡在「量不到」的状态。
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, []);
+  const {
+    catalog,
+    shortcuts,
+    scope,
+    setScope,
+    scopeItems,
+    isGlobalScope,
+    selected,
+    setSelected,
+    selectedName,
+    trigger,
+    setTrigger,
+    availableTriggers,
+    matrixTriggers,
+    category,
+    setCategory,
+    action,
+    setAction,
+    comboTokens,
+    setComboTokens,
+    saveMsg,
+    save,
+    useGlobal,
+    selectedOverride,
+    selectedGlobal,
+    activeProfile,
+    globalView,
+    overrideView,
+    newOpen,
+    setNewOpen,
+    handleCreate,
+    pendingDelete,
+    setPendingDelete,
+    handleDelete,
+    shortcutDialog,
+    setShortcutDialog,
+    handleSaveShortcut,
+    handleDeleteShortcut,
+    onRemoveScope,
+  } = useMappingEditor();
 
-  const refreshProfiles = useCallback(async () => {
-    setProfiles(await loadProfiles());
-  }, []);
-
-  // 全局映射的唯一事实来源在后端（config.json → 调度器），保存后统一从这里重读，
-  // 前端不再自己拼一份「应该是这样」的副本。
-  const refreshMappings = useCallback(async () => {
-    const list = await invoke<MappingEntry[]>("get_mappings");
-    setMapping(list.length ? list : catalogRef.current.default_bindings);
-  }, []);
-
-  useEffect(() => {
-    if (!isTauri()) {
-      setMapping(FALLBACK_CATALOG.default_bindings);
-      return;
-    }
-    void (async () => {
-      // 先取目录（唯一事实来源），再取当前绑定；绑定为空时用目录里的默认绑定。
-      let remoteCatalog = FALLBACK_CATALOG;
-      try {
-        remoteCatalog = await invoke<MappingCatalog>("get_mapping_catalog");
-        setCatalog(remoteCatalog);
-      } catch (err) {
-        void invoke("log_message", {
-          message: `[mapping] 读取映射目录失败，使用本地兜底：${String(err)}`,
-        }).catch(() => {});
-      }
-      try {
-        const list = await invoke<MappingEntry[]>("get_mappings");
-        setMapping(
-          list.length ? list : remoteCatalog.default_bindings,
-        );
-      } catch {
-        setMapping(remoteCatalog.default_bindings);
-      }
-    })();
-    refreshProfiles();
-    loadShortcuts().then(setShortcuts);
-  }, [refreshProfiles, refreshMappings]);
-
-  // ---- 目录派生值（唯一事实来源：catalog） ----
-  const { buttons, categories, triggers } = catalog;
-
-  /** 触发方式随按键变化：麦克风只有按下/松开，其它键只有单击/双击/长按。 */
-  const triggersFor = useCallback(
-    (button: string): TriggerOption[] => {
-      const allowed = buttons.find((b) => b.key === button)?.triggers;
-      return allowed
-        ? triggers.filter((t) => allowed.includes(t.key))
-        : triggers;
-    },
-    [buttons, triggers],
-  );
-
-  const triggerLabel = useMemo(
-    () =>
-      Object.fromEntries(triggers.map((t) => [t.key, t.label])) as Record<
-        string,
-        string
-      >,
-    [triggers],
-  );
-
-  // 组合键在界面上显示名字而不是「快捷键 左Ctrl+K」。库纯粹是显示层，
-  // 在这里一次性把标签换掉，矩阵和下面的保存逻辑都不用认识「自定义快捷键」。
-  const withNames = useCallback(
-    (entries: MappingEntry[]) =>
-      entries.map((e) => ({
-        ...e,
-        action: shortcutNameFor(shortcuts, e.action_key) ?? e.action,
-      })),
-    [shortcuts],
-  );
-
-  const activeProfile = profiles.find((p) => p.id === scope);
-
-  /*
-   * 两套 Map，刻意分开：
-   *
-   * - **逻辑用**（下面这对，不带名字）：判断「这一格真正生效的是哪条绑定」。
-   * - **显示用**（View 那对）：把组合键换成自定义名字。
-   *
-   * 混用会造成一个很隐蔽的 bug：withNames 依赖 shortcuts，库一变这两个 Map
-   * 就是新对象，下面那个同步 effect 会跟着重跑，按当前格子的绑定把分类重置
-   * 回「系统」——于是在自定义分类里新建完一条快捷键，那一栏立刻被切走，
-   * 刚建的东西你看不到也选不上。名字是显示层，不该影响「哪条绑定生效」。
-   */
-  const globalCells = useMemo(() => toCellMap(mapping), [mapping]);
-  const overrideCells = useMemo(
-    () => toCellMap(activeProfile?.bindings ?? []),
-    [activeProfile],
-  );
-  const globalView = useMemo(() => toCellMap(withNames(mapping)), [mapping, withNames]);
-  const overrideView = useMemo(
-    () => toCellMap(withNames(activeProfile?.bindings ?? [])),
-    [activeProfile, withNames],
-  );
-
-  // 选中按键或切换触发方式时，向导自动载入**当前作用范围下真正生效**的那条绑定：
-  // 先问这份应用配置有没有覆盖，没有才落到全局。和调度器的解析顺序一致，
-  // 否则界面上显示的动作和实际按下去发生的会对不上。
-  useEffect(() => {
-    const binding =
-      overrideCells.get(cellKey(selected, trigger)) ??
-      globalCells.get(cellKey(selected, trigger));
-    const actionKey = binding?.action_key || "disabled";
-    const combo = parseComboActionKey(actionKey);
-    if (combo) {
-      setCategory(COMBO_CATEGORY);
-      setAction(CUSTOM_COMBO_ACTION);
-      setComboTokens(combo);
-      return;
-    }
-    const cat = categories.find((c) =>
-      c.actions.some((a) => a.key === actionKey)
-    );
-    setCategory(cat?.key || "other");
-    setAction(actionKey);
-    setComboTokens([]);
-  }, [globalCells, overrideCells, selected, trigger, categories]);
-
-  // 触发方式随按键切换：麦克风只有按下/松开，其它键只有单击/双击/长按。
-  useEffect(() => {
-    const available = triggersFor(selected);
-    if (!available.some((t) => t.key === trigger)) {
-      setTrigger(available[0]?.key || "single_click");
-    }
-  }, [selected, trigger, triggersFor]);
-
-  const availableTriggers = triggersFor(selected);
-
-  const selectedName = buttons.find((b) => b.key === selected)?.name || selected;
-  const actionLabel =
-    category === COMBO_CATEGORY
-      ? comboLabel(shortcuts, comboTokens)
-      : categories.find((c) => c.key === category)?.actions.find(
-          (a) => a.key === action,
-        )?.label || action;
-
-  const selectedCell = cellKey(selected, trigger);
-  // 这两条只用于显示（覆盖说明里的「全局是〈什么〉」），所以取带名字的那套
-  const selectedOverride = overrideView.get(selectedCell);
-  const selectedGlobal = globalView.get(selectedCell);
-  const isGlobalScope = scope === GLOBAL_SCOPE;
-
-  const scopeItems: ScopeItem[] = [
-    { id: GLOBAL_SCOPE, label: "全局", removable: false },
-    ...profiles.map((p) => ({
-      id: p.id,
-      label: p.name,
-      color: p.icon_color ?? undefined,
-      removable: true,
-    })),
-  ];
-
-  async function save() {
-    let actionToSave = action;
-    let savedLabel = actionLabel;
-    if (category === COMBO_CATEGORY) {
-      if (!comboTokens.length) {
-        setSaveMsg("请先选一个自定义快捷键，或用「+ 新建快捷键」建一个");
-        return;
-      }
-      actionToSave = toComboActionKey(comboTokens);
-      savedLabel = comboLabel(shortcuts, comboTokens);
-    }
-    if (!isTauri()) return;
-
-    const where = `${selectedName} · ${triggerLabel[trigger]}`;
-    try {
-      if (isGlobalScope) {
-        await invoke("save_mapping", {
-          edit: { button: selected, trigger, action: actionToSave },
-        });
-        // 后端写文件并热更新调度器后，把结果读回来当唯一事实来源。
-        await refreshMappings();
-        setSaveMsg(`已保存：${where} → ${savedLabel}`);
-      } else {
-        await saveProfileBinding(scope, selected, trigger, actionToSave);
-        // 后端写完文件并重载了调度器，这里把它的结果读回来当唯一事实来源，
-        // 不在前端自己拼一份「应该是这样」的副本。
-        await refreshProfiles();
-        setSaveMsg(`已保存到「${activeProfile?.name}」：${where} → ${savedLabel}`);
-      }
-    } catch (err) {
-      setSaveMsg(`保存失败: ${err}`);
-    }
-  }
-
-  /** 「改用全局」：只撤掉选中的这一格，这份配置的其它格子不动。 */
-  async function useGlobal() {
-    if (isGlobalScope) return;
-    const where = `${selectedName} · ${triggerLabel[trigger]}`;
-    try {
-      await clearProfileBinding(scope, selected, trigger);
-      await refreshProfiles();
-      setSaveMsg(`「${where}」已改回沿用全局`);
-    } catch (err) {
-      setSaveMsg(`取消失败: ${err}`);
-    }
-  }
-
-  async function handleCreate(name: string, process: string, title: string) {
-    setNewOpen(false);
-    try {
-      const id = await createProfileRequest(name, process, title);
-      await refreshProfiles();
-      setScope(id);
-      setSaveMsg("已新建这份配置，改过的按键会自动覆盖全局");
-    } catch (err) {
-      setSaveMsg(`新建失败: ${err}`);
-    }
-  }
-
-  async function handleDelete() {
-    const target = pendingDelete;
-    setPendingDelete(null);
-    if (!target) return;
-    try {
-      await deleteProfile(target.id);
-      await refreshProfiles();
-      // 删掉的正好是当前正在看的那一份，就退回全局。
-      if (scope === target.id) setScope(GLOBAL_SCOPE);
-      setSaveMsg(`已删除「${target.name}」的配置，它的按键回到全局`);
-    } catch (err) {
-      setSaveMsg(`删除失败: ${err}`);
-    }
-  }
-
-  /**
-   * 存一条自定义快捷键。
-   *
-   * 编辑已有条目时**改了按键就等于换了一条**（keys 是身份）：先把旧的那条删掉
-   * 再存新的，否则会留下一条没人用的孤儿。只改名字则 keys 不变，后端按 keys
-   * 就地更新。
-   */
-  async function handleSaveShortcut(name: string, keys: string[]) {
-    const editing = shortcutDialog.editing;
-    setShortcutDialog({ open: false, editing: null });
-    try {
-      if (editing && keysId(editing.keys) !== keysId(keys)) {
-        await deleteShortcut(editing.keys);
-      }
-      setShortcuts(await saveShortcut(name, keys));
-      // 存完就把这一条选上——用户建它就是为了用它。
-      setCategory(COMBO_CATEGORY);
-      setAction(CUSTOM_COMBO_ACTION);
-      setComboTokens(keys);
-      setSaveMsg(`已保存快捷键「${name}」，再点「保存」绑给这个键`);
-    } catch (err) {
-      setSaveMsg(`保存快捷键失败: ${err}`);
-    }
-  }
-
-  async function handleDeleteShortcut(keys: string[]) {
-    setShortcutDialog({ open: false, editing: null });
-    try {
-      setShortcuts(await deleteShortcut(keys));
-      setSaveMsg("已删掉这条命名。已经绑上它的按键不受影响，只是不再显示名字");
-    } catch (err) {
-      setSaveMsg(`删除快捷键失败: ${err}`);
-    }
-  }
+  const { buttons, categories } = catalog;
 
   return (
     <div className="page page-fill">
@@ -366,9 +70,7 @@ export function MappingPage() {
           items={scopeItems}
           active={scope}
           onSelect={setScope}
-          onRemove={(item) =>
-            setPendingDelete(profiles.find((p) => p.id === item.id) ?? null)
-          }
+          onRemove={onRemoveScope}
           onNew={() => setNewOpen(true)}
         />
       </section>
@@ -387,109 +89,111 @@ export function MappingPage() {
             <div className="merged-col">
               {/* 上半：按钮墙，窄了就在这里自己滚 */}
               <div className="wizard-scroll">
-              <div className="wizard-group">
-                <div className="wizard-label">触发方式</div>
-                <div className="trigger-options">
-                  {availableTriggers.map((t) => (
-                    <button
-                      key={t.key}
-                      className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
-                      title={t.desc}
-                      onClick={() => setTrigger(t.key)}
-                    >
-                      <span className="trigger-name">{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="wizard-group">
-                <div className="wizard-label">动作分类</div>
-                <div className="category-tabs">
-                  {categories.map((c) => (
-                    <button
-                      key={c.key}
-                      className={`btn small ${category === c.key ? "primary" : ""}`}
-                      onClick={() => {
-                        setCategory(c.key);
-                        setAction(c.actions[0]?.key || "disabled");
-                        if (c.key !== COMBO_CATEGORY) setComboTokens([]);
-                      }}
-                    >
-                      {c.title}
-                    </button>
-                  ))}
-                </div>
-                {category === COMBO_CATEGORY ? (
-                  <div className="shortcut-grid">
-                    {shortcuts.map((sc) => (
-                      <span className="shortcut-item" key={keysId(sc.keys)}>
-                        <button
-                          type="button"
-                          className={`shortcut-btn${keysId(sc.keys) === keysId(comboTokens) ? " active" : ""}`}
-                          onClick={() => setComboTokens(sc.keys)}
-                        >
-                          <span className="shortcut-name">{sc.name}</span>
-                          <span className="shortcut-keys">{formatComboDisplay(sc.keys)}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="shortcut-edit"
-                          title="改名 / 删除"
-                          aria-label={`编辑「${sc.name}」`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShortcutDialog({ open: true, editing: sc });
-                          }}
-                        >
-                          ✎
-                        </button>
-                      </span>
-                    ))}
-                    <button
-                      type="button"
-                      className="shortcut-btn add"
-                      onClick={() => setShortcutDialog({ open: true, editing: null })}
-                    >
-                      <span className="shortcut-name">+ 新建快捷键</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="action-grid">
-                    {categories.find((c) => c.key === category)?.actions.map((a) => (
+                <div className="wizard-group">
+                  <div className="wizard-label">触发方式</div>
+                  <div className="trigger-options">
+                    {availableTriggers.map((t) => (
                       <button
-                        key={a.key}
-                        className={`btn small ${action === a.key ? "primary" : ""}`}
-                        onClick={() => setAction(a.key)}
+                        key={t.key}
+                        className={`trigger-btn ${trigger === t.key ? "active" : ""}`}
+                        title={t.desc}
+                        onClick={() => setTrigger(t.key)}
                       >
-                        {a.label}
+                        <span className="trigger-name">{t.label}</span>
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+
+                <div className="wizard-group">
+                  <div className="wizard-label">动作分类</div>
+                  <div className="category-tabs">
+                    {categories.map((c) => (
+                      <button
+                        key={c.key}
+                        className={`btn small ${category === c.key ? "primary" : ""}`}
+                        onClick={() => {
+                          setCategory(c.key);
+                          setAction(c.actions[0]?.key || "disabled");
+                          if (c.key !== COMBO_CATEGORY) setComboTokens([]);
+                        }}
+                      >
+                        {c.title}
+                      </button>
+                    ))}
+                  </div>
+                  {category === COMBO_CATEGORY ? (
+                    <div className="shortcut-grid">
+                      {shortcuts.map((sc) => (
+                        <span className="shortcut-item" key={keysId(sc.keys)}>
+                          <button
+                            type="button"
+                            className={`shortcut-btn${keysId(sc.keys) === keysId(comboTokens) ? " active" : ""}`}
+                            onClick={() => setComboTokens(sc.keys)}
+                          >
+                            <span className="shortcut-name">{sc.name}</span>
+                            <span className="shortcut-keys">{formatComboDisplay(sc.keys)}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="shortcut-edit"
+                            title="改名 / 删除"
+                            aria-label={`编辑「${sc.name}」`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShortcutDialog({ open: true, editing: sc });
+                            }}
+                          >
+                            ✎
+                          </button>
+                        </span>
+                      ))}
+                      <button
+                        type="button"
+                        className="shortcut-btn add"
+                        onClick={() => setShortcutDialog({ open: true, editing: null })}
+                      >
+                        <span className="shortcut-name">+ 新建快捷键</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="action-grid">
+                      {categories
+                        .find((c) => c.key === category)
+                        ?.actions.map((a) => (
+                          <button
+                            key={a.key}
+                            className={`btn small ${action === a.key ? "primary" : ""}`}
+                            onClick={() => setAction(a.key)}
+                          >
+                            {a.label}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 下半：覆盖说明与保存钉在这一栏底部，按钮墙再长也够得着 */}
               <div className="wizard-foot">
-              {selectedOverride && (
-                <p className="hint override-note">
-                  这一格已改成「{selectedOverride.action}」，全局是「
-                  {selectedGlobal?.action ?? "未绑定"}」。
-                </p>
-              )}
-
-              <div className="actions">
-                <button className="btn primary" onClick={save} disabled={!isTauri()}>
-                  {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
-                </button>
-                {!isGlobalScope && selectedOverride && (
-                  <button className="btn" onClick={useGlobal}>
-                    改用全局
-                  </button>
+                {selectedOverride && (
+                  <p className="hint override-note">
+                    这一格已改成「{selectedOverride.action}」，全局是「
+                    {selectedGlobal?.action ?? "未绑定"}」。
+                  </p>
                 )}
-              </div>
-              {saveMsg && <p className="hint">{saveMsg}</p>}
+
+                <div className="actions">
+                  <button className="btn primary" onClick={save} disabled={!isTauri()}>
+                    {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
+                  </button>
+                  {!isGlobalScope && selectedOverride && (
+                    <button className="btn" onClick={useGlobal}>
+                      改用全局
+                    </button>
+                  )}
+                </div>
+                {saveMsg && <p className="hint">{saveMsg}</p>}
               </div>
             </div>
 
@@ -502,7 +206,7 @@ export function MappingPage() {
                     : `蓝底 ＝ 这份配置改过的，其余沿用全局`
                 }
                 buttons={buttons}
-                triggers={triggersFor("ok")}
+                triggers={matrixTriggers}
                 global={globalView}
                 override={overrideView}
                 selected={{ button: selected, trigger }}

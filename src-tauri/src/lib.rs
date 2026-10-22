@@ -3,50 +3,23 @@
 
 mod commands;
 
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+mod support;
 
-use serde::Serialize;
+pub(crate) use support::codec::{
+    action_key, action_label, button_key, config_store, load_app_profiles, parse_action,
+    parse_button, parse_trigger, trigger_key, MappingEdit, MappingEntry,
+};
+pub(crate) use support::keys::{force_release_held_keys, KeyEmitDedup};
+pub(crate) use support::panic::install_panic_hook;
+pub(crate) use support::paths::find_install_script;
+pub(crate) use support::state::AppState;
+
+use std::sync::Arc;
+
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use core_atvv::ImaAdpcmDecoder;
 use core_dispatch::{AppEvent, KeyDispatcher};
-use core_mapping::{ActionKind, ButtonId, Trigger};
-
-#[cfg(target_os = "windows")]
-fn find_install_script() -> Option<std::path::PathBuf> {
-    fn ancestors(start: std::path::PathBuf, max: usize) -> Vec<std::path::PathBuf> {
-        let mut out = Vec::new();
-        let mut cur = start;
-        for _ in 0..max {
-            out.push(cur.clone());
-            if !cur.pop() {
-                break;
-            }
-        }
-        out
-    }
-
-    let mut starts = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        starts.push(cwd);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(p) = exe.parent() {
-            starts.push(p.to_path_buf());
-        }
-    }
-
-    for start in starts {
-        for dir in ancestors(start, 8) {
-            let cand = dir.join("scripts").join("install-vb-cable.ps1");
-            if cand.exists() {
-                return Some(cand);
-            }
-        }
-    }
-    None
-}
 
 /// 用于验证前端 <-> 后端桥接是否正常工作的简单命令。
 #[tauri::command]
@@ -72,285 +45,6 @@ fn app_version(app: tauri::AppHandle) -> String {
 fn prepare_for_update_exit(app: tauri::AppHandle) {
     core_log::log_info("[app] 准备退出并安装更新，强制释放按键");
     force_release_held_keys(&app, "安装更新");
-}
-
-/// 共享给 Tauri 命令的运行时状态：按键调度器。
-pub struct AppState {
-    pub dispatcher: Arc<KeyDispatcher>,
-}
-
-/// 兜底释放：先让调度器补发「按住未松开」的快捷键松开事件，
-/// 再清空虚拟 HID 里所有残留的按住状态。
-///
-/// 用于任何「松开事件再也到不了」的路径：语音桥会话结束（BLE 断链）、应用退出。
-/// 虚拟 HID（WinUHid）的按住状态只活在进程内，一旦没人松开就会一直按在系统上，
-/// 用户的**物理键盘**会跟着变成 Ctrl+ 组合键（实测卡死过 rctrl）。
-/// 多松一次只是无害的冗余报告，少松一次就是全局卡键，所以这里宁可过度释放。
-pub(crate) fn force_release_held_keys(app: &tauri::AppHandle, reason: &str) -> usize {
-    #[cfg(target_os = "windows")]
-    core_hid::tap::clear_active_usages();
-    let released = match app.try_state::<AppState>() {
-        Some(state) => state.dispatcher.release_all_held(reason),
-        None => 0,
-    };
-    let cleared = core_input::release_all_keys();
-    if released > 0 || cleared {
-        core_log::log_warn(&format!(
-            "[app] 兜底释放按键（{reason}）：补发松开 {released} 个，虚拟 HID 残留={cleared}"
-        ));
-    }
-    released + usize::from(cleared)
-}
-
-/// 短窗口去重：同一虚拟键的按下/松开若在 40ms 内被钩子与 Raw Input
-/// 各投递一次，只向前端发一条，避免测试器矩阵翻倍计数。
-struct KeyEmitDedup {
-    last: Mutex<Option<(u32, bool, Instant)>>,
-}
-
-impl KeyEmitDedup {
-    fn new() -> Self {
-        Self {
-            last: Mutex::new(None),
-        }
-    }
-
-    fn take(&self, vkey: u32, pressed: bool) -> bool {
-        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        if let Some((vk, p, t)) = *last {
-            if vk == vkey && p == pressed && now.duration_since(t) < Duration::from_millis(40) {
-                return false;
-            }
-        }
-        *last = Some((vkey, pressed, now));
-        true
-    }
-}
-
-/// 面向前端展示的映射条目。
-#[derive(Serialize)]
-struct MappingEntry {
-    button: String,
-    name: String,
-    trigger: String,
-    action: String,
-    action_key: String,
-}
-
-/// 持久化设置的辅助函数。
-fn config_store() -> Option<core_config::ConfigStore> {
-    let base = std::env::var("LOCALAPPDATA").ok()?;
-    core_config::ConfigStore::new(std::path::Path::new(&base).join("RemoteMic/RC003")).ok()
-}
-
-/// 加载应用专属按键配置：**先播种，再读目录**。
-///
-/// 配置只有一个来源——`<配置目录>/app-profiles/*.json`。仓库根 `profiles/*.json`
-/// 是编译进来的种子，只在还没有同名文件时落地一次；落地之后磁盘上的文件就是
-/// 唯一事实来源，程序不再覆盖它（所以用户删掉的配置不会在下次启动时复活）。
-fn load_app_profiles() -> core_app_profile::ProfileRegistry {
-    let Some(store) = config_store() else {
-        core_log::log_warn("[app-profile] 拿不到配置目录，本次没有任何应用配置");
-        return core_app_profile::ProfileRegistry::default();
-    };
-    let written = core_app_profile::seed_user_dir(&store.dir);
-    if written > 0 {
-        core_log::log_line(&format!("[app-profile] 首次落地了 {written} 份种子配置"));
-    }
-    core_app_profile::ProfileRegistry::load(Some(
-        &store.dir.join(core_app_profile::USER_PROFILE_DIR),
-    ))
-}
-
-/// 来自设置界面的映射编辑数据。
-#[derive(serde::Deserialize)]
-struct MappingEdit {
-    button: String,
-    trigger: String,
-    action: String,
-}
-
-fn parse_button(s: &str) -> Option<ButtonId> {
-    match s {
-        "power" => Some(ButtonId::Power),
-        "up" => Some(ButtonId::Up),
-        "down" => Some(ButtonId::Down),
-        "left" => Some(ButtonId::Left),
-        "right" => Some(ButtonId::Right),
-        "ok" => Some(ButtonId::Ok),
-        "back" => Some(ButtonId::Back),
-        "home" => Some(ButtonId::Home),
-        "menu" => Some(ButtonId::Menu),
-        "tv" => Some(ButtonId::Tv),
-        "volume_up" => Some(ButtonId::VolumeUp),
-        "volume_down" => Some(ButtonId::VolumeDown),
-        "mic" => Some(ButtonId::Mic),
-        _ => None,
-    }
-}
-
-fn parse_trigger(s: &str) -> Option<Trigger> {
-    match s {
-        "single_click" => Some(Trigger::SingleClick),
-        "double_click" => Some(Trigger::DoubleClick),
-        "long_press" => Some(Trigger::LongPress),
-        "press" => Some(Trigger::Press),
-        "release" => Some(Trigger::Release),
-        _ => None,
-    }
-}
-
-fn parse_action(s: &str) -> Option<ActionKind> {
-    use ActionKind as A;
-    if let Some(tokens) = core_mapping::parse_combo_action_key(s) {
-        return Some(A::KeyCombo(tokens));
-    }
-    Some(match s {
-        "disabled" => A::Disabled,
-        "escape" => A::Escape,
-        "return" => A::Return,
-        "arrow_up" => A::ArrowUp,
-        "arrow_down" => A::ArrowDown,
-        "arrow_left" => A::ArrowLeft,
-        "arrow_right" => A::ArrowRight,
-        "delete_backward" => A::DeleteBackward,
-        "show_desktop" => A::ShowDesktop,
-        "context_menu" => A::ContextMenu,
-        "app_switcher" => A::AppSwitcher,
-        "system_volume_up" => A::SystemVolumeUp,
-        "system_volume_down" => A::SystemVolumeDown,
-        "system_volume_mute" => A::SystemVolumeMute,
-        "play_pause" => A::PlayPause,
-        "voice" => A::Voice,
-        "focus_input" => A::FocusInput,
-        "focus_input_or_submit" => A::FocusInputOrSubmit,
-        "toggle_quick_menu" => A::ToggleQuickMenu,
-        _ => return None,
-    })
-}
-
-/// 前端使用的稳定小写按键标识。
-fn button_key(button: &ButtonId) -> String {
-    button.key().to_string()
-}
-
-/// 前端使用的稳定小写触发方式标识。
-fn trigger_key(trigger: &Trigger) -> String {
-    match trigger {
-        Trigger::SingleClick => "single_click",
-        Trigger::DoubleClick => "double_click",
-        Trigger::LongPress => "long_press",
-        Trigger::Press => "press",
-        Trigger::Release => "release",
-    }
-    .to_string()
-}
-
-/// 前端动作选择器使用的稳定动作标识。
-fn action_key(action: &ActionKind) -> String {
-    match action {
-        ActionKind::KeyCombo(keys) => return core_mapping::combo_action_key(keys),
-        ActionKind::Disabled => "disabled",
-        ActionKind::Escape => "escape",
-        ActionKind::Return => "return",
-        ActionKind::ArrowUp => "arrow_up",
-        ActionKind::ArrowDown => "arrow_down",
-        ActionKind::ArrowLeft => "arrow_left",
-        ActionKind::ArrowRight => "arrow_right",
-        ActionKind::DeleteBackward => "delete_backward",
-        ActionKind::ShowDesktop => "show_desktop",
-        ActionKind::ContextMenu => "context_menu",
-        ActionKind::AppSwitcher => "app_switcher",
-        ActionKind::SystemVolumeUp => "system_volume_up",
-        ActionKind::SystemVolumeDown => "system_volume_down",
-        ActionKind::SystemVolumeMute => "system_volume_mute",
-        ActionKind::PlayPause => "play_pause",
-        ActionKind::Voice => "voice",
-        ActionKind::FocusInput => "focus_input",
-        ActionKind::FocusInputOrSubmit => "focus_input_or_submit",
-        ActionKind::OpenApp(_) => "open_app",
-        ActionKind::ToggleQuickMenu => "toggle_quick_menu",
-    }
-    .to_string()
-}
-
-fn action_label(action: &ActionKind) -> String {
-    match action {
-        ActionKind::Disabled => "禁用".into(),
-        ActionKind::KeyCombo(keys) => format!("快捷键 {}", core_mapping::combo_display(keys)),
-        ActionKind::Escape => "取消（Esc）".into(),
-        ActionKind::Return => "回车（Enter）".into(),
-        ActionKind::ArrowUp => "↑".into(),
-        ActionKind::ArrowDown => "↓".into(),
-        ActionKind::ArrowLeft => "←".into(),
-        ActionKind::ArrowRight => "→".into(),
-        ActionKind::DeleteBackward => "删除（退格）".into(),
-        ActionKind::ShowDesktop => "显示桌面（Win+D）".into(),
-        ActionKind::ContextMenu => "右键菜单（上下文菜单）".into(),
-        ActionKind::AppSwitcher => "切换应用（Alt+Tab）".into(),
-        ActionKind::SystemVolumeUp => "音量 +".into(),
-        ActionKind::SystemVolumeDown => "音量 −".into(),
-        ActionKind::SystemVolumeMute => "静音".into(),
-        ActionKind::PlayPause => "播放/暂停".into(),
-        ActionKind::Voice => "语音输入".into(),
-        ActionKind::FocusInput => "聚焦输入框".into(),
-        ActionKind::FocusInputOrSubmit => "聚焦输入框 / 回车".into(),
-        ActionKind::OpenApp(name) => format!("打开应用：{name}"),
-        ActionKind::ToggleQuickMenu => "快捷菜单（开/关）".into(),
-    }
-}
-
-/// 直接把崩溃信息追加到 `panic.log`。
-///
-/// 这里刻意不走 `core_log`：如果 panic 恰好发生在日志锁内部，再调日志会死锁，
-/// 崩溃现场就永远写不出来了。
-fn write_panic_log(text: &str) {
-    let base = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let dir = std::path::Path::new(&base).join("RemoteMic/RC003");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("panic.log");
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        use std::io::Write;
-        let _ = writeln!(file, "[{ts}] {text}");
-    }
-}
-
-/// 全局 panic 兜底：
-/// 1. 记录崩溃位置与原因（panic.log）；
-/// 2. 异步补发一次「全部松开」，避免 panic 时按住的虚拟键残留（应用被 abort /
-///    退出兜底路径来不及执行时，这是最后一道保险）。
-fn install_panic_hook() {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let payload = info.payload();
-        let text = payload
-            .downcast_ref::<&str>()
-            .map(|s| (*s).to_string())
-            .or_else(|| payload.downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "未知 panic".to_string());
-        let location = info
-            .location()
-            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
-            .unwrap_or_else(|| "unknown".to_string());
-        write_panic_log(&format!("panic at {location}: {text}"));
-
-        // 独立线程里做释放：panic 现场可能正持有某把锁，重入会死锁。
-        std::thread::spawn(|| {
-            core_hid::tap::clear_active_usages();
-            core_input::release_all_keys();
-        });
-
-        default_hook(info);
-    }));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -620,18 +314,18 @@ pub fn run() {
             prepare_for_update_exit,
             commands::update::get_last_update_check_at,
             commands::update::set_last_update_check_at,
-            commands::connection::scan_for_rc003,
-            commands::connection::connect_rc003,
-            commands::connection::get_runtime_status,
-            commands::connection::get_saved_device_id,
-            commands::connection::save_selected_device,
-            commands::connection::get_hid_tap_eat,
-            commands::connection::set_hid_tap_eat,
-            commands::connection::open_system_settings,
-            commands::connection::get_voice_target,
-            commands::connection::set_voice_target,
-            commands::connection::restart_app,
-            commands::connection::install_vhid_driver,
+            commands::connection::device::scan_for_rc003,
+            commands::connection::device::connect_rc003,
+            commands::connection::status::get_runtime_status,
+            commands::connection::device::get_saved_device_id,
+            commands::connection::device::save_selected_device,
+            commands::connection::prefs::get_hid_tap_eat,
+            commands::connection::prefs::set_hid_tap_eat,
+            commands::connection::system::open_system_settings,
+            commands::connection::prefs::get_voice_target,
+            commands::connection::prefs::set_voice_target,
+            commands::connection::system::restart_app,
+            commands::connection::system::install_vhid_driver,
             commands::log::log_message,
             commands::log::get_log_info,
             commands::log::read_log_tail,
@@ -649,25 +343,25 @@ pub fn run() {
             commands::mapping::get_shortcuts,
             commands::mapping::save_shortcut,
             commands::mapping::delete_shortcut,
-            commands::audio::start_voice_bridge,
-            commands::audio::stop_voice_bridge,
-            commands::audio::retry_voice_bridge,
-            commands::audio::simulate_voice_chain,
-            commands::audio::vb_cable_status,
-            commands::audio::install_vb_cable,
-            commands::audio::audio_diagnostics,
-            commands::audio::play_test_tone_loop,
-            commands::audio::trigger_voice_typing,
+            commands::voice_bridge::start_voice_bridge,
+            commands::voice_bridge::stop_voice_bridge,
+            commands::voice_bridge::retry_voice_bridge,
+            commands::audio_tools::simulate_voice_chain,
+            commands::vb_cable::vb_cable_status,
+            commands::vb_cable::install_vb_cable,
+            commands::audio_tools::audio_diagnostics,
+            commands::audio_tools::play_test_tone_loop,
+            commands::audio_tools::trigger_voice_typing,
             commands::diagnostics::run_self_test,
-            commands::app_profile::app_profile_status,
-            commands::app_profile::app_profile_catalog,
-            commands::app_profile::app_menu_apps,
-            commands::app_profile::open_app_profile,
-            commands::app_profile::reload_app_profiles,
-            commands::app_profile::create_app_profile,
-            commands::app_profile::save_profile_binding,
-            commands::app_profile::clear_profile_binding,
-            commands::app_profile::delete_app_profile,
+            commands::app_profile::menu::app_profile_status,
+            commands::app_profile::editor::app_profile_catalog,
+            commands::app_profile::menu::app_menu_apps,
+            commands::app_profile::menu::open_app_profile,
+            commands::app_profile::menu::reload_app_profiles,
+            commands::app_profile::editor::create_app_profile,
+            commands::app_profile::editor::save_profile_binding,
+            commands::app_profile::editor::clear_profile_binding,
+            commands::app_profile::editor::delete_app_profile,
             commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
         ])

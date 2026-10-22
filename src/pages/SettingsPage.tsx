@@ -7,6 +7,7 @@ import {
   isUpdateBusy,
   useUpdateStatus,
 } from "../store/updateStatus";
+import "./SettingsPage.css";
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";

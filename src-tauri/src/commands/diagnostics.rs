@@ -164,7 +164,7 @@ pub fn run_self_test() -> Vec<SelfTestItem> {
     // 8) 最近语音会话健康（识别「链路通但零数据」的遥控器固件挂起）
     #[cfg(target_os = "windows")]
     {
-        let silent = crate::commands::audio::current_silent_sessions();
+        let silent = core_voice::supervisor::silent_sessions();
         match core_voice::last_session_report() {
             Some(report) if silent >= 3 => items.push(SelfTestItem {
                 name: "最近语音会话健康".into(),

@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { RemoteKeyTester } from "../components/RemoteKeyTester";
 import { IconSearch } from "../components/icons";
 import { OUTPUT_DEVICE } from "../constants";
+import "./DiagnosticsPage.css";
 
 type Diagnostics = {
   has_vb_cable: boolean;
