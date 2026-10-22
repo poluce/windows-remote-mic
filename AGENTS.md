@@ -61,7 +61,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │       └── commands/         # connection / mapping / mapping_catalog / voice_bridge /
 │                             # audio_tools / vb_cable / app_profile / diagnostics / log / quick_menu
 ├── crates/                   # Rust 核心库
-│   ├── core-ble              # BLE 扫描 / GATT / ATVV 服务 / LinkWatcher / wait_op
+│   ├── core-ble              # BLE 扫描 / GATT / ATVV 服务 / LinkWatcher / wait_op（分 gatt 与 watcher）
 │   ├── core-atvv             # ATVV 协议 + ADPCM 解码 + CAPS 帧长协商
 │   ├── core-audio            # WASAPI 端点、格式协商/重采样、播放、VB-CABLE 诊断
 │   ├── core-mapping          # 映射 / 触发 / 动作 / VoiceTarget 纯逻辑
@@ -475,6 +475,7 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
   - `core-app-profile` 负责前台应用检测、种子落地与应用专属映射文件管理。
     内部模块化为：`seeds.rs`（种子嵌入与落地清单）、`store.rs`（磁盘原子读写与安全 id 生成）、`registry.rs`（内存注册表与前台窗口匹配）、`foreground.rs`（前台进程/标题查询）、`window.rs`（窗口激活与启动）、`tests.rs`。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
+    `vhid.rs` 内部模块化为：`vhid.rs`（驱动动态加载与报告提交）、`vhid/diag.rs`（Secure Boot / HVCI 注册表探测与环境建议）、`vhid/tests.rs`。
   - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
     内部模块化为：`combo.rs`（快捷键规范化与解析）、`config.rs`（映射配置结构与默认映射表）、`trigger.rs`（按键手势判定状态机）、`tests.rs`。
   - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
