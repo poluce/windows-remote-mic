@@ -476,6 +476,7 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
     内部模块化为：`seeds.rs`（种子嵌入与落地清单）、`store.rs`（磁盘原子读写与安全 id 生成）、`registry.rs`（内存注册表与前台窗口匹配）、`foreground.rs`（前台进程/标题查询）、`window.rs`（窗口激活与启动）、`tests.rs`。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
   - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
+    内部模块化为：`combo.rs`（快捷键规范化与解析）、`config.rs`（映射配置结构与默认映射表）、`trigger.rs`（按键手势判定状态机）、`tests.rs`。
   - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
     内部再分：`lib.rs`（触发判定 / 调度状态机）、`executor.rs`（动作执行线程）、`tests.rs`；
     新增「动作怎么执行」放 executor，新增「何时触发」放 lib。

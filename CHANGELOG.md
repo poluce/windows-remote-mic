@@ -55,6 +55,7 @@
 - `core-hid/src/tap.rs` 拆分为 `tap/{config,hub,inject,runtime,status,watchdog}.rs`：
   配置与路径 / IPC 通信与分发 / 注入提权 / 启动生命周期 / 状态上报 / 看门狗与按住状态跟踪分开（tap.rs 1426 → 24 行）；
 - `core-app-profile/src/lib.rs` 拆分为 `seeds.rs`（种子管理）、`store.rs`（磁盘原子读写）、`registry.rs`（内存匹配）、`tests.rs`（单元测试），lib.rs 885 → 63 行；
+- `core-mapping/src/lib.rs` 拆分为 `combo.rs`（组合快捷键规范化与解析）、`config.rs`（映射配置结构与默认表）、`tests.rs`（单元测试），lib.rs 653 → 205 行；
 - 前端 `MappingPage.tsx` 拆分：业务状态与应用配置/快捷键逻辑抽为 `useMappingEditor.ts`，遥控器尺寸动态自适应抽为 `useRemoteZoom.ts`（MappingPage.tsx 549 → 252 行）；
 - 无用户可见行为变化。
 
