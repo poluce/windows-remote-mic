@@ -472,6 +472,8 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
 - **crate 边界**：
   - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
     `tap/` 模块化为：`config.rs`（配置/路径）、`hub.rs`（IPC 通信与分发）、`inject.rs`（提权注入）、`runtime.rs`（启动与生命周期）、`status.rs`（状态上报）、`watchdog.rs`（按住跟踪与兜底释放）。
+  - `core-app-profile` 负责前台应用检测、种子落地与应用专属映射文件管理。
+    内部模块化为：`seeds.rs`（种子嵌入与落地清单）、`store.rs`（磁盘原子读写与安全 id 生成）、`registry.rs`（内存注册表与前台窗口匹配）、`foreground.rs`（前台进程/标题查询）、`window.rs`（窗口激活与启动）、`tests.rs`。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
   - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
   - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
