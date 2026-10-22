@@ -54,6 +54,7 @@
   运行时状态 / 设备连接 / 用户偏好 / 系统集成四类命令分开；
 - `core-hid/src/tap.rs` 拆分为 `tap/{config,hub,inject,runtime,status,watchdog}.rs`：
   配置与路径 / IPC 通信与分发 / 注入提权 / 启动生命周期 / 状态上报 / 看门狗与按住状态跟踪分开（tap.rs 1426 → 24 行）；
+- 前端 `MappingPage.tsx` 拆分：业务状态与应用配置/快捷键逻辑抽为 `useMappingEditor.ts`，遥控器尺寸动态自适应抽为 `useRemoteZoom.ts`（MappingPage.tsx 549 → 252 行）；
 - 无用户可见行为变化。
 
 ### 文档
