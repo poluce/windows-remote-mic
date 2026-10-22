@@ -59,7 +59,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │       ├── lib.rs            # 应用装配：命令注册、窗口创建、调度器装配、生命周期
 │       ├── support/          # 外壳通用支撑：路径 / 状态 / 按键兜底 / panic / 映射编解码
 │       └── commands/         # connection / mapping / mapping_catalog / voice_bridge /
-│                             # audio_tools / vb_cable / app_profile / diagnostics / log / quick_menu
+│                             # audio_tools / vb_cable / app_profile（分 menu/editor） / diagnostics / log / quick_menu
 ├── crates/                   # Rust 核心库
 │   ├── core-ble              # BLE 扫描 / GATT / ATVV 服务 / LinkWatcher / wait_op（分 gatt 与 watcher）
 │   ├── core-atvv             # ATVV 协议 + ADPCM 解码 + CAPS 帧长协商
