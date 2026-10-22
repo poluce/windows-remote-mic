@@ -3,6 +3,7 @@ import {
   useEffectiveConnected,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
+import { useUpdateStatus } from "../store/updateStatus";
 import {
   IconActivity,
   IconBluetooth,
@@ -42,6 +43,7 @@ export function Sidebar({
   onChange: (page: PageId) => void;
 }) {
   const { bridgeState, tapStatus, tapMessage } = useRuntimeStatus();
+  const { phase: updatePhase } = useUpdateStatus();
   // 派生视图：等待遥控器上线时绝不能显示「遥控器已连接」。
   const connected = useEffectiveConnected();
   const bridgeRunning = bridgeState === "running";
@@ -93,6 +95,13 @@ export function Sidebar({
                 <Icon size={13} />
               </span>
               <span>{item.label}</span>
+              {item.id === "settings" && updatePhase === "available" && (
+                <span
+                  className="nav-badge"
+                  title="有新版本可用，点击查看"
+                  aria-label="有新版本可用"
+                />
+              )}
             </button>
           );
         })}

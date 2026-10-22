@@ -20,7 +20,11 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 ## 当前状态（v0.6.2）
 
 - `main` 版本 **0.6.2**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`。
-- 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`。
+- 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`，
+  以及自动更新用的 `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`（见 [docs/项目/自动更新.md](docs/项目/自动更新.md)）。
+- 自动更新：应用内「通用设置 → 关于与更新」可检查 / 下载 / 安装新版本（Tauri v2 updater，NSIS passive 安装，需 UAC）；
+  正式构建启动后立即静默检查一次，运行期间每 30 分钟复查；自动检查距上次成功检查 ≥1 小时才真正联网，
+  手动检查不受频率限制（时间戳持久化在 `config.json` 的 `last_update_check_at`）。
 - 安装包**未做代码签名**，首次运行 SmartScreen 提示「未知发布者」属预期；虚拟 HID 驱动为测试签名，安装器会把随包证书装入本机信任库。
 - 已知未解决问题：**ATVV 通知偶发丢失**（HID 正常、收不到语音包），见 §10。
 
@@ -41,6 +45,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── pages/                # 连接 / 按键映射 / 通用设置 / 诊断 / 日志 / 引导
 │   │   └── mapping/          # 映射页子组件（矩阵、作用域、快捷键、校准…）
 │   ├── store/runtimeStatus.ts# 运行时状态单一事实来源（连接 / 语音桥 / 旁路）
+│   ├── store/updateStatus.ts # 更新状态单一事实来源（检查 / 下载进度 / 新版本）
 │   ├── components/           # Sidebar、Xiaomi2ProRemote、RemoteKeyTester、ErrorBoundary…
 │   └── constants.ts          # OUTPUT_DEVICE = "CABLE Input"
 ├── src-tauri/                # Tauri 壳
@@ -164,7 +169,8 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 - 其他单一事实来源：
   - `OUTPUT_DEVICE`（`src/constants.ts`）= 语音输出设备名；
   - `get_mapping_catalog`（`src-tauri/src/commands/mapping_catalog.rs`）= 按键 / 触发 / 动作目录；
-    前端 `src/pages/mapping/constants.ts` 的 `FALLBACK_CATALOG` 仅供浏览器预览兜底。
+    前端 `src/pages/mapping/constants.ts` 的 `FALLBACK_CATALOG` 仅供浏览器预览兜底；
+  - `src/store/updateStatus.ts` = 更新检查 / 下载进度 / 新版本号的唯一状态源（设置页与侧栏提示共用）。
 - 历史坑：前端曾保留 `bridgeStatus` 副本、后端曾保留本地 stop 标志，都因状态不同步出过 bug，**不要加回来**。
 
 ### 4. 按键映射、应用档案与快捷键
@@ -172,7 +178,8 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 - 配置持久化到 `%LOCALAPPDATA%\RemoteMic\RC003\config.json`：
   - 原子写入；损坏时自动回退 `config.json.bak`（上一次成功保存）。
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
-    `long_press_ms`（默认 550）、`double_click_ms`（默认 300）、`voice_target`、`shortcuts`。
+    `long_press_ms`（默认 550）、`double_click_ms`（默认 300）、`voice_target`、`shortcuts`、
+    `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
 - 映射目录由后端 `get_mapping_catalog` 返回：
   - 13 个按键（顺序与前端矩阵一致：电源、麦克风、上、左、确定、右、下、返回、音量+、主页、音量−、菜单、TV）；
@@ -378,7 +385,7 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 - 应用内还可重新运行虚拟 HID 驱动安装（`install_vhid_driver`，用于修复 / 重装）。
 - 引导页 4 步：1) 蓝牙配对；2) 确认虚拟声卡驱动；3) 关键：Win+H 里把麦克风绑定为 CABLE Output；
   4) 模拟自检与日常使用。
-- 通用设置：拦截 HID 按键信号（eat 模式）、长按判定、双击间隔。
+- 通用设置：拦截 HID 按键信号（eat 模式）、长按判定、双击间隔、「关于与更新」（检查 / 下载 / 安装更新）。
 
 ### 9. 打包与发版
 
@@ -392,20 +399,29 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 - **VB-CABLE 许可约束**：其 EULA 允许 AS IS 再分发，但禁止集成进其他产品的安装流程；
   因此仓库只分发自己的下载/校验助手脚本 + `scripts/vb-cable.sha256`（固定官方包 SHA-256），
   用户触发后才下载官方安装包。**不要把官方安装包提交进仓库或塞进安装器。**
+- **自动更新（Tauri updater）**：`bundle.createUpdaterArtifacts = true` + `plugins.updater`
+  （公钥 / `releases/latest/download/latest.json` endpoint，`installMode = passive`）。
+  发布时用 minisign 密钥给安装包签名；私钥与密码放在 GitHub Secrets
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，**不要提交到仓库**。
+  密钥生成 / 备份 / 轮换风险与排查见 [docs/项目/自动更新.md](docs/项目/自动更新.md)。
 - 发版流程（详见 `CHANGELOG.md` 顶部「发版流程」）：
   1. `main` 通过 CI；
   2. 三处版本号同步：`package.json`、`src-tauri/tauri.conf.json`、`Cargo.toml` 的 `workspace.package.version`；
-  3. 更新 `CHANGELOG.md`（`[Unreleased]` 内容移入新版本小节）；
+  3. 更新 `CHANGELOG.md`（`[Unreleased]` 内容移入新版本小节；发布工作流会把它写进 `latest.json` 的 notes）；
   4. 跑 `cargo check -p remote-mic` 让 `Cargo.lock` 跟着更新；
   5. 通过 PR 合入 `main`（受保护分支）；
   6. 打 tag 并推送：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
   7. `Release Windows Build` 工作流自动构建并创建 GitHub Release（也可 workflow_dispatch 手动填 tag）；
-  8. 下载产物核对：`sha256sum -c SHA256SUMS.txt` + 核对 exe 的 FileVersion。
-- 发布工作流关键步骤：准备 / 校验驱动 bundle → 准备 / 校验 VB-CABLE 脚本 → `npm run tauri build`
-  （含 beforeBuildCommand）→ 用 7-Zip 解包验证 VB-CABLE 脚本确实嵌入 → 收集产物并生成 `SHA256SUMS.txt`
-  → 创建 Release。
-- 产物命名：`Remote.Mic_<ver>_x64-setup.exe`、`remote-mic.exe`、`SHA256SUMS.txt`。
-- 当前**未签名**；后续可接 Authenticode 签名与自动更新（见待办）。
+  8. 工作流同时生成并上传 `latest.json` 与 `.exe.sig` —— **每个正式 Release 都必须带 `latest.json`**，
+     否则老客户端检查更新会 404；
+  9. 下载产物核对：`sha256sum -c SHA256SUMS.txt` + 核对 exe 的 FileVersion。
+- 发布工作流关键步骤：准备 / 校验驱动 bundle → 准备 / 校验 VB-CABLE 脚本 → 带 updater 签名构建
+  （没有密钥时自动退化为普通构建）→ 校验 `.exe.sig` → 用 7-Zip 解包验证 VB-CABLE 脚本确实嵌入
+  → 收集产物并生成 `SHA256SUMS.txt` → 生成 `latest.json` → 创建 Release → 补传 `.sig` / `latest.json`。
+- 产物命名：`Remote.Mic_<ver>_x64-setup.exe`、`remote-mic.exe`、`SHA256SUMS.txt`、
+  `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`。
+- 当前**未做 Authenticode 代码签名**；自动更新签名（minisign）与 Authenticode 无关，已在上面说明。
+  后续可接 Authenticode 签名。
 
 ### 10. 已知问题 / 待办（截至 2026-10-20，v0.6.2）
 
@@ -419,7 +435,8 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
   后续可改为「用户按下麦克风后 2s 内无音频」这类更直接的判定。
 - ATVV `MIC_OPEN / MIC_CLOSE` 握手未实现；`MIC_EXTEND` 长语音未支持。
 - 输出端点用户可选 / 持久化未做（当前固定 `CABLE Input`）。
-- 自动更新、代码签名、托盘、i18n、隐私说明未做。
+- 代码签名、托盘、i18n、隐私说明未做；自动更新已接入（见 §9 与 [docs/项目/自动更新.md](docs/项目/自动更新.md)），
+  真机全链路验收待补（见 `docs/项目/真机验收.md` §7）。
 - 任务清单持续维护在 [docs/项目/任务清单.md](docs/项目/任务清单.md)；
   容错轮次与审计结论在 [docs/项目/容错能力评估.md](docs/项目/容错能力评估.md)。
 

@@ -62,6 +62,12 @@ pub struct Config {
     /// 让它读成空列表，不会因为加字段而丢掉整个配置。
     #[serde(default)]
     pub shortcuts: Vec<NamedShortcut>,
+    /// 上次**成功**检查更新的 Unix 秒时间戳（0 表示还没成功检查过）。
+    ///
+    /// 自动检查（启动 / 运行中定时）要求距上次成功检查 ≥1 小时才真正联网；
+    /// 手动点「检查更新」不受此限制。放这里是为了重启后仍然生效。
+    #[serde(default)]
+    pub last_update_check_at: u64,
 }
 
 fn default_hid_tap_eat() -> bool {
@@ -87,6 +93,7 @@ impl Default for Config {
             double_click_ms: 300,
             voice_target: VoiceTarget::default(),
             shortcuts: Vec::new(),
+            last_update_check_at: 0,
         }
     }
 }
@@ -258,6 +265,20 @@ mod tests {
         .unwrap();
         let cfg = store.load().unwrap();
         assert_eq!(cfg.voice_target, VoiceTarget::WindowsVoice);
+        // 「上次成功检查更新」是后加的字段：旧配置读成 0（从未检查）。
+        assert_eq!(cfg.last_update_check_at, 0);
+    }
+
+    #[test]
+    fn update_check_timestamp_roundtrip() {
+        let (_dir, store) = temp_store();
+        let cfg = Config {
+            last_update_check_at: 1_760_000_000,
+            ..Config::default()
+        };
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.last_update_check_at, 1_760_000_000);
     }
 
     #[test]
