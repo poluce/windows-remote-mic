@@ -6,3 +6,4 @@ pub mod log;
 pub mod mapping;
 pub mod mapping_catalog;
 pub mod quick_menu;
+pub mod update;

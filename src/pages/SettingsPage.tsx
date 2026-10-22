@@ -125,7 +125,7 @@ export function SettingsPage() {
       case "error":
         return update.error || "检查更新失败，请稍后重试。";
       default:
-        return "检查 GitHub Releases 上的新版本，下载、校验签名并自动安装。";
+        return "检查 GitHub Releases 上的新版本，下载、校验签名并自动安装。正式版启动后及运行期间每小时最多自动检查一次，也可以随时手动检查。";
     }
   })();
 

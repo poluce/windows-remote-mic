@@ -23,7 +23,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 - 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`，
   以及自动更新用的 `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`（见 [docs/项目/自动更新.md](docs/项目/自动更新.md)）。
 - 自动更新：应用内「通用设置 → 关于与更新」可检查 / 下载 / 安装新版本（Tauri v2 updater，NSIS passive 安装，需 UAC）；
-  正式构建启动后会静默检查一次。
+  正式构建启动后立即静默检查一次，运行期间每 30 分钟复查；自动检查距上次成功检查 ≥1 小时才真正联网，
+  手动检查不受频率限制（时间戳持久化在 `config.json` 的 `last_update_check_at`）。
 - 安装包**未做代码签名**，首次运行 SmartScreen 提示「未知发布者」属预期；虚拟 HID 驱动为测试签名，安装器会把随包证书装入本机信任库。
 - 已知未解决问题：**ATVV 通知偶发丢失**（HID 正常、收不到语音包），见 §10。
 
@@ -177,7 +178,8 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 - 配置持久化到 `%LOCALAPPDATA%\RemoteMic\RC003\config.json`：
   - 原子写入；损坏时自动回退 `config.json.bak`（上一次成功保存）。
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
-    `long_press_ms`（默认 550）、`double_click_ms`（默认 300）、`voice_target`、`shortcuts`。
+    `long_press_ms`（默认 550）、`double_click_ms`（默认 300）、`voice_target`、`shortcuts`、
+    `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
 - 映射目录由后端 `get_mapping_catalog` 返回：
   - 13 个按键（顺序与前端矩阵一致：电源、麦克风、上、左、确定、右、下、返回、音量+、主页、音量−、菜单、TV）；

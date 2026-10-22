@@ -15,6 +15,12 @@ import { useSyncExternalStore } from "react";
  *     -> Windows 上安装器会自动关闭本应用、完成安装并重启新版本。
  *
  * 因此这里**不需要**自己调用 restart：`downloadAndInstall` 成功时应用即退出。
+ *
+ * 检查时机与频率（仅正式构建；手动检查任何时候都可点）：
+ *   - 启动后立即异步检查一次（不延迟、不阻塞窗口）；
+ *   - 运行期间每 30 分钟复查一次；
+ *   - 启动检查 / 定时复查都要求距上次成功检查 ≥1 小时才真正发请求；
+ *   - 上次成功检查时间持久化在 `config.json`（`last_update_check_at`），重启后依然生效。
  */
 export type UpdatePhase =
   | "idle"
@@ -88,6 +94,25 @@ export function isUpdateBusy(phase: UpdatePhase): boolean {
   return phase === "checking" || phase === "downloading" || phase === "installing";
 }
 
+/** 自动检查的最小联网间隔：距上次成功检查不足 1 小时就不发请求。 */
+const AUTO_CHECK_MIN_INTERVAL_MS = 60 * 60 * 1000;
+/** 运行期间复查定时器：每 30 分钟唤醒一次，实际联网仍受上面的 1 小时门槛限制。 */
+const AUTO_CHECK_TIMER_MS = 30 * 60 * 1000;
+
+/** 自动检查（启动 / 定时）是否已过「距上次成功检查 ≥1 小时」的门槛；手动检查不走这里。 */
+function autoCheckDue(): boolean {
+  return Date.now() - state.lastCheckedAt >= AUTO_CHECK_MIN_INTERVAL_MS;
+}
+
+/** 记录一次成功的检查（有更新 / 无更新都算），并持久化时间戳供重启后节流。 */
+function recordCheckSuccess(patch: Partial<UpdateState>) {
+  const now = Date.now();
+  setState({ ...patch, lastCheckedAt: now });
+  void invoke("set_last_update_check_at", {
+    timestamp: Math.floor(now / 1000),
+  }).catch(() => {});
+}
+
 async function closePendingUpdate() {
   const update = pendingUpdate;
   pendingUpdate = null;
@@ -119,15 +144,14 @@ async function runCheck(options: { silent: boolean }): Promise<void> {
   try {
     const update = await check({ timeout: 30_000 });
     if (!update) {
-      setState({ phase: "up-to-date", lastCheckedAt: Date.now() });
+      recordCheckSuccess({ phase: "up-to-date" });
       return;
     }
     pendingUpdate = update;
-    setState({
+    recordCheckSuccess({
       phase: "available",
       newVersion: update.version,
       notes: update.body ?? "",
-      lastCheckedAt: Date.now(),
     });
   } catch (err) {
     // 启动时的静默检查失败不打扰用户（离线、代理、旧版本还没有 latest.json 都很常见）；
@@ -231,7 +255,13 @@ export async function downloadAndInstallUpdate(): Promise<void> {
 }
 
 /**
- * 初始化：读取当前版本；正式构建下延迟做一次静默检查。
+ * 初始化：读取当前版本与上次成功检查时间，然后启动自动检查。
+ *
+ * 自动检查策略（仅正式构建）：
+ *   - 启动后**立即**异步检查一次，不延迟、不阻塞窗口；
+ *   - 运行期间每 30 分钟复查一次；
+ *   - 启动检查与定时复查都要求距上次成功检查 ≥1 小时才真正联网，否则直接跳过；
+ *   - 手动「检查更新」不受频率限制。
  *
  * 幂等：App 的 effect 在严格模式 / HMR 下可能触发多次。
  */
@@ -244,13 +274,28 @@ export function initUpdateStatus(): void {
     .then((version) => setState({ currentVersion: version }))
     .catch(() => {});
 
-  // 开发模式（vite dev）下不自动检查：避免每次热更新都打一次 GitHub API，
-  // 也给「检查更新」按钮保留一个可复现的手动入口。
-  if (import.meta.env.PROD) {
-    window.setTimeout(() => {
-      if (state.phase === "idle") {
-        void runCheck({ silent: true }).catch(() => {});
-      }
-    }, 6000);
+  // 先读回「上次成功检查」时间，再决定启动时要不要真的联网。
+  invoke<number>("get_last_update_check_at")
+    .then((timestamp) => {
+      if (timestamp > 0) setState({ lastCheckedAt: timestamp * 1000 });
+    })
+    .catch(() => {})
+    .finally(() => {
+      // 开发模式（vite dev）下不自动检查：避免每次热更新都打一次 GitHub，
+      // 也给「检查更新」按钮保留一个可复现的手动入口。
+      if (!import.meta.env.PROD) return;
+      startAutoUpdateChecks();
+    });
+}
+
+/** 启动自动检查：启动立即查一次 + 运行期间每 30 分钟复查（均受 1 小时门槛限制）。 */
+function startAutoUpdateChecks() {
+  if (autoCheckDue()) {
+    void runCheck({ silent: true }).catch(() => {});
   }
+  window.setInterval(() => {
+    if (autoCheckDue() && !isUpdateBusy(state.phase)) {
+      void runCheck({ silent: true }).catch(() => {});
+    }
+  }, AUTO_CHECK_TIMER_MS);
 }

@@ -618,6 +618,8 @@ pub fn run() {
             ping,
             app_version,
             prepare_for_update_exit,
+            commands::update::get_last_update_check_at,
+            commands::update::set_last_update_check_at,
             commands::connection::scan_for_rc003,
             commands::connection::connect_rc003,
             commands::connection::get_runtime_status,
