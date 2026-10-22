@@ -1,6 +1,27 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useRuntimeStatus } from "../store/runtimeStatus";
+import {
+  checkForUpdates,
+  downloadAndInstallUpdate,
+  isUpdateBusy,
+  useUpdateStatus,
+} from "../store/updateStatus";
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
+}
+
+function formatClock(ms: number): string {
+  if (!ms) return "";
+  return new Date(ms).toLocaleTimeString("zh-CN", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 /**
  * 通用设置：按键相关的全局参数。
@@ -15,6 +36,8 @@ export function SettingsPage() {
   const [doubleClickMs, setDoubleClickMs] = useState(300);
   const [msg, setMsg] = useState("");
   const { tapStatus } = useRuntimeStatus();
+  const update = useUpdateStatus();
+  const updateBusy = isUpdateBusy(update.phase);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -71,6 +94,67 @@ export function SettingsPage() {
   // 开关的状态由开关本身表达，不复读一遍。只有「开关说开着、驱动却没就绪」
   // 这种自相矛盾才值得补一句话——那正是按键会失效的情形。
   const tapNotReady = eatEnabled === true && tapStatus !== "attached";
+
+  // ---- 关于与更新 ----
+  const updatePercent =
+    update.contentLength > 0
+      ? Math.min(
+          100,
+          Math.round((update.downloadedBytes / update.contentLength) * 100),
+        )
+      : null;
+
+  const updateHint = (() => {
+    if (!isTauri()) return "浏览器预览模式下不可用，请在桌面应用中检查更新。";
+    switch (update.phase) {
+      case "checking":
+        return "正在连接更新服务器…";
+      case "up-to-date":
+        return `已是最新版本${
+          update.lastCheckedAt ? `（上次检查 ${formatClock(update.lastCheckedAt)}）` : ""
+        }。`;
+      case "available":
+        return `发现新版本 v${update.newVersion}。下载安装后应用会自动重启，Windows 会弹出管理员权限确认。`;
+      case "downloading": {
+        const total =
+          update.contentLength > 0 ? ` / ${formatBytes(update.contentLength)}` : "";
+        return `正在下载更新… ${formatBytes(update.downloadedBytes)}${total}`;
+      }
+      case "installing":
+        return "正在安装更新，应用即将自动重启…";
+      case "error":
+        return update.error || "检查更新失败，请稍后重试。";
+      default:
+        return "检查 GitHub Releases 上的新版本，下载、校验签名并自动安装。";
+    }
+  })();
+
+  const updateButtonLabel = (() => {
+    switch (update.phase) {
+      case "checking":
+        return "检查中…";
+      case "available":
+        return "下载并安装";
+      case "downloading":
+        return updatePercent === null ? "下载中…" : `下载中 ${updatePercent}%`;
+      case "installing":
+        return "安装中…";
+      case "up-to-date":
+        return "重新检查";
+      case "error":
+        return "重试";
+      default:
+        return "检查更新";
+    }
+  })();
+
+  async function onUpdateClick() {
+    if (update.phase === "available") {
+      await downloadAndInstallUpdate();
+    } else {
+      await checkForUpdates();
+    }
+  }
 
   return (
     <div className="page">
@@ -137,6 +221,50 @@ export function SettingsPage() {
             <option value={500}>0.5 秒</option>
           </select>
         </div>
+      </section>
+
+      <div className="section-label">关于与更新</div>
+      <section className="card form-card">
+        <div className="form-row">
+          <div className="form-text">
+            <div className="form-label">
+              Remote Mic{update.currentVersion ? ` v${update.currentVersion}` : ""}
+            </div>
+            <p className={`hint${update.phase === "error" ? " warn" : ""}`}>{updateHint}</p>
+            {update.phase === "downloading" && (
+              <div
+                className="update-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={updatePercent ?? undefined}
+              >
+                <span
+                  style={{
+                    width: updatePercent === null ? "100%" : `${updatePercent}%`,
+                    opacity: updatePercent === null ? 0.35 : 1,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn primary small"
+            onClick={onUpdateClick}
+            disabled={updateBusy || !isTauri()}
+          >
+            {updateButtonLabel}
+          </button>
+        </div>
+        {update.phase === "available" && update.notes && (
+          <div className="form-row">
+            <div className="form-text">
+              <div className="form-label">更新说明</div>
+              <p className="hint update-notes">{update.notes}</p>
+            </div>
+          </div>
+        )}
       </section>
 
       {msg && <p className="hint">{msg}</p>}

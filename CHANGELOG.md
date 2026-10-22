@@ -20,6 +20,17 @@
 
 ## [Unreleased]
 
+### 新增
+- **自动更新**：接入 Tauri v2 updater。正式构建启动后会静默检查一次更新，也可在
+  「通用设置 → 关于与更新」手动检查、查看更新说明、下载并安装；安装包使用独立的 minisign 密钥签名，
+  下载后校验通过才会执行。NSIS 以 passive 模式安装，完成后自动重启应用；发现新版本时侧栏「通用设置」显示提示点。
+  - 发布工作流新增：带签名的 updater 构建、`.exe.sig` 校验、`latest.json` 生成与上传；
+    `latest.json` 的更新说明取自 CHANGELOG 对应版本小节。
+  - 新增 `scripts/setup-updater-signing.ps1`（生成/轮换签名密钥并写入 GitHub Secrets）与
+    `scripts/generate-updater-manifest.ps1`（本地可单独测试的清单生成脚本）。
+  - 说明与限制见 `docs/项目/自动更新.md`。**旧版本（0.6.2 及更早）需手动安装一次带更新功能的版本**，
+    之后才能走自动更新。
+
 ## [0.6.2] - 2026-10-20
 
 ### 变更

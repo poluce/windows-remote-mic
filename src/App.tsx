@@ -7,6 +7,7 @@ import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 import { LogPage } from "./pages/LogPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { initRuntimeStatus } from "./store/runtimeStatus";
+import { initUpdateStatus } from "./store/updateStatus";
 import "./App.css";
 
 /**
@@ -24,6 +25,8 @@ function App() {
   useEffect(() => {
     // 全局运行时状态初始化：事件监听不随页面切换而销毁。
     initRuntimeStatus();
+    // 更新状态同样全局初始化：正式构建下会自动静默检查一次。
+    initUpdateStatus();
   }, []);
 
   return (

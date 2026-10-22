@@ -56,6 +56,24 @@ fn ping() -> String {
     "后端已连接（ATVV 解码正常，ADPCM 就绪）".to_string()
 }
 
+/// 当前运行版本号。
+///
+/// 与 updater 插件做版本比较时用的是同一个来源（`tauri.conf.json` 的 version），
+/// 前端「关于与更新」不必再自己拼一份。
+#[tauri::command]
+fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+/// 安装更新前的收尾：updater 拉起 NSIS 安装器后会直接 `std::process::exit(0)`，
+/// 不会走 `RunEvent::Exit` 里那条兜底路径，所以提前释放按键，避免虚拟 HID
+/// 上残留「按住」状态（重启后的新实例不会知道旧实例按下过哪些键）。
+#[tauri::command]
+fn prepare_for_update_exit(app: tauri::AppHandle) {
+    core_log::log_info("[app] 准备退出并安装更新，强制释放按键");
+    force_release_held_keys(&app, "安装更新");
+}
+
 /// 共享给 Tauri 命令的运行时状态：按键调度器。
 pub struct AppState {
     pub dispatcher: Arc<KeyDispatcher>,
@@ -355,6 +373,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let win_width = 420.0;
             let win_height = 420.0;
@@ -597,6 +616,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ping,
+            app_version,
+            prepare_for_update_exit,
             commands::connection::scan_for_rc003,
             commands::connection::connect_rc003,
             commands::connection::get_runtime_status,
