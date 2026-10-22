@@ -17,9 +17,9 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 > 容错改进轮次与状态一致性审计见 [docs/项目/容错能力评估.md](docs/项目/容错能力评估.md)；
 > 待办清单见 [docs/项目/任务清单.md](docs/项目/任务清单.md)；真机验收项见 [docs/项目/真机验收.md](docs/项目/真机验收.md)。
 
-## 当前状态（v0.6.2）
+## 当前状态（v0.7.0）
 
-- `main` 版本 **0.6.2**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`。
+- `main` 版本 **0.7.0**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`、`v0.7.0`。
 - 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`，
   以及自动更新用的 `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`（见 [docs/项目/自动更新.md](docs/项目/自动更新.md)）。
 - 自动更新：应用内「通用设置 → 关于与更新」可检查 / 下载 / 安装新版本（Tauri v2 updater，NSIS passive 安装，需 UAC）；
@@ -109,7 +109,7 @@ npm run typecheck
 npm run build
 ```
 
-v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
+v0.7.0 基线：workspace 测试 **180** 个、app crate 测试 **8** 个。
 
 ### 从 WSL 调用（路径按本机实际情况替换）
 
