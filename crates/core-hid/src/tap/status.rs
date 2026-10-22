@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
-use super::INPUT_GRACE;
+use super::config::INPUT_GRACE;
 
 /// 旁路子系统的机器可读状态，与前端 `TapStatus` 一一对应。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

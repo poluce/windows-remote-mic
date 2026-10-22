@@ -52,8 +52,8 @@
   语音合成 / WAV 解析 / 重采样与链路编排各自独立；
 - `src-tauri/src/commands/connection.rs` 拆分为 `connection/{status,device,prefs,system}.rs`：
   运行时状态 / 设备连接 / 用户偏好 / 系统集成四类命令分开；
-- `core-hid/src/tap.rs` 拆分为 `tap/{inject,status,watchdog}.rs`：
-  注入提权流程 / 状态上报 / 看门狗与按住状态跟踪分开（tap.rs 1426 → 661 行）；
+- `core-hid/src/tap.rs` 拆分为 `tap/{config,hub,inject,runtime,status,watchdog}.rs`：
+  配置与路径 / IPC 通信与分发 / 注入提权 / 启动生命周期 / 状态上报 / 看门狗与按住状态跟踪分开（tap.rs 1426 → 24 行）；
 - 无用户可见行为变化。
 
 ### 文档

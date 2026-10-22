@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use super::{gadget_dir, gadget_dll_path};
+use super::config::{gadget_dir, gadget_dll_path};
 
 pub(super) fn request_inject(pid: u32) -> Result<bool, String> {
     if is_elevated() {

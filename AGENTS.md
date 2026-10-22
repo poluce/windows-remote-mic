@@ -71,7 +71,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   │                         #   bridge（会话编排）/ supervisor（重连状态机）/ simulate
 │   ├── core-log              # 统一日志（分级 / 轮转 / DEBUG 开关）
 │   ├── core-stats            # 本机统计（批量写盘）
-│   ├── core-hid              # HID 捕获（Raw Input + HOGP 旁路 Frida；tap 内分 inject/status/watchdog）
+│   ├── core-hid              # HID 捕获（Raw Input + HOGP 旁路 Frida；tap 模块化为 config/hub/inject/runtime/status/watchdog）
 │   ├── core-input            # 按键注入、Win+H、单实例互斥等 Windows 输入能力
 │   └── core-app-profile      # 前台应用档案（按进程 exe 匹配、种子模板）
 ├── profiles/                 # 应用档案种子模板（*.json，首次启动播种到用户目录）
@@ -471,7 +471,7 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
   用「拆分前后规则集合一致」做回归检查（本次 260 条规则一致、无跨文件重复选择器）。
 - **crate 边界**：
   - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
-    `tap/` 内部分：`inject.rs`（提权注入）、`status.rs`（状态上报）、`watchdog.rs`（按住跟踪与兜底释放）。
+    `tap/` 模块化为：`config.rs`（配置/路径）、`hub.rs`（IPC 通信与分发）、`inject.rs`（提权注入）、`runtime.rs`（启动与生命周期）、`status.rs`（状态上报）、`watchdog.rs`（按住跟踪与兜底释放）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
   - `core-mapping` 只负责按键 / 触发 / 动作的纯逻辑定义。
   - `core-dispatch` 负责把物理按键接到映射表并执行动作；不要把 SendInput 或 Raw Input 细节塞回 mapping。
