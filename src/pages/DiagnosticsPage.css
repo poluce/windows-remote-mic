@@ -1,0 +1,39 @@
+/* 诊断页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
+
+/* ---------- 诊断页双栏 ---------- */
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.diag-grid .card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .diag-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- 诊断 ---------- */
+.check-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.check-row:last-child {
+  border-bottom: none;
+}

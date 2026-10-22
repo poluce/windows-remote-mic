@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { IconMic } from "../components/icons";
+import "./OnboardingPage.css";
 
 const STEPS = [
   {

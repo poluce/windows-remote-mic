@@ -43,6 +43,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 ├── src/                      # React 前端
 │   ├── App.tsx               # 主布局（无顶栏，左侧导航 + 内容区）
 │   ├── pages/                # 连接 / 按键映射 / 通用设置 / 诊断 / 日志 / 引导
+│   │   └── connection/       # 连接页 hooks（设备动作 / 虚拟声卡下拉）
 │   │   └── mapping/          # 映射页子组件（矩阵、作用域、快捷键、校准…）
 │   ├── store/runtimeStatus.ts# 运行时状态单一事实来源（连接 / 语音桥 / 旁路）
 │   ├── store/updateStatus.ts # 更新状态单一事实来源（检查 / 下载进度 / 新版本）
@@ -443,6 +444,11 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 ## 约定与注意事项
 
 - **UI 全部使用简体中文。**
+- **前端结构与样式**：页面样式放 `src/pages/<Page>.css`（随页面组件按需加载），
+  共享的布局 / 表单 / 控件样式留在 `src/App.css`；页面逻辑复杂时抽成
+  `src/pages/<page>/use*.ts` hooks（参考 `pages/connection/useConnectionActions.ts`、
+  `useVbCableDriver.ts`），页面组件只负责渲染。拆分样式时保持规则原文不动，
+  用「拆分前后规则集合一致」做回归检查（本次 260 条规则一致、无跨文件重复选择器）。
 - **crate 边界**：
   - `core-hid` 只负责 HID 底层事件捕获 / 报告解析（Raw Input、HID 报告、HOGP 旁路）。
   - `core-input` 只负责 Windows 输入注入、热键、输入钩子 / 动作执行。
