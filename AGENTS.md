@@ -56,8 +56,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   │   └── vb-cable/         # prepare-installer-extras.ps1 生成（gitignored，勿提交）
 │   └── src/
 │       ├── lib.rs            # 启动、单实例、panic 钩子、窗口创建、调度器装配
-│       └── commands/         # connection / mapping / mapping_catalog / audio /
-│                             # diagnostics / app_profile / log / quick_menu
+│       └── commands/         # connection / mapping / mapping_catalog / voice_bridge /
+│                             # audio_tools / vb_cable / app_profile / diagnostics / log / quick_menu
 ├── crates/                   # Rust 核心库
 │   ├── core-ble              # BLE 扫描 / GATT / ATVV 服务 / LinkWatcher / wait_op
 │   ├── core-atvv             # ATVV 协议 + ADPCM 解码 + CAPS 帧长协商
@@ -109,7 +109,7 @@ npm run typecheck
 npm run build
 ```
 
-v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
+当前基线：workspace 测试 **182** 个、app crate 测试 **5** 个。
 
 ### 从 WSL 调用（路径按本机实际情况替换）
 
@@ -279,8 +279,16 @@ v0.6.2 基线：workspace 测试 **179** 个、app crate 测试 **8** 个。
 
 #### 6.1 事件驱动监督线程（v0.6.0 起，不再无限盲重连）
 
-- 入口：`start_voice_bridge`（`src-tauri/src/commands/audio.rs`）启动一个监督线程
-  `run_bridge_supervisor`；`retry_voice_bridge` 用于失败后手动重试；`stop_voice_bridge` 停止。
+- 入口：`start_voice_bridge`（`src-tauri/src/commands/voice_bridge.rs`，只是薄适配层）
+  启动一个监督线程；`retry_voice_bridge` 用于失败后手动重试；`stop_voice_bridge` 停止。
+- **模块边界（重要）**：
+  - 状态机与重试策略在 `crates/core-voice/src/supervisor.rs`（`run_supervisor`），
+    不依赖 Tauri，通过 `SupervisorHost` trait 向外发状态/链路事件、释放按键，可单独单测；
+  - `commands/voice_bridge.rs` 只负责：把 Tauri 事件接到 `SupervisorHost`、启停线程、
+    断开时暂停/连接时恢复按键接管；
+  - `commands/audio_tools.rs` = 诊断 / 测试音 / 语音链路模拟 / 唤出 Win+H；
+  - `commands/vb_cable.rs` = VB-CABLE 检测与一键安装（安装器相关）。
+  - 旧的 `commands/audio.rs` 已拆分删除，新增功能请按上述职责放置。
 - 监督线程第一步打开轻量链路监视器 `core_ble::LinkWatcher`：
   **只监听 `ConnectionStatusChanged`，不打开任何 GATT 服务**，避免抢设备。
 - 状态机（`BridgeStatus.state`，前端 `BridgeState` 同名字段）：

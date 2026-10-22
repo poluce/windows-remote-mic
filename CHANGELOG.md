@@ -32,6 +32,13 @@
   - 说明与限制见 `docs/项目/自动更新.md`。**旧版本（0.6.2 及更早）需手动安装一次带更新功能的版本**，
     之后才能走自动更新。
 
+### 重构
+- 语音桥监督状态机（等链路/重试/失败等待/静默会话）从 Tauri 命令层下沉到
+  `core-voice/src/supervisor.rs`，通过 `SupervisorHost` trait 与 UI 解耦，可脱离 Tauri 单测；
+- `commands/audio.rs` 按职责拆分为 `voice_bridge`（启停与事件适配）、`audio_tools`（诊断/
+  测试音/模拟/Win+H）、`vb_cable`（虚拟声卡检测与安装）；
+- 无用户可见行为变化。
+
 ## [0.6.2] - 2026-10-20
 
 ### 变更

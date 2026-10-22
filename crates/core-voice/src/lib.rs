@@ -252,6 +252,9 @@ mod tests {
     }
 }
 
+/// 语音桥监督状态机（与 Tauri/平台解耦，可单测）。
+pub mod supervisor;
+
 #[cfg(target_os = "windows")]
 pub mod bridge;
 

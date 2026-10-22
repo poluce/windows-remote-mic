@@ -1,8 +1,8 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::commands::audio::{current_bridge_status, BridgeStatus};
 use crate::{config_store, AppState};
+use core_voice::supervisor::{current_status, BridgeStatus};
 
 /// 连接页需要恢复的运行时状态快照。
 #[derive(Serialize)]
@@ -20,7 +20,7 @@ pub fn get_runtime_status() -> RuntimeStatus {
         connected: core_voice::connection_active(),
         tap_status: core_hid::tap::last_status(),
         endpoints_ready: core_voice::atvv_endpoints_ready(),
-        bridge_status: current_bridge_status(),
+        bridge_status: current_status(),
     }
 }
 
