@@ -124,7 +124,7 @@ export function ConnectionPage() {
           </div>
           <div className="device-actions">
             <span
-              className={`badge ${effectiveConnected ? "badge-ok" : "badge-warn"}`}
+              className={`pill ${effectiveConnected ? "ok" : "warn"}`}
             >
               {effectiveConnected ? "已连接" : "未连接"}
             </span>
@@ -165,7 +165,7 @@ export function ConnectionPage() {
           {briefs.map((b) => (
             <span
               key={b.key}
-              className={`device-status-pill ${b.tone}`}
+              className={`pill ${b.tone}`}
               title={b.title}
             >
               <span className="pill-dot" />

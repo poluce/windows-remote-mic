@@ -177,15 +177,15 @@ export function DiagnosticsPage() {
       <div className="diag-grid">
       <section className="card vbcable-card">
         <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
-        <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
+        <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           {data.has_vb_cable ? "正常" : "未就绪"}
         </span>
-        <span className={`vbcable-status ${data.cable_input_present ? "ok" : "warn"}`}>
+        <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           CABLE 输入
         </span>
-        <span className={`vbcable-status ${data.cable_output_present ? "ok" : "warn"}`}>
+        <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           CABLE 输出
         </span>
@@ -224,7 +224,7 @@ export function DiagnosticsPage() {
               <div key={t.name} className="check-row">
                 <span>{t.name}</span>
                 <div>
-                  <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
+                  <span className={`pill ${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
                     {t.status.toUpperCase()}
                   </span>
                   {t.detail && <span className="hint multiline"> {t.detail}</span>}

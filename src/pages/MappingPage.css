@@ -1,36 +1,5 @@
 /* 按键映射页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
 
-/* ---------- 按键映射 ---------- */
-.mapping-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.mapping-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 9px 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.mapping-row:last-child {
-  border-bottom: none;
-}
-
-.mapping-key {
-  width: 110px;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.mapping-action {
-  flex: 1;
-  color: var(--text-2);
-  font-size: 13px;
-}
-
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
@@ -148,7 +117,7 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 0; /* 一级/二级分组之间的间距交给下面那道分隔线，不再叠一层 */
 }
 
 .category-tabs .btn {
@@ -627,10 +596,6 @@
  * 两组按钮字号、圆角、边框完全一样又紧挨着，很容易被当成同一排一起看，
  * 于是一道细线把两级关系显出来。
  */
-.category-tabs {
-  margin-bottom: 0; /* 间距交给下面那道线，别再叠一层 */
-}
-
 .category-tabs + .action-grid,
 .category-tabs + .shortcut-grid {
   margin-top: 10px;

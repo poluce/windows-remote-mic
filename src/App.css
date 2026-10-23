@@ -83,11 +83,11 @@ button {
   display: flex;
   overflow: hidden;
   background:
-    radial-gradient(760px 560px at -8% 38%, rgba(68, 103, 138, 0.16), transparent 62%),
-    radial-gradient(680px 460px at 6% -14%, rgba(68, 103, 138, 0.13), transparent 62%),
-    radial-gradient(560px 420px at 104% 0%, rgba(96, 100, 132, 0.12), transparent 64%),
-    radial-gradient(720px 520px at 76% 112%, rgba(84, 124, 136, 0.12), transparent 62%),
-    linear-gradient(168deg, #f4f6f9 0%, #e9edf3 52%, #eceff4 100%);
+    radial-gradient(820px 620px at -10% 46%, rgba(68, 103, 138, 0.24), transparent 64%),
+    radial-gradient(700px 480px at 4% -16%, rgba(78, 108, 140, 0.2), transparent 62%),
+    radial-gradient(600px 460px at 106% -4%, rgba(96, 100, 132, 0.18), transparent 64%),
+    radial-gradient(760px 560px at 74% 116%, rgba(78, 122, 132, 0.17), transparent 62%),
+    linear-gradient(168deg, #f2f5f9 0%, #e6ebf3 52%, #e9eef4 100%);
 }
 
 /* 1.5% 噪点：消掉大渐变的色带，让材质像纸而不是塑料 */
@@ -113,9 +113,9 @@ button {
   flex-direction: column;
   overflow: hidden;
   padding: 18px 10px 12px;
-  background: var(--rm-glass);
-  -webkit-backdrop-filter: var(--rm-blur);
-  backdrop-filter: var(--rm-blur);
+  background: rgba(255, 255, 255, 0.56);
+  -webkit-backdrop-filter: blur(26px) saturate(200%);
+  backdrop-filter: blur(26px) saturate(200%);
   border-right: 1px solid var(--rm-line-light);
   box-shadow: inset -1px 0 0 rgba(19, 26, 36, 0.05);
 }
@@ -312,14 +312,6 @@ button {
   line-height: 1.6;
 }
 
-.page-head-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* ---------- 页面与卡片 ---------- */
 .page h2 {
   margin: 4px 0;
@@ -489,10 +481,7 @@ button {
 }
 
 /* ---------- 胶囊 / 徽标（统一实现） ---------- */
-.pill,
-.badge,
-.vbcable-status,
-.device-status-pill {
+.pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -505,10 +494,7 @@ button {
   white-space: nowrap;
 }
 
-.pill .dot,
-.pill-dot,
-.vbcable-status .pill-dot,
-.device-status-pill .pill-dot {
+.pill-dot {
   width: 6px;
   height: 6px;
   border-radius: var(--rm-r-full);
@@ -516,57 +502,24 @@ button {
   flex: none;
 }
 
-.badge-ok,
-.vbcable-status.ok,
-.device-status-pill.ok,
 .pill.ok {
   background: var(--rm-ok-soft);
   color: var(--rm-ok);
 }
 
-.badge-warn,
-.vbcable-status.warn,
-.device-status-pill.warn,
 .pill.warn {
   background: var(--rm-warn-soft);
   color: var(--rm-warn);
 }
 
-.badge-err,
-.device-status-pill.err,
 .pill.err {
   background: var(--rm-err-soft);
   color: var(--rm-err);
 }
 
-.device-status-pill.off,
 .pill.off {
   background: var(--rm-sunken);
   color: var(--rm-text-3);
-}
-
-/* 独立状态点（侧栏状态行、下拉选项里用） */
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--rm-r-full);
-  background: var(--rm-text-4);
-  flex: none;
-}
-
-.dot.ok {
-  background: var(--rm-ok-fill);
-  box-shadow: 0 0 0 3px var(--rm-ok-soft);
-}
-
-.dot.warn {
-  background: var(--rm-warn-fill);
-  box-shadow: 0 0 0 3px var(--rm-warn-soft);
-}
-
-.dot.err {
-  background: var(--rm-err-fill);
-  box-shadow: 0 0 0 3px var(--rm-err-soft);
 }
 
 /* ---------- 状态点（兼容旧用法） ---------- */
@@ -775,12 +728,6 @@ button {
   border: 1px solid rgba(138, 106, 51, 0.22);
   background: var(--rm-warn-soft);
   margin-top: 12px;
-}
-
-.callout .callout-ico {
-  flex: none;
-  color: var(--rm-warn);
-  margin-top: 1px;
 }
 
 .callout-title {
