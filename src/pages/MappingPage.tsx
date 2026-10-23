@@ -76,7 +76,7 @@ export function MappingPage() {
       </section>
 
       <div className="mapping-wizard">
-        <section className="card remote-card">
+        <section className="remote-card">
           <div className="remote-art" ref={remoteArtRef}>
             <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
           </div>

@@ -56,6 +56,8 @@
   border-radius: 0;
   box-shadow: none;
   padding: 0;
+  margin: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -506,7 +508,8 @@
 }
 
 /* 卡片自带 margin-bottom；页面铺满时它会变成多出来的 16px，把页面顶出滚动条 */
-.page-fill .mapping-wizard > .card {
+.page-fill .mapping-wizard > .card,
+.page-fill .remote-card {
   margin-bottom: 0;
   min-height: 0;
 }
