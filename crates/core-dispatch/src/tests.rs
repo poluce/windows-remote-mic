@@ -475,6 +475,37 @@ fn combo_hold_watchdog_releases_after_timeout() {
     assert!(jobs_of(&d, 116, false, 1_200).is_empty());
 }
 
+/// 麦克风按键映射为自定义组合键时，默认不应在 10s 处被强制掐断，保障长语音输入。
+#[test]
+fn mic_combo_hold_does_not_release_at_10s_default() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::Mic,
+                Trigger::Press,
+                ActionKind::KeyCombo(vec!["rctrl".into()]),
+            ),
+            binding(
+                ButtonId::Mic,
+                Trigger::Release,
+                ActionKind::KeyCombo(vec!["rctrl".into()]),
+            ),
+        ],
+    });
+    assert_eq!(jobs_of(&d, 116, true, 0).len(), 1);
+
+    // 默认普通键上限为 10s；麦克风在 10s / 20s / 30s 都不应被强制释放
+    assert!(d.tick_once(10_000).is_empty(), "10s 时不应掐断麦克风长语音");
+    assert!(d.tick_once(20_000).is_empty(), "20s 时不应掐断麦克风长语音");
+    assert!(d.tick_once(30_000).is_empty(), "30s 时不应掐断麦克风长语音");
+
+    // 直到物理松开信号到达，正常释放
+    let jobs = jobs_of(&d, 116, false, 35_000);
+    assert_eq!(jobs.len(), 1, "物理松开正常释放");
+    assert_eq!(jobs[0].trigger, Trigger::Release);
+}
+
 /// 暂停/恢复调度不能丢掉用户配置的长按阈值。
 #[test]
 fn set_enabled_keeps_trigger_timing() {

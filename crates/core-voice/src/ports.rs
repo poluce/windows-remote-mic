@@ -63,6 +63,8 @@ pub trait KeySink: Send + Sync {
     fn release_all_keys(&self);
     /// 遥控器 `AudioStopped` 时兜底释放麦克风按键。
     fn release_mic_on_audio_stop(&self);
+    /// 收到音频包时为麦克风按键续期保活（防止长语音被看门狗误断）。
+    fn touch_mic_activity(&self) {}
     /// 触发 Windows 语音输入（Win+H）。
     fn press_win_h(&self) -> Result<(), String>;
     /// 按 Esc 关闭/复位语音输入条。

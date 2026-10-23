@@ -43,11 +43,15 @@ const TICK_INTERVAL_MS: u64 = 25;
 
 /// 自定义快捷键单次按住的兜底上限（毫秒）。
 ///
-/// 遥控器是「按住说话」式硬件，正常说话只有几秒，硬件推流上限也约 15 秒；
-/// 超过 10 秒的一定是松开事件丢了（BLE 断链、无线丢包等）。此时强制松开，
+/// 自定义快捷键按住超时上限（毫秒）。
+///
+/// 超过该上限的一定是松开事件丢了（BLE 断链、无线丢包等）。此时强制松开，
 /// 避免修饰键一直卡在系统里把用户的物理键盘拖成 Ctrl+ 组合键。
-/// 只约束 `KeyCombo`：`Voice`（Win+H）长按后的按住是正常语义，不能超时打断。
+/// 仅用于普通按键；麦克风按键（`ButtonId::Mic`）承载语音输入（如豆包等输入法），长按说话
+/// 可能持续数十秒至数分钟，正常由物理松手或硬件 `AudioStopped` 释放，仅在极端丢包时
+/// 使用专门的宽松兜底（默认 180s）。
 const DEFAULT_MAX_COMBO_HOLD_MS: u64 = 10_000;
+const DEFAULT_MAX_MIC_HOLD_MS: u64 = 180_000;
 
 /// 单个按键的运行时状态。
 #[derive(Default)]
@@ -626,13 +630,21 @@ impl KeyDispatcher {
         for (button, rt) in buttons.iter_mut() {
             // 兜底：自定义快捷键按住远超任何合理时长，说明松开事件丢了
             // （BLE 断链等）。强制松开，避免修饰键一直卡在系统里。
-            if max_combo_hold_ms > 0 && rt.combo_held {
+            // 麦克风按键承载语音输入（如豆包等输入法），正常由硬件 AudioStopped 释放，
+            // 默认采用宽松的 180s 极端故障兜底，绝不在 10s 内掐断长语音。
+            let hold_timeout_ms =
+                if *button == ButtonId::Mic && max_combo_hold_ms == DEFAULT_MAX_COMBO_HOLD_MS {
+                    DEFAULT_MAX_MIC_HOLD_MS
+                } else {
+                    max_combo_hold_ms
+                };
+            if hold_timeout_ms > 0 && rt.combo_held {
                 if let Some(started) = rt.hold_started_ms {
-                    if now.saturating_sub(started) >= max_combo_hold_ms {
+                    if now.saturating_sub(started) >= hold_timeout_ms {
                         let job = release_job(mapping, profile, *button, rt);
                         core_log::log_warn(&format!(
                             "[dispatch] 按键 {button:?} 按住超过 {}s 未松开，已强制释放（松开事件丢失兜底）",
-                            max_combo_hold_ms / 1000
+                            hold_timeout_ms / 1000
                         ));
                         rt.down = false;
                         rt.long_executed = false;
