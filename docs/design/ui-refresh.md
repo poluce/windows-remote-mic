@@ -131,23 +131,36 @@
 4. **几何成阶梯**：圆角、阴影、字号、间距只允许取 token 里的档位。
 5. **动效克制**：180ms、ease-out、只做状态反馈；尊重 `prefers-reduced-motion`。
 
-### 3.2 核心色板
+### 3.2 核心色板（低饱和）
 
 | token | 值 | 用途 | 对比度（白底） |
 | --- | --- | --- | --- |
-| `--rm-accent` | `#007aff` | 主按钮、选中、图标 | 4.1（UI/大字，达标；**小字不用**） |
-| `--rm-accent-strong` | `#0062d0` | 强调色小字、图标 | 5.8 ✅ |
-| `--rm-accent-soft` | `rgba(0,122,255,.10)` | 选中底、hover 底 | — |
-| `--rm-text` | `#0f172a` | 正文、标题 | 17.8 ✅ |
-| `--rm-text-2` | `#475569` | 次级文字 | 6.7 ✅ |
-| `--rm-text-3` | `#5d6b7e` | 提示、分区标签 | 5.3 ✅（页底 4.8） |
-| `--rm-text-4` | `#94a3b8` | 仅图标/分隔，不承载文字 | — |
-| `--rm-ok` / `-fill` / `-soft` | `#1a7f37` / `#34c759` / `rgba(52,199,89,.14)` | 成功 文字 / 填充 / 底 | 5.1 ✅ |
-| `--rm-warn` / `-fill` / `-soft` | `#a15c00` / `#ff9f0a` / `rgba(255,159,10,.16)` | 警告 | 5.2 ✅ |
-| `--rm-err` / `-fill` / `-soft` | `#d70015` / `#ff3b30` / `rgba(255,59,48,.12)` | 危险 | 5.4 ✅ |
-| `--rm-line` / `-strong` / `-light` | `rgba(15,23,42,.08 / .16)`、`rgba(255,255,255,.72)` | 描边 / 玻璃上沿高光 | — |
+| `--rm-accent` | `#44678a` | 主按钮、选中、图标 | 5.9 ✅ |
+| `--rm-accent-strong` | `#2e4f6b` | 强调色小字、图标 | 8.6 ✅ |
+| `--rm-accent-soft` | `rgba(68,103,138,.10)` | 选中底、hover 底 | — |
+| `--rm-text` | `#131a24` | 正文、标题 | 17.5 ✅ |
+| `--rm-text-2` | `#46536a` | 次级文字 | 7.8 ✅ |
+| `--rm-text-3` | `#5c6979` | 提示、分区标签 | 5.6 ✅（页底 5.0） |
+| `--rm-text-4` | `#93a0af` | 仅图标/分隔，不承载文字 | — |
+| `--rm-ok` / `-fill` / `-soft` | `#4c7a5d` / `#7fa68c` / `rgba(76,122,93,.12)` | 成功 文字 / 填充 / 底 | 4.9 ✅ |
+| `--rm-warn` / `-fill` / `-soft` | `#8a6a33` / `#c0a063` / `rgba(138,106,51,.12)` | 警告 | 5.0 ✅ |
+| `--rm-err` / `-fill` / `-soft` | `#9c4a42` / `#c07972` / `rgba(156,74,66,.10)` | 危险 | 6.1 ✅ |
+| `--rm-line` / `-strong` / `-light` | `rgba(19,26,36,.08 / .16)`、`rgba(255,255,255,.72)` | 描边 / 玻璃上沿高光 | — |
 
-**为什么保留 `#007aff`**：快捷菜单（`quick-menu.html:287`）已经用它，图标是 sky 蓝一族，改动面最小；`#2f6fed`（测试组件）与 sky 图标色都并入。语义色统一成「填充 / 文字 / 底」三档，禁止再出现第四种绿。
+### 3.2.1 色彩克制规则（按键 / 选中态）
+
+| 场景 | 不要 | 改为 |
+| --- | --- | --- |
+| 选中的动作 / 触发方式 chip | 整块高饱和蓝底 + 白字 | 10% 淡底 + 强调色深字 + 1px 同色描边 |
+| 矩阵「本应用覆盖」格 | 强调蓝铺满 | 7% 淡底 + 深色字 |
+| 应用档案圆点（Claude / Codex / ZCode） | 后端色原样（`#D97757` / `#4D6BFE` / `#F59E0B`）跳色 | CSS `filter: saturate(.55)` + 1px 深色细环（数据不改） |
+| 遥控器高亮 | `#2f6fed` 亮蓝 + 蓝色辉光 | `--rm-accent`；引导态才保留呼吸动画 |
+| 状态点 / 胶囊 | iOS 亮绿 / 亮橙 / 亮红 | 灰绿 / 沙金 / 陶土红，文字深一档 |
+| 主按钮 | 亮蓝渐变 + 强辉光 | 深钢蓝渐变 `#4C729B→#3A5B7E` + 极轻投影 |
+
+判断标准：把截图缩到 25% 看整体——第一个跳出来的色块若不是主按钮，就是过饱和。
+
+**为什么是低饱和钢蓝**：`#007aff` 这类高明度蓝在灰底上会「喊」，一屏里出现 3 次就显得廉价；`#44678a` 明度低、彩度低，白字对比度 5.9:1，做主按钮与选中态都稳。快捷菜单与遥控器高亮统一到它。
 
 ### 3.3 三级材质
 
@@ -184,41 +197,41 @@
   --rm-glass: rgba(255, 255, 255, 0.62);
   --rm-card: rgba(255, 255, 255, 0.78);
   --rm-solid: #ffffff;
-  --rm-sunken: rgba(15, 23, 42, 0.04);
+  --rm-sunken: rgba(19, 26, 36, 0.04);
   --rm-hover: rgba(255, 255, 255, 0.92);
 
   /* 描边（冷灰，不用纯黑） */
-  --rm-line: rgba(15, 23, 42, 0.08);
-  --rm-line-strong: rgba(15, 23, 42, 0.16);
+  --rm-line: rgba(19, 26, 36, 0.08);
+  --rm-line-strong: rgba(19, 26, 36, 0.16);
   --rm-line-light: rgba(255, 255, 255, 0.72);
 
   /* 文字四级 */
-  --rm-text: #0f172a;
-  --rm-text-2: #475569;
-  --rm-text-3: #5d6b7e;
-  --rm-text-4: #94a3b8;
+  --rm-text: #131a24;
+  --rm-text-2: #46536a;
+  --rm-text-3: #5c6979;
+  --rm-text-4: #93a0af;
   --rm-text-inv: #fff;
 
-  /* 唯一强调色 */
-  --rm-accent: #007aff;
-  --rm-accent-strong: #0062d0;
-  --rm-accent-soft: rgba(0, 122, 255, 0.10);
-  --rm-accent-line: rgba(0, 122, 255, 0.30);
+  /* 唯一强调色（低饱和钢蓝） */
+  --rm-accent: #44678a;
+  --rm-accent-strong: #2e4f6b;
+  --rm-accent-soft: rgba(68, 103, 138, 0.10);
+  --rm-accent-line: rgba(68, 103, 138, 0.28);
 
-  /* 语义三档 */
-  --rm-ok: #1a7f37;   --rm-ok-fill: #34c759;   --rm-ok-soft: rgba(52, 199, 89, 0.14);
-  --rm-warn: #a15c00; --rm-warn-fill: #ff9f0a; --rm-warn-soft: rgba(255, 159, 10, 0.16);
-  --rm-err: #d70015;  --rm-err-fill: #ff3b30;  --rm-err-soft: rgba(255, 59, 48, 0.12);
+  /* 语义三档（全部降饱和，禁用 iOS 亮色） */
+  --rm-ok: #4c7a5d;   --rm-ok-fill: #7fa68c;   --rm-ok-soft: rgba(76, 122, 93, 0.12);
+  --rm-warn: #8a6a33; --rm-warn-fill: #c0a063; --rm-warn-soft: rgba(138, 106, 51, 0.12);
+  --rm-err: #9c4a42;  --rm-err-fill: #c07972;  --rm-err-soft: rgba(156, 74, 66, 0.10);
 
   /* 圆角阶梯 */
   --rm-r-xs: 6px; --rm-r-sm: 8px; --rm-r-md: 12px;
   --rm-r-lg: 16px; --rm-r-xl: 20px; --rm-r-full: 999px;
 
   /* 阴影阶梯（冷色投影） */
-  --rm-sh-1: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --rm-sh-2: 0 6px 18px -8px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.05);
-  --rm-sh-3: 0 24px 60px -28px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --rm-glow: 0 6px 18px -6px rgba(0, 122, 255, 0.45);
+  --rm-sh-1: 0 1px 2px rgba(19, 26, 36, 0.06);
+  --rm-sh-2: 0 6px 18px -8px rgba(19, 26, 36, 0.18), 0 1px 2px rgba(19, 26, 36, 0.05);
+  --rm-sh-3: 0 24px 60px -28px rgba(19, 26, 36, 0.35), 0 2px 6px rgba(19, 26, 36, 0.06);
+  --rm-glow: 0 6px 16px -8px rgba(68, 103, 138, 0.35);
 
   /* 字号阶梯 */
   --rm-fs-11: 11px; --rm-fs-12: 12px; --rm-fs-13: 13px;
@@ -246,11 +259,11 @@
 ```css
 .app-shell {
   background:
-    radial-gradient(760px 560px at -8% 38%, rgba(0, 122, 255, 0.26), transparent 62%),
-    radial-gradient(680px 460px at 6% -14%, rgba(0, 122, 255, 0.22), transparent 62%),
-    radial-gradient(560px 420px at 104% 0%, rgba(94, 92, 230, 0.20), transparent 64%),
-    radial-gradient(720px 520px at 76% 112%, rgba(14, 165, 233, 0.22), transparent 62%),
-    linear-gradient(168deg, #f2f6fc 0%, #e6edf7 52%, #eaf0f8 100%);
+    radial-gradient(760px 560px at -8% 38%, rgba(68, 103, 138, 0.16), transparent 62%),
+    radial-gradient(680px 460px at 6% -14%, rgba(68, 103, 138, 0.13), transparent 62%),
+    radial-gradient(560px 420px at 104% 0%, rgba(96, 100, 132, 0.12), transparent 64%),
+    radial-gradient(720px 520px at 76% 112%, rgba(84, 124, 136, 0.12), transparent 62%),
+    linear-gradient(168deg, #f4f6f9 0%, #e9edf3 52%, #eceff4 100%);
 }
 ```
 

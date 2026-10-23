@@ -33,21 +33,21 @@
   --rm-line-light: rgba(255, 255, 255, 0.72); /* 玻璃上沿高光 */
 
   /* 文字四级（对比度：17.8 / 7.5 / 4.8 / 仅装饰） */
-  --rm-text: #0f172a;
-  --rm-text-2: #475569;
-  --rm-text-3: #5d6b7e;
-  --rm-text-4: #94a3b8;
+  --rm-text: #131A24;
+  --rm-text-2: #46536A;
+  --rm-text-3: #5C6979;
+  --rm-text-4: #93A0AF;
 
   /* 唯一强调色 */
-  --rm-accent: #007aff;
-  --rm-accent-strong: #0062d0;               /* 小字/图标用，5.8:1 */
-  --rm-accent-soft: rgba(0, 122, 255, 0.10);
-  --rm-accent-line: rgba(0, 122, 255, 0.30);
+  --rm-accent: #44678A;
+  --rm-accent-strong: #2E4F6B;               /* 小字/图标用，5.8:1 */
+  --rm-accent-soft: rgba(68, 103, 138, 0.10);
+  --rm-accent-line: rgba(68, 103, 138, 0.28);
 
   /* 语义色：每个语义只有「填充色 / 文字色 / 底色」三档 */
-  --rm-ok: #1a7f37;      --rm-ok-fill: #34c759;  --rm-ok-soft: rgba(52, 199, 89, 0.14);
-  --rm-warn: #a15c00;    --rm-warn-fill: #ff9f0a; --rm-warn-soft: rgba(255, 159, 10, 0.16);
-  --rm-err: #d70015;     --rm-err-fill: #ff3b30;  --rm-err-soft: rgba(255, 59, 48, 0.12);
+  --rm-ok: #4C7A5D;      --rm-ok-fill: #7FA68C;  --rm-ok-soft: rgba(76, 122, 93, 0.12);
+  --rm-warn: #8A6A33;    --rm-warn-fill: #C0A063; --rm-warn-soft: rgba(138, 106, 51, 0.12);
+  --rm-err: #9C4A42;     --rm-err-fill: #C07972;  --rm-err-soft: rgba(156, 74, 66, 0.10);
 
   /* 圆角阶梯（只允许这 6 档） */
   --rm-r-xs: 6px; --rm-r-sm: 8px; --rm-r-md: 12px;
@@ -57,7 +57,7 @@
   --rm-sh-1: 0 1px 2px rgba(15, 23, 42, 0.06);
   --rm-sh-2: 0 6px 18px -8px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.05);
   --rm-sh-3: 0 24px 60px -28px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --rm-glow: 0 6px 18px -6px rgba(0, 122, 255, 0.45);
+  --rm-glow: 0 6px 16px -8px rgba(68, 103, 138, 0.35);
 
   /* 字号阶梯 */
   --rm-fs-11: 11px; --rm-fs-12: 12px; --rm-fs-13: 13px; --rm-fs-14: 14px;
@@ -163,9 +163,9 @@ body {
   display: flex; flex-direction: column; justify-content: flex-end;
   padding: 14px; overflow: hidden;
   background:
-    radial-gradient(320px 200px at 15% 0%, rgba(0, 122, 255, 0.30), transparent 65%),
-    radial-gradient(300px 220px at 90% 90%, rgba(94, 92, 230, 0.28), transparent 62%),
-    linear-gradient(150deg, #e7eef9, #eaf0f8);
+    radial-gradient(320px 200px at 15% 0%, rgba(68, 103, 138, 0.20), transparent 65%),
+    radial-gradient(300px 220px at 90% 90%, rgba(96, 100, 132, 0.18), transparent 62%),
+    linear-gradient(150deg, #e9eef4, #eaeef3);
   border: 1px solid var(--rm-line);
 }
 .material > .glass-swatch {
@@ -210,11 +210,11 @@ body {
   /* 窗口底 =「雾面底」：低饱和冷灰 + 三团柔光色斑，给玻璃提供可折射的层次。
      色斑取强调蓝 / 快捷菜单青 / 引导紫，三色都在 token 内，且不参与文字对比度。 */
   background:
-    radial-gradient(760px 560px at -8% 38%, rgba(0, 122, 255, 0.26), transparent 62%),
-    radial-gradient(680px 460px at 6% -14%, rgba(0, 122, 255, 0.22), transparent 62%),
-    radial-gradient(560px 420px at 104% 0%, rgba(94, 92, 230, 0.20), transparent 64%),
-    radial-gradient(720px 520px at 76% 112%, rgba(14, 165, 233, 0.22), transparent 62%),
-    linear-gradient(168deg, #f2f6fc 0%, #e6edf7 52%, #eaf0f8 100%);
+    radial-gradient(760px 560px at -8% 38%, rgba(68, 103, 138, 0.16), transparent 62%),
+    radial-gradient(680px 460px at 6% -14%, rgba(68, 103, 138, 0.13), transparent 62%),
+    radial-gradient(560px 420px at 104% 0%, rgba(96, 100, 132, 0.12), transparent 64%),
+    radial-gradient(720px 520px at 76% 112%, rgba(84, 124, 136, 0.12), transparent 62%),
+    linear-gradient(168deg, #f4f6f9 0%, #e9edf3 52%, #eceff4 100%);
   display: flex;
   font-size: var(--rm-fs-13); color: var(--rm-text); line-height: 1.55;
 }
@@ -337,15 +337,15 @@ body {
 .btn:hover { background: #fff; box-shadow: inset 0 1px 0 #fff, var(--rm-sh-2); }
 .btn:active { transform: translateY(0.5px); box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.10); }
 .btn.primary {
-  border-color: rgba(0, 98, 208, 0.85); color: #fff;
-  background: linear-gradient(180deg, #2b8cff, #0070f0);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--rm-glow);
+  border-color: rgba(46, 79, 107, 0.85); color: #fff;
+  background: linear-gradient(180deg, #4C729B, #3A5B7E);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--rm-glow);
 }
-.btn.primary:hover { background: linear-gradient(180deg, #1f85ff, #0064dc); }
+.btn.primary:hover { background: linear-gradient(180deg, #446a92, #33526f); }
 .btn.small { height: 26px; padding: 0 9px; font-size: var(--rm-fs-12); border-radius: var(--rm-r-sm); }
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--rm-text-2); }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.7); color: var(--rm-text); }
-.btn.danger { border-color: transparent; color: #fff; background: linear-gradient(180deg, #ff4b3e, #e01020); }
+.btn.danger { border-color: transparent; color: #fff; background: linear-gradient(180deg, #B4665E, #9C4A42); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
 .pill {
@@ -424,12 +424,12 @@ body {
 /* 提示条：软色底 + 图标，替代「左侧 3px 硬边」的老写法 */
 .callout {
   display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--rm-r-md);
-  border: 1px solid rgba(255, 159, 10, 0.28); background: var(--rm-warn-soft);
+  border: 1px solid rgba(138, 106, 51, 0.22); background: var(--rm-warn-soft);
 }
 .callout .ico { flex: none; color: var(--rm-warn); margin-top: 1px; }
 .callout b { display: block; font-size: var(--rm-fs-12); color: var(--rm-warn); }
 .callout p { margin: 2px 0 0; font-size: var(--rm-fs-12); color: var(--rm-text-2); line-height: 1.6; }
-.callout.err { border-color: rgba(215, 0, 21, 0.24); background: var(--rm-err-soft); }
+.callout.err { border-color: rgba(156, 74, 66, 0.22); background: var(--rm-err-soft); }
 .callout.err .ico, .callout.err b { color: var(--rm-err); }
 
 /* 映射页 */
@@ -446,7 +446,8 @@ body {
   color: var(--rm-accent-strong); font-weight: 600;
 }
 .scope .sp.new { border-style: dashed; color: var(--rm-text-3); }
-.scope .sd { width: 7px; height: 7px; border-radius: 50%; background: var(--rm-text-4); }
+/* 应用档案圆点颜色来自后端数据（profiles/*.json），统一降饱和 + 加一圈细边，避免跳色 */
+.scope .sd { width: 7px; height: 7px; border-radius: 50%; background: var(--rm-text-4); flex: none; filter: saturate(0.55); box-shadow: 0 0 0 1px rgba(19, 26, 36, 0.12); }
 .scope .sp.on .sd { background: var(--rm-accent); }
 
 .merged { display: grid; grid-template-columns: 132px 168px minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; }
@@ -460,7 +461,7 @@ body {
   font: inherit; font-size: var(--rm-fs-12); color: var(--rm-text-2); cursor: pointer;
 }
 .chip-btn:hover { background: #fff; border-color: var(--rm-line-strong); color: var(--rm-text); }
-.chip-btn.on { background: var(--rm-accent); border-color: var(--rm-accent); color: #fff; }
+.chip-btn.on { background: var(--rm-accent-soft); border-color: var(--rm-accent-line); color: var(--rm-accent-strong); font-weight: 500; }
 
 .matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--rm-fs-11); }
 .matrix th {
@@ -474,8 +475,8 @@ body {
 }
 .matrix td.k { color: var(--rm-text); font-weight: 500; }
 .matrix td.on { color: var(--rm-text); }
-.matrix td.own { color: var(--rm-accent-strong); font-weight: 600; background: var(--rm-accent-soft); }
-.matrix td.sel { box-shadow: inset 0 0 0 2px var(--rm-accent); border-radius: 5px; color: var(--rm-text); }
+.matrix td.own { color: var(--rm-accent-strong); font-weight: 600; background: rgba(68, 103, 138, 0.07); }
+.matrix td.sel { box-shadow: inset 0 0 0 1.5px var(--rm-accent); border-radius: 5px; color: var(--rm-text); }
 .matrix tr:hover td { background: rgba(255, 255, 255, 0.5); }
 .matrix tr:hover td.own { background: var(--rm-accent-soft); }
 
@@ -539,12 +540,12 @@ body {
 .dlg-scene {
   position: relative; height: 250px; border-radius: var(--rm-r-md); overflow: hidden;
   background:
-    radial-gradient(300px 200px at 20% 0%, rgba(0, 122, 255, 0.18), transparent 60%),
-    linear-gradient(150deg, #eef3fa, #e8eef7);
+    radial-gradient(300px 200px at 20% 0%, rgba(68, 103, 138, 0.14), transparent 60%),
+    linear-gradient(150deg, #f0f3f7, #eaedf2);
   display: flex; align-items: center; justify-content: center;
 }
 .dlg-mask {
-  position: absolute; inset: 0; background: rgba(15, 23, 42, 0.28);
+  position: absolute; inset: 0; background: rgba(19, 26, 36, 0.26);
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .dlg {
@@ -618,7 +619,7 @@ table.tbl tr:last-child td { border-bottom: none; }
       <div class="principle">
         <span class="n">1</span>
         <h4>一个强调色</h4>
-        <p>全应用只保留一种蓝（#007aff 系）。其它颜色只表达语义，不再用颜色区分「页面」。</p>
+        <p>全应用只保留一种低饱和钢蓝（#44678A）。其它颜色只表达语义，不再用颜色区分「页面」。</p>
       </div>
       <div class="principle">
         <span class="n">2</span>
@@ -646,76 +647,75 @@ table.tbl tr:last-child td { border-bottom: none; }
   <!-- ==================================================================== -->
   <section class="doc-sec">
     <h2 id="s02"><span class="no">02</span>色调与材质</h2>
-    <p class="sub">现有代码里同时存在 4 套蓝（#007aff / #2f6fed / #0EA5E9 / 快捷菜单的 #007aff）与 4 套绿；这里收敛成唯一一套。</p>
+    <p class="sub">现有代码里同时存在 4 套蓝（#007aff / #2f6fed / #0EA5E9 / 快捷菜单的 #007aff）与 4 套绿，且饱和度都偏高；这里收敛成唯一一套低饱和色板。</p>
 
     <h3>核心色板</h3>
     <div class="swatches">
       <div class="swatch">
-        <div class="chip" style="background:#007aff"></div>
-        <div class="lab"><b>强调色 accent</b><span>#007aff · 主按钮 / 选中 / 图标</span></div>
+        <div class="chip" style="background:#44678A"></div>
+        <div class="lab"><b>强调色 accent</b><span>#44678A · 主按钮 / 选中 / 图标</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#0062d0"></div>
-        <div class="lab"><b>强调色（小字）</b><span>#0062d0 · 5.8:1 才敢当正文</span></div>
+        <div class="chip" style="background:#2E4F6B"></div>
+        <div class="lab"><b>强调色（小字）</b><span>#2E4F6B · 8.6:1，小字用它</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:rgba(0,122,255,.10)"></div>
-        <div class="lab"><b>强调底色</b><span>rgba(0,122,255,.10)</span></div>
+        <div class="chip" style="background:rgba(68,103,138,.10)"></div>
+        <div class="lab"><b>强调底色</b><span>rgba(68,103,138,.10)</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:linear-gradient(150deg,#f6f9fd,#e9eff8 55%,#eef2f9)"></div>
-        <div class="lab"><b>雾面底</b><span>冷灰 + 三团柔光色斑</span></div>
+        <div class="chip" style="background:linear-gradient(150deg,#f4f6f9,#e9edf3 55%,#eceff4)"></div>
+        <div class="lab"><b>雾面底</b><span>冷灰 + 低饱和柔光</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#0f172a"></div>
-        <div class="lab"><b>文字 / 主</b><span>#0f172a · 17.8:1</span></div>
+        <div class="chip" style="background:#131A24"></div>
+        <div class="lab"><b>文字 / 主</b><span>#131A24 · 17.5:1</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#475569"></div>
-        <div class="lab"><b>文字 / 次</b><span>#475569 · 7.5:1</span></div>
+        <div class="chip" style="background:#46536A"></div>
+        <div class="lab"><b>文字 / 次</b><span>#46536A · 7.8:1</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#5d6b7e"></div>
-        <div class="lab"><b>文字 / 辅</b><span>#5d6b7e · 白底 5.3:1 / 页底 4.8:1</span></div>
+        <div class="chip" style="background:#5C6979"></div>
+        <div class="lab"><b>文字 / 辅</b><span>#5C6979 · 5.6:1</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#94a3b8"></div>
-        <div class="lab"><b>文字 / 装饰</b><span>#94a3b8 · 只做图标与分隔</span></div>
+        <div class="chip" style="background:#93A0AF"></div>
+        <div class="lab"><b>文字 / 装饰</b><span>#93A0AF · 只做图标与分隔</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#34c759"></div>
-        <div class="lab"><b>成功 / 填充</b><span>#34c759 · 开关、进度</span></div>
+        <div class="chip" style="background:#7FA68C"></div>
+        <div class="lab"><b>成功 / 填充</b><span>#7FA68C · 开关、进度（灰绿）</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#1a7f37"></div>
-        <div class="lab"><b>成功 / 文字</b><span>#1a7f37 · 状态胶囊文字</span></div>
+        <div class="chip" style="background:#4C7A5D"></div>
+        <div class="lab"><b>成功 / 文字</b><span>#4C7A5D · 状态胶囊文字</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#ff9f0a"></div>
-        <div class="lab"><b>警告 / 填充</b><span>#ff9f0a</span></div>
+        <div class="chip" style="background:#C0A063"></div>
+        <div class="lab"><b>警告 / 填充</b><span>#C0A063 · 沙金，不用亮橙</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#a15c00"></div>
-        <div class="lab"><b>警告 / 文字</b><span>#a15c00 · 5.2:1</span></div>
+        <div class="chip" style="background:#8A6A33"></div>
+        <div class="lab"><b>警告 / 文字</b><span>#8A6A33 · 5.0:1</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#ff3b30"></div>
-        <div class="lab"><b>危险 / 填充</b><span>#ff3b30</span></div>
+        <div class="chip" style="background:#C07972"></div>
+        <div class="lab"><b>危险 / 填充</b><span>#C07972 · 陶土红</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#d70015"></div>
-        <div class="lab"><b>危险 / 文字</b><span>#d70015 · 5.4:1</span></div>
+        <div class="chip" style="background:#9C4A42"></div>
+        <div class="lab"><b>危险 / 文字</b><span>#9C4A42 · 6.1:1</span></div>
       </div>
       <div class="swatch">
         <div class="chip" style="background:#eef2f8"></div>
-        <div class="lab"><b>沉底 sunken</b><span>rgba(15,23,42,.04)</span></div>
+        <div class="lab"><b>沉底 sunken</b><span>rgba(19,26,36,.04)</span></div>
       </div>
       <div class="swatch">
         <div class="chip checker"></div>
-        <div class="lab"><b>描边 hairline</b><span>rgba(15,23,42,.08 / .16)</span></div>
+        <div class="lab"><b>描边 hairline</b><span>rgba(19,26,36,.08 / .16)</span></div>
       </div>
     </div>
-
     <h3>三级材质</h3>
     <div class="material-row">
       <div class="material g1">
@@ -734,6 +734,48 @@ table.tbl tr:last-child td { border-bottom: none; }
         <span>rgba(15,23,42,.04) + 内阴影。<br>分组列表底、日志预览、分段控件槽。</span>
       </div>
     </div>
+    <h3>色彩克制规则：按键与选中态不用高饱和</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:24%">场景</th><th style="width:32%">不要</th><th>改为</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>选中的动作 / 触发方式 chip</td>
+          <td>整块高饱和蓝底 + 白字（现在的 <code>.shortcut-btn.active</code>、<code>.chip-btn.on</code>）</td>
+          <td>10% 淡底 + 强调色深字 + 1px 同色描边；选中靠「描边 + 底色微差」，不靠色块重量</td>
+        </tr>
+        <tr>
+          <td>矩阵里「本应用覆盖」的格子</td>
+          <td>强调蓝铺满整格</td>
+          <td>7% 淡底 + 深色字（本稿效果），一眼能分辨但不抢眼</td>
+        </tr>
+        <tr>
+          <td>应用档案圆点（Claude / Codex / ZCode）</td>
+          <td>后端下发的颜色原样显示（<code>#D97757</code> / <code>#4D6BFE</code> / <code>#F59E0B</code>），互相之间色相跳得很厉害</td>
+          <td>CSS <code>filter: saturate(.55)</code> + 1px 深色细环；数据不改，只在展示层降饱和。后续可考虑在种子档案里换柔和色</td>
+        </tr>
+        <tr>
+          <td>遥控器像素图高亮</td>
+          <td><code>#2f6fed</code> 亮蓝描边 + 蓝色发光</td>
+          <td>换成 <code>--rm-accent</code>（#44678A）；<code>pulseGlow</code> 的蓝色辉光改为 2px 静态描边（引导态才保留呼吸动画）</td>
+        </tr>
+        <tr>
+          <td>状态点 / 胶囊</td>
+          <td>iOS 亮绿 <code>#34c759</code>、亮橙 <code>#ff9f0a</code>、亮红 <code>#ff3b30</code></td>
+          <td>灰绿 <code>#7FA68C</code>、沙金 <code>#C0A063</code>、陶土红 <code>#C07972</code>；文字用深一档（4.9–6.1:1）</td>
+        </tr>
+        <tr>
+          <td>主按钮</td>
+          <td>亮蓝渐变 + 蓝色辉光</td>
+          <td>深钢蓝渐变（#4C729B→#3A5B7E）+ 极轻投影；整屏只保留它一个「实底强调」</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="hint" style="margin-top:10px">
+      判断标准：把截图缩小到 25% 看整体——如果某个色块第一个跳出来、且它不是主按钮，那就是过饱和。
+      本稿的目标是「一眼先看到内容和层级，颜色只在需要时出现」。
+    </p>
+
     <p class="hint" style="margin-top:10px">
       为什么卡片不用真模糊：一屏 5–8 张卡各带一层 backdrop-filter，滚动时 WebView2 每帧重算模糊，
       既掉帧又让 12px 中文发虚（模糊层上叠文字是不稳定组合）。玻璃感来自「侧栏 + 浮层 + 柔光底」，
@@ -761,7 +803,7 @@ table.tbl tr:last-child td { border-bottom: none; }
       <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-1)"></span><span class="meta"><b>sh-1</b>0 1px 2px rgba(15,23,42,.06)</span></div>
       <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-2)"></span><span class="meta"><b>sh-2</b>0 6px 18px -8px / 卡片、下拉</span></div>
       <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-3)"></span><span class="meta"><b>sh-3</b>0 24px 60px -28px / 对话框</span></div>
-      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-glow);background:linear-gradient(180deg,#2b8cff,#0070f0)"></span><span class="meta"><b>glow</b>主按钮的蓝色辉光</span></div>
+      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-glow);background:linear-gradient(180deg,#4C729B,#3A5B7E)"></span><span class="meta"><b>glow</b>主按钮的蓝色辉光</span></div>
     </div>
 
     <h3>字号</h3>
@@ -781,7 +823,7 @@ table.tbl tr:last-child td { border-bottom: none; }
     <h2 id="s04"><span class="no">04</span>界面稿 A：连接页</h2>
     <p class="sub">真实窗口 1000×700。左侧是唯一的真玻璃浮层，内容卡为磨砂纸；空白区域由柔光底填充，不再是死灰。本稿只画内容区——系统标题栏仍由 Windows 绘制、保持现状，不在本次改动范围。</p>
 
-    <div class="frame">
+    <div class="frame" id="frameA">
       <!-- 侧栏 -->
       <aside class="sb">
         <div class="sb-brand">
@@ -913,7 +955,7 @@ table.tbl tr:last-child td { border-bottom: none; }
     <h2 id="s05"><span class="no">05</span>界面稿 B：按键映射页</h2>
     <p class="sub">信息密度最高的一页：验证新控件语言在窄栏 + 矩阵 + 遥控器像素图混排下仍然成立。</p>
 
-    <div class="frame">
+    <div class="frame" id="frameB">
       <aside class="sb">
         <div class="sb-brand">
           <span class="sb-logo">
@@ -1213,7 +1255,7 @@ table.tbl tr:last-child td { border-bottom: none; }
         <tr>
           <td>次要文字对比度不达标（现存 a11y 缺陷）</td>
           <td><code>--text-3: #86868b</code> 在 <code>#f5f5f7</code> 上实测 <b>3.33:1</b>，低于 WCAG AA 的 4.5:1；大量 12px hint 用的正是它</td>
-          <td>换成 <code>#5d6b7e</code>（白底 5.3:1 / 页底 4.8:1），12px 也达标；装饰性图标才用 <code>#94a3b8</code></td>
+          <td>换成 <code>#5C6979</code>（白底 5.6:1 / 页底 5.0:1），12px 也达标；装饰性图标才用 <code>#93A0AF</code></td>
         </tr>
         <tr>
           <td>启用态按钮「看起来没启用」</td>
@@ -1302,7 +1344,7 @@ table.tbl tr:last-child td { border-bottom: none; }
         <tr><td>系统「减少透明效果」</td><td><code>@media (prefers-reduced-transparency: reduce)</code> 关掉滤镜、提高不透明度（Chromium 118+，仅作增强）</td></tr>
         <tr><td>系统「减少动画」</td><td><code>@media (prefers-reduced-motion: reduce)</code> 把过渡压到 0.001ms</td></tr>
         <tr><td>低端机 / 远程桌面掉帧</td><td>设置里留一个「降低视觉效果」开关（写进 config），关掉滤镜与噪点，而不是只靠媒体查询</td></tr>
-        <tr><td>对比度</td><td>玻璃上的次要文字必须落在 α≥0.85 的近白面上；小字一律用 <code>#0f172a / #475569 / #5d6b7e</code>，不用 <code>#94a3b8</code></td></tr>
+        <tr><td>对比度</td><td>玻璃上的次要文字必须落在 α≥0.85 的近白面上；小字一律用 <code>#131A24 / #46536A / #5C6979</code>，不用 <code>#93A0AF</code></td></tr>
       </tbody>
     </table>
   </section>
@@ -1327,8 +1369,8 @@ table.tbl tr:last-child td { border-bottom: none; }
     <div class="decisions">
       <div class="decision">
         <div class="q">① 强调色定在哪个蓝？</div>
-        <div class="a">现状三套：#007aff（应用+快捷菜单）/#2f6fed（测试组件）/ #0EA5E9（图标）。</div>
-        <div class="rec">建议 #007aff —— 与快捷菜单一致，改动面最小</div>
+        <div class="a">现状三套：#007aff（应用+快捷菜单）/#2f6fed（测试组件）/ #0EA5E9（图标），饱和度都偏高。</div>
+        <div class="rec">建议统一为低饱和钢蓝 #44678A（原 #007aff 太亮）</div>
       </div>
       <div class="decision">
         <div class="q">② 侧栏图标改成单色还是保留彩色？</div>
