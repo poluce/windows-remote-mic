@@ -1,0 +1,129 @@
+/* ============================================================================
+ * 设计 token（唯一事实来源）
+ * ----------------------------------------------------------------------------
+ * 所有颜色、圆角、阴影、字号、间距、动效只从这里取。
+ * 页面 CSS 一律用 var(--rm-*)；不要再写死颜色值或临时几何值。
+ *
+ * 色板基调：低饱和「雾面 + 钢蓝」。强调色只有一种，语义色各三档
+ * （文字 / 填充 / 柔底）；状态点用低饱和填充色，避免整屏花。
+ * ==========================================================================*/
+
+:root {
+  /* ---------- 底色与表面 ---------- */
+  --rm-bg: #eef2f8;
+  --rm-glass: rgba(255, 255, 255, 0.62); /* 浮层玻璃（真模糊） */
+  --rm-card: rgba(255, 255, 255, 0.78); /* 内容卡（磨砂纸，不做滤镜） */
+  --rm-solid: #ffffff;
+  --rm-sunken: rgba(19, 26, 36, 0.04); /* 沉底内嵌 */
+  --rm-hover: rgba(255, 255, 255, 0.92);
+
+  /* ---------- 描边 ---------- */
+  --rm-line: rgba(19, 26, 36, 0.08);
+  --rm-line-strong: rgba(19, 26, 36, 0.16);
+  --rm-line-light: rgba(255, 255, 255, 0.72); /* 玻璃上沿高光 */
+
+  /* ---------- 文字四级 ---------- */
+  --rm-text: #131a24;
+  --rm-text-2: #46536a;
+  --rm-text-3: #5c6979;
+  --rm-text-4: #93a0af; /* 只做图标与分隔，不承载文字 */
+  --rm-text-inv: #fff;
+
+  /* ---------- 强调色（低饱和钢蓝，全应用唯一） ---------- */
+  --rm-accent: #44678a;
+  --rm-accent-strong: #2e4f6b;
+  --rm-accent-soft: rgba(68, 103, 138, 0.1);
+  --rm-accent-line: rgba(68, 103, 138, 0.28);
+
+  /* ---------- 语义色：文字 / 填充 / 柔底 ---------- */
+  --rm-ok: #4c7a5d;
+  --rm-ok-fill: #7fa68c;
+  --rm-ok-soft: rgba(76, 122, 93, 0.12);
+
+  --rm-warn: #8a6a33;
+  --rm-warn-fill: #c0a063;
+  --rm-warn-soft: rgba(138, 106, 51, 0.12);
+
+  --rm-err: #9c4a42;
+  --rm-err-fill: #c07972;
+  --rm-err-soft: rgba(156, 74, 66, 0.1);
+
+  /* ---------- 圆角阶梯 ---------- */
+  --rm-r-xs: 6px;
+  --rm-r-sm: 8px;
+  --rm-r-md: 12px;
+  --rm-r-lg: 16px;
+  --rm-r-xl: 20px;
+  --rm-r-full: 999px;
+
+  /* ---------- 阴影阶梯（冷色投影，不用纯黑） ---------- */
+  --rm-sh-1: 0 1px 2px rgba(19, 26, 36, 0.06);
+  --rm-sh-2: 0 6px 18px -8px rgba(19, 26, 36, 0.18),
+    0 1px 2px rgba(19, 26, 36, 0.05);
+  --rm-sh-3: 0 24px 60px -28px rgba(19, 26, 36, 0.35),
+    0 2px 6px rgba(19, 26, 36, 0.06);
+  --rm-glow: 0 6px 16px -8px rgba(68, 103, 138, 0.35);
+
+  /* ---------- 字号阶梯 ---------- */
+  --rm-fs-11: 11px;
+  --rm-fs-12: 12px;
+  --rm-fs-13: 13px;
+  --rm-fs-14: 14px;
+  --rm-fs-16: 16px;
+  --rm-fs-20: 20px;
+
+  /* ---------- 间距阶梯 ---------- */
+  --rm-sp-1: 4px;
+  --rm-sp-2: 8px;
+  --rm-sp-3: 12px;
+  --rm-sp-4: 16px;
+  --rm-sp-5: 20px;
+  --rm-sp-6: 24px;
+  --rm-sp-8: 32px;
+
+  /* ---------- 动效 ---------- */
+  --rm-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --rm-dur: 180ms;
+
+  /* ---------- 玻璃参数 ---------- */
+  --rm-blur: blur(24px) saturate(180%);
+  --rm-blur-thin: blur(20px) saturate(160%);
+
+  /* ---------- 层叠 ---------- */
+  --rm-z-menu: 20;
+  --rm-z-dialog: 50;
+  --rm-z-toast: 60;
+}
+
+/* ============================================================================
+ * 过渡期别名
+ * ----------------------------------------------------------------------------
+ * 页面 CSS 还没逐条迁移到 --rm-* 之前，旧变量名指向新 token。
+ * 迁移完成后可整段删除。顺带修复两个历史 bug：
+ *   --muted / --card 之前从未定义 → 提示正文变黑、崩溃卡片透明。
+ * ==========================================================================*/
+:root {
+  --bg: var(--rm-bg);
+  --surface: var(--rm-solid);
+  --surface-2: var(--rm-sunken);
+  --sidebar-bg: var(--rm-glass);
+  --border: var(--rm-line);
+  --border-strong: var(--rm-line-strong);
+  --text: var(--rm-text);
+  --text-2: var(--rm-text-2);
+  --text-3: var(--rm-text-3);
+  --muted: var(--rm-text-3);
+  --card: var(--rm-card);
+  --accent: var(--rm-accent);
+  --accent-strong: var(--rm-accent-strong);
+  --accent-soft: var(--rm-accent-soft);
+  --ok: var(--rm-ok);
+  --ok-bg: var(--rm-ok-soft);
+  --warn: var(--rm-warn);
+  --warn-bg: var(--rm-warn-soft);
+  --err: var(--rm-err);
+  --err-bg: var(--rm-err-soft);
+  --radius: var(--rm-r-lg);
+  --radius-sm: var(--rm-r-sm);
+  --shadow: var(--rm-sh-1);
+}

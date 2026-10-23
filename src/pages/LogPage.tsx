@@ -152,7 +152,12 @@ export function LogPage() {
 
   return (
     <div className="page log-page">
-      <div className="section-label">运行日志</div>
+      <div className="page-head">
+        <div>
+          <h1>日志</h1>
+          <p>查看运行日志尾部，可清空、打开目录或临时开启 DEBUG。</p>
+        </div>
+      </div>
       <section className="card log-card">
         <div className="log-actions">
           <button className="btn" onClick={clearLogFile} disabled={!isTauri()}>

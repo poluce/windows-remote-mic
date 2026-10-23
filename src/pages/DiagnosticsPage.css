@@ -4,9 +4,9 @@
 .diag-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 14px;
   align-items: start;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .diag-grid .card {
@@ -29,9 +29,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 4px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--rm-line);
+  font-size: var(--rm-fs-13);
+  color: var(--rm-text);
+}
+
+/* 自检行里的说明文字不参与两端对齐，靠左并允许收缩 */
+.check-row .hint {
+  margin: 0;
+  text-align: left;
 }
 
 .check-row:last-child {

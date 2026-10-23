@@ -54,6 +54,13 @@ export function OnboardingPage() {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>引导</h1>
+          <p>首次配置的四步流程，以及常用系统设置入口。</p>
+        </div>
+      </div>
+
       <div className="section-label">快捷操作</div>
       <section className="card">
         <div className="card-title">快捷入口与配置</div>

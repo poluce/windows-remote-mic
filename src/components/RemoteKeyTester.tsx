@@ -429,7 +429,7 @@ export function RemoteKeyTester() {
         <div className="tester-info-pane">
               <div className="live-actions-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <button
-                  className={`btn ${active ? "active" : "primary"}`}
+                  className={`btn${active ? " on" : " primary"}`}
                   onClick={() => {
                     if (!active) {
                       const resetMat: Record<string, TriggerRecord> = {};
@@ -447,7 +447,7 @@ export function RemoteKeyTester() {
                   {active ? "⏹ 停止测试" : "▶ 开始测试"}
                 </button>
                 {active && lastRawKey && (
-                  <span className="hint" style={{ fontFamily: "monospace", fontSize: 11, background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: 4 }}>
+                  <span className="hint" style={{ fontFamily: "monospace", fontSize: 11, background: "var(--rm-sunken)", padding: "4px 8px", borderRadius: 4 }}>
                     实时接收信号: {lastRawKey}
                   </span>
                 )}

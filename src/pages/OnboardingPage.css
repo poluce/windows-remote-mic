@@ -24,8 +24,8 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
   font-weight: 700;
   font-size: 13px;
   display: flex;

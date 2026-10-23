@@ -166,6 +166,13 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>诊断</h1>
+          <p>检查虚拟声卡、虚拟 HID、语音链路与按键测试。</p>
+        </div>
+      </div>
+
       <div className="section-label">状态与自检</div>
       <div className="diag-grid">
       <section className="card vbcable-card">
@@ -188,7 +195,7 @@ export function DiagnosticsPage() {
           </button>
         )}
         {checked && !data.has_vb_cable && (
-          <span className="hint">
+          <span className="hint vbcable-msg">
             需网络与管理员权限；安装完成后需重启电脑，重启后点「重新检测」。
           </span>
         )}

@@ -159,6 +159,13 @@ export function SettingsPage() {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>通用设置</h1>
+          <p>按键拦截、长按与双击判定，以及关于与更新。</p>
+        </div>
+      </div>
+
       <div className="section-label">按键信号</div>
       <section className="card form-card">
         <div className="form-row">

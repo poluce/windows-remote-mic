@@ -101,9 +101,16 @@ export function ConnectionPage() {
   ];
 
   return (
-    <div className="page conn-grid">
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>连接</h1>
+          <p>扫描并连接遥控器，查看语音链路与按键接管状态。</p>
+        </div>
+      </div>
+
+      <div className="conn-grid">
       <div className="conn-col">
-      <div className="section-label">设备</div>
       <section className="card device-card">
         <div className="device-top">
           <div className="device-info">
@@ -167,9 +174,9 @@ export function ConnectionPage() {
           ))}
         </div>
         {silentSessionHint && (
-          <div className="bridge-hint err">
-            <span className="bridge-hint-title">遥控器语音服务可能已挂起</span>
-            <span className="bridge-hint-body">
+          <div className="callout err">
+            <span className="callout-title">遥控器语音服务可能已挂起</span>
+            <span className="callout-body">
               蓝牙链路正常，但连续多次会话都收不到遥控器的语音数据。请按顺序操作：
               <br />
               1. 取下遥控器电池，等待约 10 秒后装回（或长按电源键重启遥控器）；
@@ -181,10 +188,8 @@ export function ConnectionPage() {
           </div>
         )}
         {showBridgeHint && (
-          <div
-            className={`bridge-hint ${bridgeState === "failed" ? "err" : "warn"}`}
-          >
-            <span className="bridge-hint-title">
+          <div className={`callout ${bridgeState === "failed" ? "err" : ""}`}>
+            <span className="callout-title">
               {bridgeState === "failed"
                 ? "语音桥连接失败"
                 : bridgeState === "waiting"
@@ -193,7 +198,7 @@ export function ConnectionPage() {
                     ? "正在建立语音链路…"
                     : "语音桥正在重试"}
             </span>
-            <span className="bridge-hint-body">
+            <span className="callout-body">
               {bridgeState === "waiting"
                 ? bridgeLastError
                   ? `${bridgeLastError}（系统连上后会自动恢复；若已在系统里删除配对，请重新配对）`
@@ -209,7 +214,7 @@ export function ConnectionPage() {
                 ` · 约 ${bridgeNextRetrySecs} 秒后重试`}
             </span>
             {bridgeState === "failed" && (
-              <div className="bridge-hint-actions">
+              <div className="actions" style={{ marginTop: 8 }}>
                 <button
                   className="btn"
                   onClick={retryBridge}
@@ -222,9 +227,9 @@ export function ConnectionPage() {
           </div>
         )}
         {bridgeState === "stopped" && !effectiveConnected && (
-          <div className="bridge-hint warn">
-            <span className="bridge-hint-title">语音桥已停止</span>
-            <span className="bridge-hint-body">
+          <div className="callout">
+            <span className="callout-title">语音桥已停止</span>
+            <span className="callout-body">
               遥控器按键接管已暂停：现在按遥控器按键不会触发任何映射（也不会再唤起输入法）。
               点上方「连接」可恢复语音与按键映射；若要彻底断开遥控器，请在 Windows 蓝牙设置中删除设备。
             </span>
@@ -310,6 +315,7 @@ export function ConnectionPage() {
           <p className="hint bridge-last-error">最近错误：{bridgeLastError}</p>
         )}
       </section>
+      </div>
       </div>
     </div>
   );

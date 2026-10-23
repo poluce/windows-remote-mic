@@ -1,25 +1,19 @@
-/* 连接页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
+/* 连接页专用样式（从 App.css 拆出，随页面组件按需加载）。
+ * 共享控件（卡片、按钮、胶囊、提示条）在 App.css 里，这里只放连接页布局。 */
 
-/* ---------- 连接页双栏 ---------- */
+/* ---------- 双栏 -> 单列（页面主体固定单列，保持一屏读完） ---------- */
 .conn-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0;
   align-items: start;
-  max-width: 720px;
 }
 
 .conn-col {
   min-width: 0;
 }
 
-@media (max-width: 900px) {
-  .conn-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------- 连接 ---------- */
+/* ---------- 设备卡 ---------- */
 .device-card {
   display: flex;
   flex-direction: column;
@@ -49,71 +43,8 @@
 .device-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-/* 拦截 HID 按键信号开关行 */
-.device-eat-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-
-.device-eat-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.device-eat-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.device-eat-row .hint {
-  margin: 0;
-}
-
-.device-status-pill {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.device-status-pill .pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.device-status-pill.ok {
-  background: var(--ok-bg);
-  color: var(--ok);
-}
-
-.device-status-pill.warn {
-  background: var(--warn-bg);
-  color: var(--warn);
-}
-
-.device-status-pill.err {
-  background: var(--err-bg);
-  color: var(--err);
+  margin-top: 2px;
 }
 
 /* ---------- 语音桥状态行 ---------- */
@@ -125,51 +56,11 @@
 }
 
 .bridge-inline-text {
-  font-size: 13px;
-  color: var(--text);
+  font-size: var(--rm-fs-13);
+  color: var(--rm-text);
 }
 
 .bridge-last-error {
   margin-top: 6px;
   word-break: break-all;
-}
-
-/* ---------- 语音桥重连 / 失败提示 ---------- */
-.bridge-hint {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border-left: 3px solid var(--warn);
-  background: var(--warn-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.bridge-hint.err {
-  border-left-color: var(--err);
-  background: var(--err-bg);
-}
-
-.bridge-hint-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--warn);
-}
-
-.bridge-hint.err .bridge-hint-title {
-  color: var(--err);
-}
-
-.bridge-hint-body {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  word-break: break-all;
-}
-
-.bridge-hint-actions {
-  margin-top: 6px;
-  display: flex;
-  gap: 8px;
 }

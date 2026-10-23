@@ -109,9 +109,10 @@
 }
 
 .trigger-btn {
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-r-sm);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--rm-text-2);
   padding: 6px 6px;
   cursor: pointer;
   display: flex;
@@ -120,17 +121,21 @@
   gap: 2px;
   width: 80px;
   margin: 0;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--rm-dur) var(--rm-ease),
+    background var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
 }
 
 .trigger-btn:hover {
-  border-color: var(--text-3);
+  border-color: var(--rm-line-strong);
+  background: #fff;
+  color: var(--rm-text);
 }
 
+/* 选中态：淡底 + 深色字 + 细描边，不用高饱和实底 */
 .trigger-btn.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: var(--rm-accent-line);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
 }
 
 .trigger-name {
@@ -170,26 +175,29 @@
   align-items: flex-start;
   gap: 1px;
   padding: 4px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
+  border-radius: var(--rm-r-sm);
+  border: 1px solid var(--rm-line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--rm-text);
   font-family: inherit;
   line-height: 1.3;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
-  transition: background 0.12s, border-color 0.12s;
+  box-shadow: var(--rm-sh-1);
+  transition: background var(--rm-dur) var(--rm-ease),
+    border-color var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
 }
 
 .shortcut-btn:hover {
-  background: var(--surface-2);
+  background: #fff;
+  border-color: var(--rm-line-strong);
 }
 
+/* 选中：淡底 + 深字，不用整块实底 */
 .shortcut-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--rm-accent-soft);
+  border-color: var(--rm-accent-line);
+  color: var(--rm-accent-strong);
 }
 
 .shortcut-btn.add {
@@ -254,9 +262,9 @@
   min-width: 0;
   min-height: 40px;
   padding: 8px 12px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--rm-line-strong);
   border-radius: 10px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.85);
   font: inherit;
   font-weight: 600;
   font-size: 15px;
@@ -277,10 +285,10 @@
 .combo-input:focus,
 .combo-input.listening {
   outline: none;
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--rm-accent);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  box-shadow: 0 0 0 3px var(--rm-accent-soft);
 }
 
 /* ---------- 作用范围选择器 ---------- */
@@ -295,25 +303,30 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 13px;
+  height: 30px;
+  border: 1px solid var(--rm-line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--rm-text-2);
+  border-radius: var(--rm-r-full);
+  padding: 0 12px;
+  font-size: var(--rm-fs-13);
   cursor: pointer;
   font-family: inherit;
+  transition: background var(--rm-dur) var(--rm-ease),
+    border-color var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
 }
 
 .scope-pill:hover {
-  border-color: var(--border-strong);
+  border-color: var(--rm-line-strong);
+  background: #fff;
+  color: var(--rm-text);
 }
 
 .scope-pill.active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent-strong);
-  font-weight: 600;
+  background: var(--rm-accent-soft);
+  border-color: var(--rm-accent-line);
+  color: var(--rm-accent-strong);
+  font-weight: 500;
 }
 
 .scope-pill.new {
@@ -321,12 +334,16 @@
   color: var(--text-2);
 }
 
+/* 圆点颜色来自后端应用档案（profiles/*.json），互相之间色相差异很大。
+   在展示层统一降饱和并加一圈细边，避免一屏出现多个跳眼的色点。 */
 .scope-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-3);
+  background: var(--rm-text-3);
   flex: none;
+  filter: saturate(0.55);
+  box-shadow: 0 0 0 1px rgba(19, 26, 36, 0.12);
 }
 
 .scope-pill.active .scope-dot {
@@ -427,13 +444,13 @@
 
 /* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
 .matrix-cell.own {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: rgba(68, 103, 138, 0.07);
+  color: var(--rm-accent-strong);
   font-weight: 600;
 }
 
 .matrix-cell.sel {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--rm-accent);
   border-radius: 3px;
 }
 
@@ -447,7 +464,7 @@
 }
 
 .matrix-cell[data-cell]:hover {
-  background: var(--surface-2);
+  background: rgba(19, 26, 36, 0.035);
 }
 
 .matrix-row.mic .matrix-key {

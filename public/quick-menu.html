@@ -38,7 +38,7 @@
     position: absolute;
     right: 20px;
     bottom: 14px;
-    color: #94a3b8;
+    color: #93a0af;
     font-size: 10px;
     letter-spacing: 0.8px;
     pointer-events: none;
@@ -211,7 +211,7 @@
 
         if (kind === 'icon') {
           // 应用图标：品牌色实心圆 + 白色描边，保证在浅底和暗色下都清晰。
-          ctx.fillStyle = item.color || '#64748b';
+          ctx.fillStyle = item.color || '#5c6979';
           ctx.strokeStyle = isActive && intensity > 0.6 ? '#ffffff' : 'rgba(255, 255, 255, 0.92)';
           ctx.lineWidth = isActive && intensity > 0.6 ? 3 : 1.5;
           ctx.fill();
@@ -268,7 +268,7 @@
           const textB = Math.round(105 + (255 - 105) * intensity);
           ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
         } else {
-          ctx.fillStyle = '#475569';
+          ctx.fillStyle = '#46536a';
         }
         ctx.fillText(item, cx, cy);
       });
@@ -284,7 +284,7 @@
       if (isActive) {
         ctx.fillStyle = 'rgba(0, 122, 255, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = '#007aff';
+        ctx.strokeStyle = '#44678a';
         ctx.lineWidth = 2.5;
         ctx.stroke();
       } else {
@@ -311,7 +311,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#131a24';
       ctx.font = '700 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
       ctx.fillText('控制中心', 320, 323);
 
@@ -320,7 +320,7 @@
       const currentIdx = Math.max(0, Math.min(activeWheel.count - 1, Math.round(-activeWheel.currentAngle / activeWheel.slotAngle)));
       const current = activeItems[currentIdx];
       const currentName = current === undefined ? '（空）' : typeof current === 'string' ? current : current.name;
-      ctx.fillStyle = '#64748b';
+      ctx.fillStyle = '#5c6979';
       ctx.font = '500 11px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
       ctx.fillText(`${ring === 'outer' ? '外环' : '内环'} · ${currentName}`, 320, 345);
 

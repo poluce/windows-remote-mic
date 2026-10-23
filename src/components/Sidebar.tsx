@@ -21,18 +21,19 @@ export type PageId =
   | "log"
   | "guidance";
 
+// 导航只用单色线性图标：颜色不再承担「区分页面」的职责，
+// 选中态靠白玻璃胶囊 + 左侧竖条 + 强调色图标表达（见 App.css 的 .nav-item.active）。
 const NAV_ITEMS: {
   id: PageId;
   label: string;
   icon: typeof IconBluetooth;
-  color: string;
 }[] = [
-  { id: "connection", label: "连接", icon: IconBluetooth, color: "#007aff" },
-  { id: "mapping", label: "按键映射", icon: IconGrid, color: "#af52de" },
-  { id: "settings", label: "通用设置", icon: IconSliders, color: "#8e8e93" },
-  { id: "diagnostics", label: "诊断", icon: IconActivity, color: "#5e5ce6" },
-  { id: "log", label: "日志", icon: IconLog, color: "#32ade6" },
-  { id: "guidance", label: "引导", icon: IconCompass, color: "#ff9f0a" },
+  { id: "connection", label: "连接", icon: IconBluetooth },
+  { id: "mapping", label: "按键映射", icon: IconGrid },
+  { id: "settings", label: "通用设置", icon: IconSliders },
+  { id: "diagnostics", label: "诊断", icon: IconActivity },
+  { id: "log", label: "日志", icon: IconLog },
+  { id: "guidance", label: "引导", icon: IconCompass },
 ];
 
 export function Sidebar({
@@ -91,8 +92,8 @@ export function Sidebar({
               className={page === item.id ? "nav-item active" : "nav-item"}
               onClick={() => onChange(item.id)}
             >
-              <span className="nav-ico" style={{ background: item.color }}>
-                <Icon size={13} />
+              <span className="nav-ico">
+                <Icon size={16} />
               </span>
               <span>{item.label}</span>
               {item.id === "settings" && updatePhase === "available" && (

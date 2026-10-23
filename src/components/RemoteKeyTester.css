@@ -1,43 +1,7 @@
+/* 按键测试组件（诊断页）——统一用设计 token，不再自带第二套色板与 fallback。 */
+
 .remote-tester-card {
-  margin-top: 16px;
-}
-
-.tester-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 18px;
-}
-
-.tester-modes {
-  display: inline-flex;
-  gap: 4px;
-  background: var(--surface-2, #f6f8fa);
-  padding: 4px;
-  border-radius: 9px;
-  border: 1px solid var(--border, #e3e7ec);
-}
-
-.mode-tab {
-  padding: 6px 18px;
-  border-radius: 7px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-2, #57606a);
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  transition: all 0.15s ease;
-}
-
-.mode-tab:hover {
-  color: var(--text, #1f2328);
-}
-
-.mode-tab.active {
-  background: var(--surface, #ffffff);
-  color: var(--accent, #2f6fed);
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(31, 35, 40, 0.12);
+  margin-top: 14px;
 }
 
 .tester-body {
@@ -80,20 +44,22 @@
 
 .matrix-card {
   padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--surface, #ffffff);
-  border: 1px solid var(--border, #e3e7ec);
+  border-radius: var(--rm-r-sm);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--rm-line);
   display: flex;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.03);
+  box-shadow: var(--rm-sh-1);
+  transition: border-color var(--rm-dur) var(--rm-ease),
+    background var(--rm-dur) var(--rm-ease);
 }
 
 .matrix-card.all-passed {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: rgba(76, 122, 93, 0.35);
+  background: var(--rm-ok-soft);
 }
 
 .matrix-row-left {
@@ -104,9 +70,9 @@
 }
 
 .matrix-name {
-  font-size: 13px;
+  font-size: var(--rm-fs-13);
   font-weight: 600;
-  color: var(--text, #1f2328);
+  color: var(--rm-text);
 }
 
 .matrix-triggers {
@@ -116,62 +82,24 @@
   flex-wrap: wrap;
 }
 
+/* 三种触发方式的小徽标：未通过是沉底灰，通过是低饱和成功色 */
 .trig-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--rm-fs-11);
   line-height: 1;
   padding: 3px 6px;
-  border-radius: 4px;
-  background: #f0f3f6;
-  color: var(--text-3, #8c959f);
-  transition: all 0.15s ease;
+  border-radius: var(--rm-r-xs);
+  background: var(--rm-sunken);
+  color: var(--rm-text-3);
+  transition: background var(--rm-dur) var(--rm-ease),
+    color var(--rm-dur) var(--rm-ease);
   white-space: nowrap;
 }
 
 .trig-pill.passed {
-  background: #22c55e;
-  color: #ffffff;
+  background: var(--rm-ok-soft);
+  color: var(--rm-ok);
   font-weight: 600;
-}
-
-.guided-top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-  gap: 12px;
-}
-
-.guided-current-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.guided-badge {
-  padding: 4px 12px;
-  border-radius: 6px;
-  background: var(--accent, #2f6fed);
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.guided-count {
-  font-size: 12px;
-  color: var(--text-3, #8c959f);
-  font-weight: 500;
-}
-
-.guided-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.matrix-card.guided-active-card {
-  border-color: #2f6fed;
-  background: #edf3ff;
-  box-shadow: 0 0 0 1px #2f6fed;
 }
