@@ -146,6 +146,7 @@ where
         engine.clone(),
         capture.clone(),
         diag.clone(),
+        key_sink.clone(),
         frame_tx,
     )?;
     core_log::log_info("[bridge] 音频回调已注册");

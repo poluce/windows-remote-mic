@@ -19,6 +19,7 @@ pub(crate) fn register_audio_handler(
     engine: std::sync::Arc<Mutex<VoiceEngine>>,
     capture: CaptureRecorder,
     diag: Arc<BridgeDiag>,
+    key_sink: Arc<dyn KeySink>,
     frame_tx: mpsc::Sender<Vec<f32>>,
 ) -> Result<i64, String> {
     // 逻辑时钟：VoiceEngine 的时间语义（STOP_TAIL_DROP 等）依赖它。
@@ -27,6 +28,7 @@ pub(crate) fn register_audio_handler(
     transport
         .register_audio_handler(Box::new(move |bytes| {
             diag.touch_audio();
+            key_sink.touch_mic_activity();
             capture.record("audio", &bytes);
             let mut eng = match engine.lock() {
                 Ok(g) => g,

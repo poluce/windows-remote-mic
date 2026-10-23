@@ -25,6 +25,10 @@ impl KeySink for SystemKeySink {
         core_hid::tap::release_mic_on_audio_stop();
     }
 
+    fn touch_mic_activity(&self) {
+        core_hid::tap::touch_mic_activity();
+    }
+
     fn press_win_h(&self) -> Result<(), String> {
         core_input::press_win_h().map_err(|e| e.to_string())
     }

@@ -21,4 +21,4 @@ mod watchdog;
 pub use config::{gadget_available, write_eat_mode_file};
 pub use runtime::{maybe_run_injector, start_after_atvv};
 pub use status::{last_status, set_status_callback, TapState, TapStatusEvent};
-pub use watchdog::{clear_active_usages, release_mic_on_audio_stop};
+pub use watchdog::{clear_active_usages, release_mic_on_audio_stop, touch_mic_activity};

@@ -6,9 +6,9 @@
 //! - `release_mic_on_audio_stop` / `clear_active_usages` 供语音桥与退出路径调用。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::{
     hogp_ioctl_payload, hogp_payload_usages, lock_or_recover, panic_payload_text, raw_input,
@@ -45,6 +45,25 @@ fn mic_release_timeout() -> Duration {
         .unwrap_or(MIC_AUTO_RELEASE_TIMEOUT)
 }
 
+/// 记录最近一次收到遥控器音频包的 Unix 毫秒时间戳。
+///
+/// 遥控器在长按语音期间不重复发送 HID 按键报文，但会持续推流音频数据。
+/// 只要音频包还在到达，就证明蓝牙链路通畅、用户仍在按住说话，
+/// 看门狗会持续给麦克风按键续期，绝不在说话推流途中强行掐断。
+static LAST_AUDIO_ACTIVITY_MS: AtomicU64 = AtomicU64::new(0);
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// 收到音频包时被调用，记录音频活跃时间戳，实现音频流对麦克风按键看门狗的保活。
+pub fn touch_mic_activity() {
+    LAST_AUDIO_ACTIVITY_MS.store(now_millis(), Ordering::Relaxed);
+}
+
 /// 麦克风键的 HID 兜底 usage（F5）。拦截开启时由旁路投递；
 /// 拦截关闭时让 Raw Input 投递，避免 Voice toggle 被双路翻转。
 const MIC_FALLBACK_USAGE: u16 = 0x3E;
@@ -76,22 +95,29 @@ fn ensure_watchdog() {
 /// 看门狗单次巡检：把超时未松开的按键补发松开。
 fn watchdog_tick() {
     let now = Instant::now();
+    let now_ms = now_millis();
+    let last_audio_ms = LAST_AUDIO_ACTIVITY_MS.load(Ordering::Relaxed);
+    // 只要最近 2.5s 内仍有音频包流动，说明语音处于活跃推流中，不能超时截断麦克风
+    let is_voice_streaming = now_ms.saturating_sub(last_audio_ms) < 2500;
+
     let mut expired = Vec::new();
     {
         let mut guard = lock_or_recover(&ACTIVE_USAGES);
         if let Some(active) = guard.as_mut() {
-            active.retain(|&usage, &mut last_seen| {
-                // 麦克风键是 PTT：长按期间遥控器不重复发 HID 报告，
-                // 只持续推 ATVV 音频；正常结束由 HID 松开报告或
-                // ATVV AudioStopped 负责。为避免长按被 2s 看门狗提前打断，
-                // 麦克风使用专用的 10s 超时兜底（遥控器硬件推流上限约 15s），
-                // 既保障长语音连续性，又防止无线丢包导致按键永久卡死。
-                let timeout = if usage == MIC_FALLBACK_USAGE {
-                    mic_release_timeout()
-                } else {
-                    auto_release_timeout()
-                };
-                if now.duration_since(last_seen) > timeout {
+            active.retain(|&usage, last_seen| {
+                if usage == MIC_FALLBACK_USAGE {
+                    // 若语音推流处于活跃中，不断续期麦克风按键存活时间，彻底解除长语音限制
+                    if is_voice_streaming {
+                        *last_seen = now;
+                        return true;
+                    }
+                    if now.duration_since(*last_seen) > mic_release_timeout() {
+                        expired.push(usage);
+                        false
+                    } else {
+                        true
+                    }
+                } else if now.duration_since(*last_seen) > auto_release_timeout() {
                     expired.push(usage);
                     false
                 } else {
@@ -297,5 +323,35 @@ mod tests {
             let g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
             assert!(g.as_ref().map(|m| m.is_empty()).unwrap_or(true));
         }
+
+        // 验证 touch_mic_activity 在看门狗巡检时能为超时麦克风续期
+        let old_time = Instant::now() - Duration::from_secs(15);
+        {
+            let mut g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
+            let m = g.get_or_insert_with(HashMap::new);
+            m.clear();
+            m.insert(MIC_FALLBACK_USAGE, old_time);
+        }
+
+        // 模拟音频包活跃
+        touch_mic_activity();
+
+        // 执行看门狗巡检
+        watchdog_tick();
+
+        // 验证麦克风键未被移除，且时间戳已被刷新为最新
+        {
+            let g = ACTIVE_USAGES.lock().unwrap_or_else(|e| e.into_inner());
+            let m = g.as_ref().unwrap();
+            assert!(
+                m.contains_key(&MIC_FALLBACK_USAGE),
+                "语音活跃期间不应被看门狗释放"
+            );
+            let refreshed = m.get(&MIC_FALLBACK_USAGE).copied().unwrap();
+            assert!(refreshed > old_time, "时间戳应被自动续期");
+        }
+
+        // 清理现场
+        clear_active_usages();
     }
 }
