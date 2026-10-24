@@ -12,6 +12,8 @@ pub(crate) struct MappingEntry {
     pub(crate) trigger: String,
     pub(crate) action: String,
     pub(crate) action_key: String,
+    /// 这条绑定是否启用；禁用时映射表显示红色，但记录与动作都保留。
+    pub(crate) enabled: bool,
 }
 
 /// 持久化设置的辅助函数。
@@ -45,6 +47,9 @@ pub(crate) struct MappingEdit {
     pub(crate) button: String,
     pub(crate) trigger: String,
     pub(crate) action: String,
+    /// 撤销删除时用来恢复原来的禁用状态；普通保存省略（= 启用）。
+    #[serde(default)]
+    pub(crate) enabled: Option<bool>,
 }
 
 pub(crate) fn parse_button(s: &str) -> Option<ButtonId> {

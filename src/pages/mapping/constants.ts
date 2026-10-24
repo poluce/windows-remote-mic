@@ -34,25 +34,25 @@ export const REMOTE_BUTTONS: RemoteButton[] = [
 ];
 
 export const FALLBACK_MAPPING: MappingEntry[] = [
-  { button: "power", name: "电源", trigger: "single_click", action: "取消（Esc）", action_key: "escape" },
-  { button: "up", name: "上", trigger: "single_click", action: "↑", action_key: "arrow_up" },
-  { button: "down", name: "下", trigger: "single_click", action: "↓", action_key: "arrow_down" },
-  { button: "left", name: "左", trigger: "single_click", action: "←", action_key: "arrow_left" },
-  { button: "right", name: "右", trigger: "single_click", action: "→", action_key: "arrow_right" },
-  { button: "ok", name: "确定", trigger: "single_click", action: "回车（Enter）", action_key: "return" },
-  { button: "back", name: "返回", trigger: "single_click", action: "删除（退格）", action_key: "delete_backward" },
-  { button: "home", name: "主页", trigger: "single_click", action: "显示桌面（Win+D）", action_key: "show_desktop" },
-  { button: "menu", name: "菜单", trigger: "single_click", action: "快捷菜单（开/关）", action_key: "toggle_quick_menu" },
-  { button: "tv", name: "TV", trigger: "single_click", action: "切换应用（Alt+Tab）", action_key: "app_switcher" },
-  { button: "volume_up", name: "音量 +", trigger: "single_click", action: "音量 +", action_key: "system_volume_up" },
-  { button: "volume_down", name: "音量 −", trigger: "single_click", action: "音量 −", action_key: "system_volume_down" },
-  { button: "mic", name: "麦克风", trigger: "press", action: "语音输入（Win+H）", action_key: "voice" },
-  { button: "mic", name: "麦克风", trigger: "release", action: "语音输入（Win+H）", action_key: "voice" },
+  { button: "power", name: "电源", trigger: "single_click", action: "取消（Esc）", action_key: "escape", enabled: true },
+  { button: "up", name: "上", trigger: "single_click", action: "↑", action_key: "arrow_up", enabled: true },
+  { button: "down", name: "下", trigger: "single_click", action: "↓", action_key: "arrow_down", enabled: true },
+  { button: "left", name: "左", trigger: "single_click", action: "←", action_key: "arrow_left", enabled: true },
+  { button: "right", name: "右", trigger: "single_click", action: "→", action_key: "arrow_right", enabled: true },
+  { button: "ok", name: "确定", trigger: "single_click", action: "回车（Enter）", action_key: "return", enabled: true },
+  { button: "back", name: "返回", trigger: "single_click", action: "删除（退格）", action_key: "delete_backward", enabled: true },
+  { button: "home", name: "主页", trigger: "single_click", action: "显示桌面（Win+D）", action_key: "show_desktop", enabled: true },
+  { button: "menu", name: "菜单", trigger: "single_click", action: "快捷菜单（开/关）", action_key: "toggle_quick_menu", enabled: true },
+  { button: "tv", name: "TV", trigger: "single_click", action: "切换应用（Alt+Tab）", action_key: "app_switcher", enabled: true },
+  { button: "volume_up", name: "音量 +", trigger: "single_click", action: "音量 +", action_key: "system_volume_up", enabled: true },
+  { button: "volume_down", name: "音量 −", trigger: "single_click", action: "音量 −", action_key: "system_volume_down", enabled: true },
+  { button: "mic", name: "麦克风", trigger: "press", action: "语音输入（Win+H）", action_key: "voice", enabled: true },
+  { button: "mic", name: "麦克风", trigger: "release", action: "语音输入（Win+H）", action_key: "voice", enabled: true },
 ];
 
 export const TRIGGERS: TriggerOption[] = [
   { key: "single_click", label: "单击", desc: "按一下立即执行" },
-  { key: "double_click", label: "双击", desc: "0.3 秒内按两次" },
+  { key: "double_click", label: "双击", desc: "0.25 秒内按两次" },
   { key: "long_press", label: "长按", desc: "按住约 0.55 秒" },
   { key: "press", label: "按下", desc: "识别为长按后触发（PTT）" },
   { key: "release", label: "松开", desc: "长按结束后触发（PTT）" },
@@ -106,11 +106,6 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "combo",
     title: "自定义",
     actions: [{ key: "custom_combo", label: "自定义快捷键" }],
-  },
-  {
-    key: "other",
-    title: "其他",
-    actions: [{ key: "disabled", label: "禁用" }],
   },
 ];
 

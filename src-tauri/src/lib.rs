@@ -151,6 +151,13 @@ pub fn run() {
                     }
                     core_log::log_info("[app] 菜单键映射已迁移为快捷菜单（开/关）");
                 }
+                // 旧版本的「禁用」动作没有可恢复的动作信息；迁移为未绑定。
+                if cfg.mapping.migrate_disabled_bindings() {
+                    if let Some(store) = config_store() {
+                        let _ = store.save(&cfg);
+                    }
+                    core_log::log_info("[app] 旧的「禁用」动作已迁移为未绑定");
+                }
                 // 把「吃掉」模式写入热更新文件：注入时据此生成 config，
                 // 运行中 Frida 脚本每秒轮询该文件，设置页切换即时生效。
                 core_hid::tap::write_eat_mode_file(cfg.hid_tap_eat);
@@ -350,6 +357,8 @@ pub fn run() {
             commands::log::set_debug_logging,
             commands::mapping::save_mapping,
             commands::mapping::get_mappings,
+            commands::mapping::clear_mapping_binding,
+            commands::mapping::set_mapping_binding_enabled,
             commands::mapping_catalog::get_mapping_catalog,
             commands::mapping::save_key_calibrations,
             commands::mapping::get_key_calibrations,

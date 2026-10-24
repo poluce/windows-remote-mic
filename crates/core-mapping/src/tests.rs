@@ -36,6 +36,7 @@ fn migrate_mic_ptt_replaces_legacy_single_click() {
             button: ButtonId::Mic,
             trigger: Trigger::SingleClick,
             action: ActionKind::Voice,
+            enabled: true,
         }],
     };
     assert!(cfg.migrate_mic_ptt());
@@ -73,6 +74,7 @@ fn migrate_menu_quickmenu_replaces_legacy_context_menu() {
             button: ButtonId::Menu,
             trigger: Trigger::SingleClick,
             action: ActionKind::ContextMenu,
+            enabled: true,
         }],
     };
     assert!(cfg.migrate_menu_quickmenu());
@@ -90,6 +92,7 @@ fn migrate_menu_quickmenu_keeps_custom_menu_binding() {
             button: ButtonId::Menu,
             trigger: Trigger::SingleClick,
             action: ActionKind::OpenApp("notepad".into()),
+            enabled: true,
         }],
     };
     assert!(!cfg.migrate_menu_quickmenu(), "自定义映射不应被迁移覆盖");
@@ -164,4 +167,62 @@ fn parse_combo_spec_rejects_invalid() {
     assert_eq!(parse_combo_spec("ctrl+ctrl+c"), None);
     assert_eq!(parse_combo_spec("ctrl+foo"), None);
     assert_eq!(parse_combo_action_key("return"), None);
+}
+
+#[test]
+fn default_bindings_are_enabled() {
+    assert!(MappingConfig::default().bindings.iter().all(|b| b.enabled));
+}
+
+#[test]
+fn legacy_json_without_enabled_defaults_to_enabled() {
+    let json = r#"{"button":"Ok","trigger":"SingleClick","action":"Return"}"#;
+    let binding: KeyBinding = serde_json::from_str(json).unwrap();
+    assert!(binding.enabled, "旧配置没有 enabled 字段时应默认启用");
+}
+
+#[test]
+fn disabled_binding_keeps_action_in_config() {
+    let cfg = MappingConfig {
+        bindings: vec![KeyBinding {
+            button: ButtonId::VolumeUp,
+            trigger: Trigger::SingleClick,
+            action: ActionKind::SystemVolumeUp,
+            enabled: false,
+        }],
+    };
+    // 配置层仍能读到动作（编辑器要显示它）；执行侧由调度器过滤。
+    assert_eq!(
+        cfg.resolve(ButtonId::VolumeUp, Trigger::SingleClick),
+        Some(&ActionKind::SystemVolumeUp)
+    );
+    assert!(
+        !cfg.binding(ButtonId::VolumeUp, Trigger::SingleClick)
+            .unwrap()
+            .enabled
+    );
+}
+
+#[test]
+fn migrate_disabled_bindings_removes_legacy_disabled_action() {
+    let mut cfg = MappingConfig {
+        bindings: vec![
+            KeyBinding {
+                button: ButtonId::Ok,
+                trigger: Trigger::SingleClick,
+                action: ActionKind::Return,
+                enabled: true,
+            },
+            KeyBinding {
+                button: ButtonId::Ok,
+                trigger: Trigger::DoubleClick,
+                action: ActionKind::Disabled,
+                enabled: true,
+            },
+        ],
+    };
+    assert!(cfg.migrate_disabled_bindings());
+    assert_eq!(cfg.bindings.len(), 1);
+    assert_eq!(cfg.bindings[0].action, ActionKind::Return);
+    assert!(!cfg.migrate_disabled_bindings(), "已迁移后不应重复迁移");
 }

@@ -58,6 +58,7 @@ pub struct CatalogBinding {
     /// 保存后列表里显示的动作名。
     pub action: String,
     pub action_key: String,
+    pub enabled: bool,
 }
 
 /// 映射编辑器完整目录。
@@ -117,14 +118,6 @@ fn categories() -> Vec<CatalogCategory> {
             actions: vec![CatalogAction {
                 key: "custom_combo".into(),
                 label: "自定义快捷键".into(),
-            }],
-        },
-        CatalogCategory {
-            key: "other".into(),
-            title: "其他".into(),
-            actions: vec![CatalogAction {
-                key: action_key(&ActionKind::Disabled),
-                label: "禁用".into(),
             }],
         },
     ]
@@ -194,6 +187,7 @@ pub fn catalog() -> MappingCatalog {
             trigger: trigger_key(&binding.trigger),
             action: action_label(&binding.action),
             action_key: action_key(&binding.action),
+            enabled: binding.enabled,
         })
         .collect();
 

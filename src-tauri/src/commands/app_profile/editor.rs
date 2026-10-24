@@ -48,6 +48,7 @@ fn binding_entry(b: &core_mapping::KeyBinding) -> crate::MappingEntry {
         trigger: crate::trigger_key(&b.trigger),
         action: crate::action_label(&b.action),
         action_key: crate::action_key(&b.action),
+        enabled: b.enabled,
     }
 }
 
@@ -123,11 +124,15 @@ pub fn save_profile_binding(
         .iter_mut()
         .find(|b| b.button == button && b.trigger == trigger)
     {
-        Some(binding) => binding.action = action,
+        Some(binding) => {
+            binding.action = action;
+            binding.enabled = true;
+        }
         None => profile.bindings.push(core_mapping::KeyBinding {
             button,
             trigger,
             action,
+            enabled: true,
         }),
     }
     core_app_profile::save_profile(&dir, &profile).map_err(|e| format!("写入配置失败：{e}"))?;

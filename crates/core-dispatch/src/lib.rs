@@ -883,17 +883,22 @@ fn release_job(
     build_job(mapping, profile, button, Trigger::Release, rt)
 }
 
-/// 解析 (按键, 触发) 对应的动作：**应用配置优先，未覆盖时回落到全局映射**。
+/// 解析 (按键, 触发) 对应的**可执行**动作：应用配置优先，未覆盖时回落到全局映射。
+///
+/// 禁用（`enabled: false`）或旧的 `Disabled` 动作一律视为「没有动作」——
+/// 与未绑定完全一致：不触发，也不参与单击/双击/长按的手势判定。
 fn resolve_action(
     mapping: &MappingConfig,
     profile: Option<&AppProfile>,
     button: ButtonId,
     trigger: Trigger,
 ) -> Option<ActionKind> {
-    if let Some(action) = profile_override(profile, button, trigger) {
-        return Some(action);
+    let binding =
+        profile_binding(profile, button, trigger).or_else(|| mapping.binding(button, trigger))?;
+    if !binding.enabled || binding.action == ActionKind::Disabled {
+        return None;
     }
-    mapping.resolve(button, trigger).cloned()
+    Some(binding.action.clone())
 }
 
 /// 当前配置下，这个按键应该使用哪种「按下语义」。
@@ -927,15 +932,15 @@ fn effective_press_semantics(
     semantics
 }
 
-/// 应用配置里对该 (按键, 触发) 的覆盖项。
+/// 应用配置里对该 (按键, 触发) 的原始覆盖项（含 `enabled`）。
 ///
 /// 约定：**不覆盖 `Mic`**。语音 / 按住说话是全局长按语义、与具体应用无关，
 /// 让某份配置改掉它只会让该应用里的语音静默失效。
-fn profile_override(
+fn profile_binding(
     profile: Option<&AppProfile>,
     button: ButtonId,
     trigger: Trigger,
-) -> Option<ActionKind> {
+) -> Option<&core_mapping::KeyBinding> {
     if button == ButtonId::Mic {
         return None;
     }
@@ -943,7 +948,6 @@ fn profile_override(
         .bindings
         .iter()
         .find(|b| b.button == button && b.trigger == trigger)
-        .map(|b| b.action.clone())
 }
 
 /// 取当前前台应用命中的配置；没有加载任何配置时不查前台窗口。

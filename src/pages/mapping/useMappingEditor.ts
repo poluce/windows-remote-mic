@@ -39,8 +39,6 @@ export function useMappingEditor() {
   // 按键/触发/动作类别/默认绑定都由后端 `get_mapping_catalog` 单一来源提供；
   // 本地 FALLBACK_CATALOG 只用于浏览器预览与后端异常降级。
   const [catalog, setCatalog] = useState<MappingCatalog>(FALLBACK_CATALOG);
-  const catalogRef = useRef(catalog);
-  catalogRef.current = catalog;
   const [mapping, setMapping] = useState<MappingEntry[]>(
     FALLBACK_CATALOG.default_bindings,
   );
@@ -60,6 +58,39 @@ export function useMappingEditor() {
     open: boolean;
     editing: NamedShortcut | null;
   }>({ open: false, editing: null });
+  /** 映射表操作反馈（删除后带撤销入口）。 */
+  const [toast, setToast] = useState<{
+    message: string;
+    undo?: () => Promise<void>;
+  } | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimer.current !== null) {
+      window.clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+    setToast(null);
+  }, []);
+
+  const showToast = useCallback(
+    (message: string, undo?: () => Promise<void>) => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+      setToast({ message, undo });
+      toastTimer.current = window.setTimeout(() => {
+        setToast(null);
+        toastTimer.current = null;
+      }, 6000);
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   const refreshProfiles = useCallback(async () => {
     setProfiles(await loadProfiles());
@@ -68,8 +99,10 @@ export function useMappingEditor() {
   // 全局映射的唯一事实来源在后端（config.json → 调度器），保存后统一从这里重读，
   // 前端不再自己拼一份「应该是这样」的副本。
   const refreshMappings = useCallback(async () => {
+    // 空列表 = 用户真的把所有绑定都删光了，不能再回退默认映射，
+    // 否则界面显示默认、调度器却是空的。
     const list = await invoke<MappingEntry[]>("get_mappings");
-    setMapping(list.length ? list : catalogRef.current.default_bindings);
+    setMapping(list);
   }, []);
 
   useEffect(() => {
@@ -90,9 +123,7 @@ export function useMappingEditor() {
       }
       try {
         const list = await invoke<MappingEntry[]>("get_mappings");
-        setMapping(
-          list.length ? list : remoteCatalog.default_bindings,
-        );
+        setMapping(list);
       } catch {
         setMapping(remoteCatalog.default_bindings);
       }
@@ -166,7 +197,15 @@ export function useMappingEditor() {
     const binding =
       overrideCells.get(cellKey(selected, trigger)) ??
       globalCells.get(cellKey(selected, trigger));
-    const actionKey = binding?.action_key || "disabled";
+    const actionKey = binding?.action_key;
+    if (!actionKey) {
+      // 未绑定：停在第一个分类的第一项，用户选动作后保存即可建立绑定。
+      const first = categories[0];
+      setCategory(first?.key || "system");
+      setAction(first?.actions[0]?.key || "return");
+      setComboTokens([]);
+      return;
+    }
     const combo = parseComboActionKey(actionKey);
     if (combo) {
       setCategory(COMBO_CATEGORY);
@@ -177,7 +216,7 @@ export function useMappingEditor() {
     const cat = categories.find((c) =>
       c.actions.some((a) => a.key === actionKey)
     );
-    setCategory(cat?.key || "other");
+    setCategory(cat?.key || categories[0]?.key || "system");
     setAction(actionKey);
     setComboTokens([]);
   }, [globalCells, overrideCells, selected, trigger, categories]);
@@ -259,6 +298,61 @@ export function useMappingEditor() {
       await clearProfileBinding(scope, selected, trigger);
       await refreshProfiles();
       setSaveMsg(`「${where}」已改回沿用全局`);
+    } catch (err) {
+      setSaveMsg(`取消失败: ${err}`);
+    }
+  }
+
+  /** 映射表点击已绑定格子：切换禁用 / 启用（禁用保留动作与记录）。 */
+  async function toggleBinding(button: string, trig: string) {
+    if (!isTauri() || !isGlobalScope) return;
+    const entry = globalCells.get(cellKey(button, trig));
+    if (!entry) return;
+    const name = buttons.find((b) => b.key === button)?.name ?? button;
+    const where = `${name} · ${triggerLabel[trig] ?? trig}`;
+    try {
+      await invoke("set_mapping_binding_enabled", {
+        button,
+        trigger: trig,
+        enabled: !entry.enabled,
+      });
+      await refreshMappings();
+      setSaveMsg(
+        entry.enabled ? `已禁用：${where}（再点一下恢复）` : `已启用：${where}`,
+      );
+    } catch (err) {
+      setSaveMsg(`切换失败: ${err}`);
+    }
+  }
+
+  /** 映射表右上角 ×：删除一条绑定，并给一条可撤销的 toast。 */
+  async function clearBinding(button: string, trig: string) {
+    if (!isTauri() || !isGlobalScope) return;
+    const entry = globalCells.get(cellKey(button, trig));
+    if (!entry) return;
+    const name = buttons.find((b) => b.key === button)?.name ?? button;
+    const where = `${name} · ${triggerLabel[trig] ?? trig}`;
+    try {
+      await invoke("clear_mapping_binding", { button, trigger: trig });
+      await refreshMappings();
+      setSaveMsg(`已取消关联：${where}`);
+      showToast(`已取消关联：${where}`, async () => {
+        try {
+          await invoke("save_mapping", {
+            edit: {
+              button,
+              trigger: trig,
+              action: entry.action_key,
+              enabled: entry.enabled,
+            },
+          });
+          await refreshMappings();
+          setSaveMsg(`已撤销：${where}`);
+          dismissToast();
+        } catch (err) {
+          setSaveMsg(`撤销失败: ${err}`);
+        }
+      });
     } catch (err) {
       setSaveMsg(`取消失败: ${err}`);
     }
@@ -358,6 +452,10 @@ export function useMappingEditor() {
     saveMsg,
     save,
     useGlobal,
+    toggleBinding,
+    clearBinding,
+    toast,
+    dismissToast,
     selectedOverride,
     selectedGlobal,
     activeProfile,

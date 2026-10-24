@@ -22,6 +22,7 @@ fn binding(button: ButtonId, trigger: Trigger, action: ActionKind) -> core_mappi
         button,
         trigger,
         action,
+        enabled: true,
     }
 }
 
@@ -166,6 +167,7 @@ fn double_click_fires_on_second_release() {
             button: ButtonId::Up,
             trigger: Trigger::DoubleClick,
             action: ActionKind::Return,
+            enabled: true,
         }],
     });
     jobs_of(&d, 38, true, 0);
@@ -209,6 +211,7 @@ fn long_press_fires_on_hold_and_release_does_not_double_fire() {
             button: ButtonId::Back,
             trigger: Trigger::LongPress,
             action: ActionKind::OpenApp("notepad".into()),
+            enabled: true,
         }],
     });
     jobs_of(&d, 166, true, 0);
@@ -229,6 +232,7 @@ fn long_press_fires_only_once() {
             button: ButtonId::VolumeUp,
             trigger: Trigger::LongPress,
             action: ActionKind::SystemVolumeUp,
+            enabled: true,
         }],
     });
     jobs_of(&d, 175, true, 0);
@@ -327,6 +331,7 @@ fn disabled_action_produces_no_job() {
             button: ButtonId::Up,
             trigger: Trigger::SingleClick,
             action: ActionKind::Disabled,
+            enabled: true,
         }],
     });
     jobs_of(&d, 38, true, 0);
@@ -355,6 +360,7 @@ fn update_mapping_takes_effect_immediately() {
             button: ButtonId::VolumeUp,
             trigger: Trigger::SingleClick,
             action: ActionKind::SystemVolumeMute,
+            enabled: true,
         }],
     });
     // 静音属于开关类动作：按下即执行，不再等待双击窗口。
@@ -444,11 +450,13 @@ fn mic_combo_ptt_holds_from_physical_down() {
                 button: ButtonId::Mic,
                 trigger: Trigger::Press,
                 action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                enabled: true,
             },
             core_mapping::KeyBinding {
                 button: ButtonId::Mic,
                 trigger: Trigger::Release,
                 action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                enabled: true,
             },
         ],
     });
@@ -764,11 +772,13 @@ fn voice_job_preserves_trigger_for_ptt_dispatch() {
                 button: ButtonId::Mic,
                 trigger: Trigger::Press,
                 action: ActionKind::Voice,
+                enabled: true,
             },
             core_mapping::KeyBinding {
                 button: ButtonId::Mic,
                 trigger: Trigger::Release,
                 action: ActionKind::Voice,
+                enabled: true,
             },
         ],
     });
@@ -921,9 +931,9 @@ fn profile_never_overrides_mic() {
     }
 }
 
-/// 配置可以把某个按键在某个应用里禁用掉。
+/// 配置可以把某个按键在某个应用里禁用掉（旧的 Disabled 动作视同未绑定）。
 #[test]
-fn profile_can_disable_a_button() {
+fn profile_disabled_action_is_inactive() {
     let mapping = MappingConfig::default();
     let profile = profile_with(vec![binding(
         ButtonId::Home,
@@ -937,7 +947,8 @@ fn profile_can_disable_a_button() {
             ButtonId::Home,
             Trigger::SingleClick
         ),
-        Some(ActionKind::Disabled)
+        None,
+        "禁用动作不应产生可执行动作"
     );
 }
 
@@ -1065,4 +1076,94 @@ fn foreground_profile_matches_real_foreground_title() {
 
     let hit = foreground_profile(&registry).expect("应能只靠标题命中");
     assert_eq!(hit.display_name(), "标题测试");
+}
+
+// ---- 禁用绑定：保留记录与动作，但行为等同未绑定 ----
+
+fn disabled_binding(
+    button: ButtonId,
+    trigger: Trigger,
+    action: ActionKind,
+) -> core_mapping::KeyBinding {
+    core_mapping::KeyBinding {
+        button,
+        trigger,
+        action,
+        enabled: false,
+    }
+}
+
+#[test]
+fn disabled_single_binding_does_nothing() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![disabled_binding(
+            ButtonId::VolumeUp,
+            Trigger::SingleClick,
+            ActionKind::SystemVolumeUp,
+        )],
+    });
+    assert!(jobs_of(&d, 175, true, 0).is_empty(), "禁用后按下不应执行");
+    assert!(
+        jobs_of(&d, 175, false, 60).is_empty(),
+        "禁用后松开也不应执行"
+    );
+    assert!(d.tick_once(500).is_empty(), "禁用后不应有连发");
+}
+
+#[test]
+fn disabled_double_binding_restores_immediate_single() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            disabled_binding(ButtonId::Up, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    // 双击被禁用 → 不再占用双击窗口，单击松开立即生效。
+    let jobs = jobs_of(&d, 38, false, 80);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+}
+
+#[test]
+fn disabled_long_binding_does_not_fire_long_press() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            disabled_binding(ButtonId::Up, Trigger::LongPress, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    assert!(d.tick_once(800).is_empty(), "禁用的长按不应触发");
+    // 长按绑定被禁用 → 按住再松开按「未绑定长按」处理，补一次单击。
+    let jobs = jobs_of(&d, 38, false, 850);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+}
+
+#[test]
+fn disabled_double_binding_keeps_volume_repeat() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            disabled_binding(
+                ButtonId::VolumeUp,
+                Trigger::DoubleClick,
+                ActionKind::SystemVolumeMute,
+            ),
+        ],
+    });
+    // 双击禁用 → 音量仍按即时/连发语义，不退回手势判定。
+    let jobs = jobs_of(&d, 175, true, 0);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].action, ActionKind::SystemVolumeUp);
 }

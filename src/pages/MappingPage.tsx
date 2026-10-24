@@ -41,6 +41,10 @@ export function MappingPage() {
     saveMsg,
     save,
     useGlobal,
+    toggleBinding,
+    clearBinding,
+    toast,
+    dismissToast,
     selectedOverride,
     selectedGlobal,
     activeProfile,
@@ -217,15 +221,51 @@ export function MappingPage() {
                 global={globalView}
                 override={overrideView}
                 selected={{ button: selected, trigger }}
+                interactive={isGlobalScope}
                 onSelect={(button, trig) => {
                   setSelected(button);
                   setTrigger(trig);
+                }}
+                onCellClick={(button, trig, bound) => {
+                  setSelected(button);
+                  setTrigger(trig);
+                  // 已绑定格：点击切换禁用/启用（同时设为编辑目标）；空格只选中。
+                  if (bound) void toggleBinding(button, trig);
+                }}
+                onClear={(button, trig) => {
+                  void clearBinding(button, trig);
                 }}
               />
             </div>
           </div>
         </section>
       </div>
+
+      {toast && (
+        <div className="mapping-toast" role="status">
+          <span className="mapping-toast-msg">{toast.message}</span>
+          {toast.undo && (
+            <button
+              type="button"
+              className="mapping-toast-undo"
+              onClick={() => {
+                const undo = toast.undo;
+                if (undo) void undo();
+              }}
+            >
+              撤销
+            </button>
+          )}
+          <button
+            type="button"
+            className="mapping-toast-close"
+            aria-label="关闭提示"
+            onClick={dismissToast}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <NewProfileDialog
         open={newOpen}

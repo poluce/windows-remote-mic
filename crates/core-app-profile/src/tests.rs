@@ -15,6 +15,7 @@ fn profile(process: &str, name: &str) -> AppProfile {
             button: ButtonId::Ok,
             trigger: Trigger::SingleClick,
             action: ActionKind::Return,
+            enabled: true,
         }],
         ..Default::default()
     }
