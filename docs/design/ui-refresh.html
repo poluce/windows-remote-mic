@@ -22,7 +22,10 @@
   /* 底色与表面 */
   --rm-bg: #eef2f8;
   --rm-glass: rgba(255, 255, 255, 0.46);      /* 浮层玻璃：真模糊（越低越透出底色） */
-  --rm-card: rgba(255, 255, 255, 0.78);       /* 内容卡片：磨砂纸，不做滤镜 */
+  --rm-card: rgba(255, 255, 255, 0.78);       /* 内容卡片基色（旧） */
+  --rm-card-top: rgba(255, 255, 255, 0.96);   /* 卡片顶部：更实 */
+  --rm-card-bottom: rgba(244, 249, 255, 0.80);/* 卡片底部：略透 + 微蓝 */
+  --rm-card-flat: rgba(255, 255, 255, 0.66);  /* 轻卡：嵌套/次要 */
   --rm-solid: #ffffff;
   --rm-sunken: rgba(15, 23, 42, 0.04);        /* 沉底：内嵌区 */
   --rm-hover: rgba(255, 255, 255, 0.92);
@@ -31,6 +34,7 @@
   --rm-line: rgba(15, 23, 42, 0.08);
   --rm-line-strong: rgba(15, 23, 42, 0.16);
   --rm-line-light: rgba(255, 255, 255, 0.72); /* 玻璃上沿高光 */
+  --rm-line-cool: rgba(23, 48, 82, 0.09);     /* 卡片描边（冷调，不用灰黑） */
 
   /* 文字四级（对比度：17.8 / 7.5 / 4.8 / 仅装饰） */
   --rm-text: #131A24;
@@ -57,6 +61,10 @@
   --rm-sh-1: 0 1px 2px rgba(15, 23, 42, 0.06);
   --rm-sh-2: 0 6px 18px -8px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.05);
   --rm-sh-3: 0 24px 60px -28px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --rm-sh-card: 0 0 0 1px rgba(23, 48, 82, 0.08),
+    0 16px 36px -20px rgba(23, 48, 82, 0.34), 0 2px 4px rgba(23, 48, 82, 0.05);
+  --rm-sh-card-soft: 0 0 0 1px rgba(23, 48, 82, 0.07),
+    0 6px 16px -14px rgba(23, 48, 82, 0.20);
   --rm-glow: 0 6px 16px -8px rgba(43, 111, 192, 0.42);
 
   /* 字号阶梯 */
@@ -288,14 +296,20 @@ body {
 .pg-head p { margin: 3px 0 0; font-size: var(--rm-fs-12); color: var(--rm-text-3); }
 .pg-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
-/* 卡片：磨砂纸，不做 backdrop-filter（避免几十个模糊层的性能与文字模糊） */
+/* 卡片：一张有厚度的磨砂纸（顶部实、底部略透 + 冷调双层边 + 双层阴影） */
 .card {
   border-radius: var(--rm-r-lg); padding: 18px 20px; margin-bottom: 14px;
-  background: var(--rm-card);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.055), var(--rm-sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: linear-gradient(180deg, var(--rm-card-top) 0%, var(--rm-card-bottom) 100%);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-card), inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
-.card.flat { box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.055), var(--rm-sh-1); }
+/* 轻卡：工具条、次要信息 —— 去掉扩散阴影，不与主内容抢层级 */
+.card.flat {
+  background: var(--rm-card-flat);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
 .card-title { font-size: var(--rm-fs-12); font-weight: 600; color: var(--rm-text-2); margin-bottom: 14px; }
 
 /* 设备卡 */
@@ -734,7 +748,7 @@ table.tbl tr:last-child td { border-bottom: none; }
       <div class="material g2">
         <div class="glass-swatch"></div>
         <b>内容卡片（磨砂纸）</b>
-        <span>白 78%，不做 backdrop-filter。靠 1px 冷灰描边 + 冷色投影立起来。<br>所有可滚动的内容卡。</span>
+        <span>竖向微渐变 96% → 80% 白（底部略带蓝）、双层边、双层冷色阴影。<br>所有可滚动的内容卡；工具条用轻卡变体。</span>
       </div>
       <div class="material g3">
         <div class="glass-swatch"></div>

@@ -70,7 +70,9 @@ export function MappingPage() {
         </div>
       </div>
 
-      <section className="card">
+      {/* 作用范围条是工具条而不是内容卡：用轻卡（无扩散阴影），
+          避免这一页出现两张"浮起"的卡片与遥控器列抢注意力。 */}
+      <section className="card flat">
         <ScopeBar
           items={scopeItems}
           active={scope}
