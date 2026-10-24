@@ -128,21 +128,21 @@ export function MappingMatrix({
                       <span className="matrix-cell-label">
                         {entry?.action || "—"}
                       </span>
-                      {interactive && entry && (
-                        <button
-                          type="button"
-                          className="matrix-cell-x"
-                          title={`取消关联：${entry.action}`}
-                          aria-label={`取消关联 ${button.name} · ${t.label}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onClear?.(button.key, t.key);
-                          }}
-                        >
-                          ×
-                        </button>
-                      )}
                     </span>
+                    {interactive && entry && (
+                      <button
+                        type="button"
+                        className="matrix-cell-x"
+                        title={`取消关联：${entry.action}`}
+                        aria-label={`取消关联 ${button.name} · ${t.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClear?.(button.key, t.key);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 );
               })}
