@@ -308,6 +308,22 @@ pub fn run() {
             core_log::log_info("[app] Remote Mic 应用初始化完成，窗口与全局钩子已就绪");
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // 主窗口是应用唯一的入口：关闭它就应该退出应用。
+            //
+            // 应用启动时还会创建一个**隐藏**的 `quick-menu` 窗口（见 setup）。
+            // 如果只关闭主窗口，Tauri 认为还有窗口没关，事件循环不会退出，
+            // 进程就驻留在后台：没有托盘图标，任务栏也看不到入口，用户
+            // 只能去任务管理器结束进程（实测踩过）。这里在主窗口关闭请求
+            // 时显式退出；退出路径仍会走 `RunEvent::Exit`，由那里兜底
+            // 释放虚拟 HID 上可能残留的按住状态。
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    core_log::log_info("[app] 主窗口关闭，退出应用");
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             ping,
             app_version,
