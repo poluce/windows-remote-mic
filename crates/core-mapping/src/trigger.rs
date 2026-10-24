@@ -152,6 +152,11 @@ impl TriggerDetector {
         self.long_press_ms = ms;
     }
 
+    /// 当前长按判定阈值（毫秒）。调度器用它在长按阈值之后启动步进连发。
+    pub fn long_press_ms(&self) -> u64 {
+        self.long_press_ms
+    }
+
     /// 设置双击判定窗口（毫秒）。
     pub fn set_double_click_window_ms(&mut self, ms: u64) {
         self.double_click_window_ms = ms;

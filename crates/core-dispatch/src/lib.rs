@@ -36,10 +36,16 @@ use std::time::{Duration, Instant};
 use core_app_profile::{AppProfile, ProfileRegistry};
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
-use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger, VoiceTarget};
+use core_mapping::{ActionKind, ButtonId, MappingConfig, PressSemantics, Trigger, VoiceTarget};
 
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
+
+/// 步进类动作（系统音量 ±）按住时的连发间隔（毫秒）。
+///
+/// 首次连发在长按阈值之后触发，之后按固定间隔重复；节奏接近 Windows
+/// 键盘音量键的自动重复。
+const REPEAT_STEP_INTERVAL_MS: u64 = 120;
 
 /// 自定义快捷键单次按住的兜底上限（毫秒）。
 ///
@@ -53,11 +59,27 @@ const TICK_INTERVAL_MS: u64 = 25;
 const DEFAULT_MAX_COMBO_HOLD_MS: u64 = 10_000;
 const DEFAULT_MAX_MIC_HOLD_MS: u64 = 180_000;
 
+/// 本次按下的处理方式（由动作语义决定，见 [`PressSemantics`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PressMode {
+    /// 正常手势（单击/双击/长按）。
+    #[default]
+    Gesture,
+    /// 按下即执行一次，不参与手势判定，也不连发（静音、播放暂停）。
+    Instant,
+    /// 按下即执行，按住由 tick 连发（系统音量 ±）。
+    Repeat,
+}
+
 /// 单个按键的运行时状态。
 #[derive(Default)]
 struct ButtonRuntime {
     detector: TriggerDetector,
     down: bool,
+    /// 本次按下的处理方式。步进/开关类动作不走手势判定。
+    press_mode: PressMode,
+    /// 连发模式下下一次执行的时刻（毫秒，调度器时间轴）。
+    next_repeat_at: u64,
     /// 本次按住期间是否已触发过长按。
     long_executed: bool,
     /// 自定义快捷键已在物理按下时按住，松开时必须配对松开。
@@ -474,6 +496,8 @@ impl KeyDispatcher {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         for rt in inner.buttons.values_mut() {
             rt.down = false;
+            rt.press_mode = PressMode::Gesture;
+            rt.next_repeat_at = 0;
             rt.long_executed = false;
             rt.combo_held = false;
             rt.held_tokens = None;
@@ -505,6 +529,8 @@ impl KeyDispatcher {
                     });
                 }
                 rt.down = false;
+                rt.press_mode = PressMode::Gesture;
+                rt.next_repeat_at = 0;
                 rt.long_executed = false;
                 rt.combo_held = false;
                 rt.hold_started_ms = None;
@@ -570,6 +596,26 @@ impl KeyDispatcher {
             rt.combo_held = false;
             rt.held_tokens = None;
             rt.hold_started_ms = Some(now);
+            rt.press_mode = PressMode::Gesture;
+            rt.next_repeat_at = 0;
+            // 步进/开关类动作：按下立即执行一次，不进入单击/双击/长按判定。
+            // 否则快速连按会被合并成「双击」（通常没有双击绑定）而静默丢失。
+            if let Some(job) = build_job(mapping, profile, button, Trigger::SingleClick, rt) {
+                match job.action.press_semantics() {
+                    PressSemantics::Repeat => {
+                        rt.press_mode = PressMode::Repeat;
+                        rt.next_repeat_at = now + rt.detector.long_press_ms();
+                        jobs.push(job);
+                        return jobs;
+                    }
+                    PressSemantics::Instant => {
+                        rt.press_mode = PressMode::Instant;
+                        jobs.push(job);
+                        return jobs;
+                    }
+                    PressSemantics::Gesture => {}
+                }
+            }
             rt.detector.press(now);
             // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
             // （豆包等 IME 要的是键盘那种「一按住就生效」）。
@@ -589,6 +635,12 @@ impl KeyDispatcher {
             }
             rt.down = false;
             rt.hold_started_ms = None;
+            if rt.press_mode != PressMode::Gesture {
+                // 步进/开关类动作：松手即结束，没有延迟确认的手势事件。
+                rt.press_mode = PressMode::Gesture;
+                rt.next_repeat_at = 0;
+                return jobs;
+            }
             // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
             let outcome = rt.detector.release(now);
             if rt.combo_held {
@@ -628,6 +680,33 @@ impl KeyDispatcher {
         } = &mut *inner;
         let profile = profile.as_ref();
         for (button, rt) in buttons.iter_mut() {
+            // 步进/开关类动作不走手势判定：步进类按住连发，开关类不做任何 tick。
+            match rt.press_mode {
+                PressMode::Repeat => {
+                    if rt.down && now >= rt.next_repeat_at {
+                        if let Some(job) =
+                            build_job(mapping, profile, *button, Trigger::SingleClick, rt)
+                        {
+                            if job.action.press_semantics() == PressSemantics::Repeat {
+                                jobs.push(job);
+                                rt.next_repeat_at = now + REPEAT_STEP_INTERVAL_MS;
+                            } else {
+                                rt.press_mode = PressMode::Gesture;
+                            }
+                        } else {
+                            rt.press_mode = PressMode::Gesture;
+                        }
+                    }
+                    continue;
+                }
+                PressMode::Instant => {
+                    if !rt.down {
+                        rt.press_mode = PressMode::Gesture;
+                    }
+                    continue;
+                }
+                PressMode::Gesture => {}
+            }
             // 兜底：自定义快捷键按住远超任何合理时长，说明松开事件丢了
             // （BLE 断链等）。强制松开，避免修饰键一直卡在系统里。
             // 麦克风按键承载语音输入（如豆包等输入法），正常由硬件 AudioStopped 释放，

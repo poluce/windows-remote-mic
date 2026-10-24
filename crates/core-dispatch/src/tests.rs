@@ -205,10 +205,53 @@ fn update_mapping_takes_effect_immediately() {
             action: ActionKind::SystemVolumeMute,
         }],
     });
-    jobs_of(&d, 175, true, 0);
-    jobs_of(&d, 175, false, 50);
-    let jobs = d.tick_once(400);
+    // 静音属于开关类动作：按下即执行，不再等待双击窗口。
+    let jobs = jobs_of(&d, 175, true, 0);
+    assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].action, ActionKind::SystemVolumeMute);
+    assert!(jobs_of(&d, 175, false, 50).is_empty());
+    assert!(d.tick_once(400).is_empty());
+}
+
+#[test]
+fn volume_action_fires_on_every_press_without_double_click_merge() {
+    let d = dispatcher(); // 默认映射：音量+ 单击 -> SystemVolumeUp
+    let mut fired = Vec::new();
+    for i in 0..4u64 {
+        let at = i * 200; // 200ms 间隔，落在 300ms 双击窗口内
+        let jobs = jobs_of(&d, 175, true, at);
+        assert_eq!(jobs.len(), 1, "第 {} 次按下应立即执行一格音量", i + 1);
+        fired.extend(jobs);
+        assert!(jobs_of(&d, 175, false, at + 80).is_empty());
+    }
+    assert_eq!(fired.len(), 4, "快速连按不能被合并成双击吞掉");
+    assert!(fired
+        .iter()
+        .all(|j| j.action == ActionKind::SystemVolumeUp && j.trigger == Trigger::SingleClick));
+}
+
+#[test]
+fn volume_action_repeats_while_held_and_stops_on_release() {
+    let d = dispatcher();
+    assert_eq!(jobs_of(&d, 175, true, 0).len(), 1, "按下立即执行一次");
+    // 默认长按阈值 550ms 之前不连发（避免轻按也当成长按）。
+    let mut t = 25u64;
+    while t < 550 {
+        assert!(d.tick_once(t).is_empty(), "阈值前不应连发: t={t}");
+        t += 25;
+    }
+    // 阈值之后按固定间隔连发。
+    let mut repeats = Vec::new();
+    for at in (575u64..=1000).step_by(125) {
+        repeats.extend(d.tick_once(at));
+    }
+    assert!(repeats.len() >= 2, "按住应连发，实际 {} 次", repeats.len());
+    assert!(repeats
+        .iter()
+        .all(|j| j.action == ActionKind::SystemVolumeUp && j.trigger == Trigger::SingleClick));
+    // 松手立即停止，且在真的松开后不再有任何重复。
+    assert!(jobs_of(&d, 175, false, 1050).is_empty());
+    assert!(d.tick_once(1500).is_empty(), "松手后不应继续连发");
 }
 
 #[test]
