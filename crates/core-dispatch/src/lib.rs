@@ -80,6 +80,11 @@ struct ButtonRuntime {
     press_mode: PressMode,
     /// 连发模式下下一次执行的时刻（毫秒，调度器时间轴）。
     next_repeat_at: u64,
+    /// 本次按下是否启用「简单单击」：该键没有双击绑定，松开即确认单击，
+    /// 不需要等双击窗口。手势判定仍保留给显式绑定了双击的按键。
+    simple_single: bool,
+    /// 简单单击模式下该键是否绑定了长按动作（用于长按阈值判定）。
+    simple_has_long: bool,
     /// 本次按住期间是否已触发过长按。
     long_executed: bool,
     /// 自定义快捷键已在物理按下时按住，松开时必须配对松开。
@@ -498,6 +503,8 @@ impl KeyDispatcher {
             rt.down = false;
             rt.press_mode = PressMode::Gesture;
             rt.next_repeat_at = 0;
+            rt.simple_single = false;
+            rt.simple_has_long = false;
             rt.long_executed = false;
             rt.combo_held = false;
             rt.held_tokens = None;
@@ -531,6 +538,8 @@ impl KeyDispatcher {
                 rt.down = false;
                 rt.press_mode = PressMode::Gesture;
                 rt.next_repeat_at = 0;
+                rt.simple_single = false;
+                rt.simple_has_long = false;
                 rt.long_executed = false;
                 rt.combo_held = false;
                 rt.hold_started_ms = None;
@@ -620,7 +629,18 @@ impl KeyDispatcher {
                     }
                 }
             }
-            rt.detector.press(now);
+            // 没有双击绑定的按键不需要等双击窗口：松开即确认单击。
+            // 有双击绑定才进入手势判定（单击延迟确认、双击不丢）。
+            let has_single =
+                resolve_action(mapping, profile, button, Trigger::SingleClick).is_some();
+            let has_double =
+                resolve_action(mapping, profile, button, Trigger::DoubleClick).is_some();
+            rt.simple_single = has_single && !has_double;
+            rt.simple_has_long =
+                resolve_action(mapping, profile, button, Trigger::LongPress).is_some();
+            if !rt.simple_single {
+                rt.detector.press(now);
+            }
             // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
             // （豆包等 IME 要的是键盘那种「一按住就生效」）。
             // Voice（Win+H）仍等 tick 识别长按后再发，避免点按误开语音条。
@@ -637,12 +657,40 @@ impl KeyDispatcher {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
                 return jobs;
             }
+            let held_ms = rt
+                .hold_started_ms
+                .map(|started| now.saturating_sub(started))
+                .unwrap_or(0);
             rt.down = false;
             rt.hold_started_ms = None;
             if rt.press_mode != PressMode::Gesture {
                 // 步进/开关类动作：松手即结束，没有延迟确认的手势事件。
                 rt.press_mode = PressMode::Gesture;
                 rt.next_repeat_at = 0;
+                return jobs;
+            }
+            if rt.simple_single {
+                // 没有双击绑定：松开即确认单击；长按动作仍按阈值生效。
+                let has_long = rt.simple_has_long;
+                rt.simple_single = false;
+                rt.simple_has_long = false;
+                if rt.combo_held {
+                    rt.combo_held = false;
+                    if let Some(job) = release_job(mapping, profile, button, rt) {
+                        jobs.push(job);
+                    }
+                } else if has_long && rt.long_executed {
+                    // 长按已在 tick 触发，松开不再补单击。
+                } else if has_long && held_ms >= rt.detector.long_press_ms() {
+                    // tick 漏掉时的长按兜底。
+                    if let Some(job) = build_job(mapping, profile, button, Trigger::LongPress, rt) {
+                        jobs.push(job);
+                    }
+                } else if let Some(job) =
+                    build_job(mapping, profile, button, Trigger::SingleClick, rt)
+                {
+                    jobs.push(job);
+                }
                 return jobs;
             }
             // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
@@ -743,6 +791,23 @@ impl KeyDispatcher {
                         }
                     }
                 }
+            }
+            if rt.simple_single {
+                // 没有双击绑定：单击已在松开时确认，这里只负责长按动作。
+                if rt.down && rt.simple_has_long && !rt.long_executed {
+                    if let Some(started) = rt.hold_started_ms {
+                        if now.saturating_sub(started) >= rt.detector.long_press_ms() {
+                            // 先构建任务再置 long_executed：build_job 的长按门控
+                            // 会检查这个标志，提前置位会把任务吞掉。
+                            let job = build_job(mapping, profile, *button, Trigger::LongPress, rt);
+                            rt.long_executed = true;
+                            if let Some(job) = job {
+                                jobs.push(job);
+                            }
+                        }
+                    }
+                }
+                continue;
             }
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);

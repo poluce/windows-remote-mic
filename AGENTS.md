@@ -182,9 +182,14 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
 - 配置持久化到 `%LOCALAPPDATA%\RemoteMic\RC003\config.json`：
   - 原子写入；损坏时自动回退 `config.json.bak`（上一次成功保存）。
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
-    `long_press_ms`（默认 550）、`double_click_ms`（默认 300）、`voice_target`、`shortcuts`、
+    `long_press_ms`（默认 550）、`double_click_ms`（默认 250）、`voice_target`、`shortcuts`、
     `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
+- **单击时序**：只有显式绑定了双击的按键才会等双击窗口确认单击；**没有双击绑定的按键在松开
+  瞬间立即执行**（快速连按每次都生效，不会被合并成双击吞掉）。绑了不同动作的长按仍按阈值触发一次。
+- **动作按下语义**（`ActionKind::press_semantics`）：系统音量 ± 按下即执行一格、按住连发
+  （长按阈值后每 120ms）；静音 / 播放暂停按下即执行、不连发；其余动作走手势判定。
+  用户显式绑定的双击 / 不同动作长按永远优先。
 - 映射目录由后端 `get_mapping_catalog` 返回：
   - 13 个按键（顺序与前端矩阵一致：电源、麦克风、上、左、确定、右、下、返回、音量+、主页、音量−、菜单、TV）；
   - 5 种触发；3 个动作分类（系统 / 自定义 / 其他，「自定义」用哨兵值 `custom_combo`）；

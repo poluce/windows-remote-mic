@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 use crate::Trigger;
 
 /// 时间常量（毫秒），与常见遥控器惯例保持一致。
-pub const DOUBLE_CLICK_WINDOW_MS: u64 = 300;
+///
+/// 双击窗口默认 250ms：只有**显式绑定了双击**的按键才会等这个窗口确认单击；
+/// 没有双击绑定的按键由调度器在松开时立即确认，不受此值影响。
+/// 窗口太长会让绑定双击的键单击发闷，太短会让双击难以识别。
+pub const DOUBLE_CLICK_WINDOW_MS: u64 = 250;
 pub const LONG_PRESS_MS: u64 = 550;
 
 /// 由触发检测器产生的事件。
@@ -16,9 +20,11 @@ pub struct TriggerEvent {
 
 /// 检测单个物理按键的点击触发。
 ///
-/// 依次送入 `press(now_ms)` 和 `release(now_ms)`；当触发被确认时发出事件
-/// （单击会延迟到双击窗口结束后才确认）。长按在按住超过阈值时只触发一次，
-/// 不做按住连发。
+/// 依次送入 `press(now_ms)` 和 `release(now_ms)`；当触发被确认时发出事件。
+///
+/// 单击通常要延迟到双击窗口结束才确认（否则无法区分双击）；调度器会对
+/// **没有双击绑定**的按键走「简单单击」路径，在松开瞬间直接确认，不经过这里。
+/// 长按在按住超过阈值时只触发一次，不做按住连发。
 #[derive(Debug, Clone)]
 pub struct TriggerDetector {
     pressed_at: Option<u64>,

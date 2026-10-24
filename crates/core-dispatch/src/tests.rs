@@ -76,11 +76,83 @@ fn calibration_overrides_vkey() {
 }
 
 #[test]
-fn single_click_confirmed_after_double_click_window() {
+fn single_click_fires_immediately_without_double_click_binding() {
     let d = dispatcher();
     assert!(jobs_of(&d, 38, true, 0).is_empty());
-    assert!(jobs_of(&d, 38, false, 50).is_empty());
+    // 默认映射没有双击绑定：松开立即确认单击，不再等双击窗口。
+    let jobs = jobs_of(&d, 38, false, 50);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+    assert!(d.tick_once(400).is_empty(), "单击已确认，不应再延迟触发");
+}
+
+#[test]
+fn double_click_binding_keeps_single_click_delayed() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            binding(ButtonId::Up, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    assert!(
+        jobs_of(&d, 38, false, 50).is_empty(),
+        "有双击绑定时单击必须等窗口确认"
+    );
     let jobs = d.tick_once(400);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+}
+
+#[test]
+fn rapid_presses_all_fire_without_double_click_binding() {
+    let d = dispatcher();
+    let mut fired = Vec::new();
+    for i in 0..4u64 {
+        let at = i * 150; // 150ms 间隔，远小于双击窗口
+        fired.extend(jobs_of(&d, 38, true, at));
+        fired.extend(jobs_of(&d, 38, false, at + 60));
+    }
+    assert_eq!(fired.len(), 4, "没有双击绑定时快速连按应全部生效");
+    assert!(fired
+        .iter()
+        .all(|j| j.trigger == Trigger::SingleClick && j.action == ActionKind::ArrowUp));
+}
+
+#[test]
+fn single_click_with_long_binding_is_immediate_and_long_press_fires() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            binding(ButtonId::Up, Trigger::LongPress, ActionKind::Return),
+        ],
+    });
+    // 短按：松开立即单击。
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    let jobs = jobs_of(&d, 38, false, 100);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    // 长按：阈值时触发长按，松开不再补单击。
+    assert!(jobs_of(&d, 38, true, 200).is_empty());
+    let jobs = d.tick_once(800);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::LongPress);
+    assert_eq!(jobs[0].action, ActionKind::Return);
+    assert!(jobs_of(&d, 38, false, 900).is_empty());
+}
+
+#[test]
+fn hold_without_long_binding_fires_single_on_release() {
+    let d = dispatcher();
+    // 只有单击绑定：按住超过长按阈值也不该产生任何动作，
+    // 松开时按单击处理（以前会被 LongPress 判定吞掉）。
+    jobs_of(&d, 38, true, 0);
+    assert!(d.tick_once(600).is_empty(), "没有长按绑定不应触发动作");
+    let jobs = jobs_of(&d, 38, false, 700);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].trigger, Trigger::SingleClick);
     assert_eq!(jobs[0].action, ActionKind::ArrowUp);
@@ -111,11 +183,10 @@ fn key_repeat_press_is_ignored() {
     assert!(jobs_of(&d, 38, true, 0).is_empty());
     // 按住期间系统重复的按下事件不应重置触发状态
     assert!(jobs_of(&d, 38, true, 100).is_empty());
-    assert!(
-        jobs_of(&d, 38, false, 150).is_empty(),
-        "正常松开产生待确认单击"
-    );
-    let _ = d.tick_once(500);
+    let jobs = jobs_of(&d, 38, false, 150);
+    assert_eq!(jobs.len(), 1, "松开立即确认单击");
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert!(d.tick_once(500).is_empty());
 }
 
 #[test]
@@ -124,9 +195,8 @@ fn spurious_release_is_ignored() {
     // 没有按下的释放（回声）不应进入触发状态机
     assert!(jobs_of(&d, 38, false, 0).is_empty());
     assert!(jobs_of(&d, 38, true, 100).is_empty());
-    jobs_of(&d, 38, false, 150);
-    // 释放时 held=50ms，单击在双击窗口后确认
-    let jobs = d.tick_once(500);
+    // 松开立即确认单击（默认映射没有双击绑定）
+    let jobs = jobs_of(&d, 38, false, 150);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].trigger, Trigger::SingleClick);
 }
@@ -769,11 +839,11 @@ fn quick_menu_mode_routes_keys_to_handler_and_skips_mapping() {
         d.tick_once(400).is_empty(),
         "菜单独占模式下不应产生普通映射任务"
     );
-    // 切回普通模式后恢复普通单击。
+    // 切回普通模式后恢复普通单击（没有双击绑定：松开立即生效）。
     d.set_input_mode(InputMode::Normal);
     d.on_vkey(38, true);
     d.on_vkey(38, false);
-    let jobs = d.tick_once(400);
+    let jobs = drain_jobs(&d);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].action, ActionKind::ArrowUp);
 }

@@ -304,7 +304,7 @@ export function RemoteKeyTester() {
 
       // 判定 DoubleClick
       const lastRelease = lastSingleRelease.current[btnId] || 0;
-      if (now - lastRelease <= 300) {
+      if (now - lastRelease <= 250) {
         clearTimeout(singleTimers.current[btnId]);
         delete lastSingleRelease.current[btnId];
         setMatrix((prev) => ({
@@ -314,7 +314,7 @@ export function RemoteKeyTester() {
         return;
       }
 
-      // 判定 SingleClick (等待 300ms 窗口)
+      // 判定 SingleClick（默认双击窗口 250ms；实际以设置页配置为准）
       lastSingleRelease.current[btnId] = now;
       singleTimers.current[btnId] = window.setTimeout(() => {
         delete lastSingleRelease.current[btnId];
@@ -322,7 +322,7 @@ export function RemoteKeyTester() {
           ...prev,
           [btnId]: { ...prev[btnId], single: true },
         }));
-      }, 300);
+      }, 250);
     }
 
     function handleMouseBack(e: MouseEvent | PointerEvent) {
