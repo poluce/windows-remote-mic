@@ -55,7 +55,7 @@
   <script>
     // 把品牌色向中性灰（#8b95a1）混合，降低饱和度，和主界面色板统一。
     // amount 越大越接近灰；只处理 #rrggbb，其它格式原样返回。
-    function muteBrandColor(hex, amount = 0.4) {
+    function muteBrandColor(hex, amount = 0.3) {
       if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
       const nr = 0x8b, ng = 0x95, nb = 0xa1;
       const r = parseInt(hex.slice(1, 3), 16);
@@ -260,10 +260,10 @@
           const fillB = Math.round(255 + (255 - 255) * intensity);
           ctx.fillStyle = `rgb(${fillR}, ${fillG}, ${fillB})`;
 
-          // 高亮描边：从中性灰过渡到强调色 #44678a（低饱和钢蓝），不回到旧的高饱和蓝
-          const strR = Math.round(200 + (68 - 200) * intensity);
-          const strG = Math.round(210 + (103 - 210) * intensity);
-          const strB = Math.round(225 + (138 - 225) * intensity);
+          // 高亮描边：从中性灰过渡到强调色 #3a6ea5（钢蓝），不回到旧的高饱和蓝
+          const strR = Math.round(200 + (58 - 200) * intensity);
+          const strG = Math.round(210 + (110 - 210) * intensity);
+          const strB = Math.round(225 + (165 - 225) * intensity);
           ctx.strokeStyle = `rgb(${strR}, ${strG}, ${strB})`;
           ctx.lineWidth = 1.5 + intensity * 1.0;
         } else {
@@ -280,9 +280,9 @@
         ctx.font = (isActive && intensity > 0.6 ? '700' : '600') + ' 15px -apple-system, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif';
 
         if (isActive && intensity > 0) {
-          const textR = Math.round(71 + (46 - 71) * intensity);
-          const textG = Math.round(85 + (79 - 85) * intensity);
-          const textB = Math.round(105 + (107 - 105) * intensity);
+          const textR = Math.round(71 + (42 - 71) * intensity);
+          const textG = Math.round(85 + (83 - 85) * intensity);
+          const textB = Math.round(105 + (120 - 105) * intensity);
           ctx.fillStyle = `rgb(${textR}, ${textG}, ${textB})`;
         } else {
           ctx.fillStyle = '#46536a';
@@ -299,9 +299,9 @@
       ctx.arc(cx, cy, 36, 0, 2 * Math.PI);
 
       if (isActive) {
-        ctx.fillStyle = 'rgba(68, 103, 138, 0.10)';
+        ctx.fillStyle = 'rgba(58, 110, 165, 0.12)';
         ctx.fill();
-        ctx.strokeStyle = '#44678a';
+        ctx.strokeStyle = '#3a6ea5';
         ctx.lineWidth = 2.5;
         ctx.stroke();
       } else {

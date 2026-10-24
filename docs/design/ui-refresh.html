@@ -39,15 +39,15 @@
   --rm-text-4: #93A0AF;
 
   /* 唯一强调色 */
-  --rm-accent: #44678A;
-  --rm-accent-strong: #2E4F6B;               /* 小字/图标用，5.8:1 */
-  --rm-accent-soft: rgba(68, 103, 138, 0.10);
-  --rm-accent-line: rgba(68, 103, 138, 0.28);
+  --rm-accent: #3A6EA5;
+  --rm-accent-strong: #2A5378;               /* 小字/图标用，5.8:1 */
+  --rm-accent-soft: rgba(58, 110, 165, 0.12);
+  --rm-accent-line: rgba(58, 110, 165, 0.34);
 
   /* 语义色：每个语义只有「填充色 / 文字色 / 底色」三档 */
-  --rm-ok: #4C7A5D;      --rm-ok-fill: #7FA68C;  --rm-ok-soft: rgba(76, 122, 93, 0.12);
-  --rm-warn: #8A6A33;    --rm-warn-fill: #C0A063; --rm-warn-soft: rgba(138, 106, 51, 0.12);
-  --rm-err: #9C4A42;     --rm-err-fill: #C07972;  --rm-err-soft: rgba(156, 74, 66, 0.10);
+  --rm-ok: #3F7F55;      --rm-ok-fill: #62A377;  --rm-ok-soft: rgba(63, 127, 85, 0.13);
+  --rm-warn: #8F6C2E;    --rm-warn-fill: #C8A253; --rm-warn-soft: rgba(143, 108, 46, 0.13);
+  --rm-err: #A84036;     --rm-err-fill: #C96E62;  --rm-err-soft: rgba(168, 64, 54, 0.11);
 
   /* 圆角阶梯（只允许这 6 档） */
   --rm-r-xs: 6px; --rm-r-sm: 8px; --rm-r-md: 12px;
@@ -57,7 +57,7 @@
   --rm-sh-1: 0 1px 2px rgba(15, 23, 42, 0.06);
   --rm-sh-2: 0 6px 18px -8px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.05);
   --rm-sh-3: 0 24px 60px -28px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --rm-glow: 0 6px 16px -8px rgba(68, 103, 138, 0.35);
+  --rm-glow: 0 6px 16px -8px rgba(58, 110, 165, 0.38);
 
   /* 字号阶梯 */
   --rm-fs-11: 11px; --rm-fs-12: 12px; --rm-fs-13: 13px; --rm-fs-14: 14px;
@@ -163,8 +163,8 @@ body {
   display: flex; flex-direction: column; justify-content: flex-end;
   padding: 14px; overflow: hidden;
   background:
-    radial-gradient(320px 200px at 15% 0%, rgba(68, 103, 138, 0.20), transparent 65%),
-    radial-gradient(300px 220px at 90% 90%, rgba(96, 100, 132, 0.18), transparent 62%),
+    radial-gradient(320px 200px at 15% 0%, rgba(58, 110, 165, 0.24), transparent 65%),
+    radial-gradient(300px 220px at 90% 90%, rgba(101, 94, 152, 0.20), transparent 62%),
     linear-gradient(150deg, #e9eef4, #eaeef3);
   border: 1px solid var(--rm-line);
 }
@@ -210,10 +210,10 @@ body {
   /* 窗口底 =「雾面底」：低饱和冷灰 + 三团柔光色斑，给玻璃提供可折射的层次。
      色斑取强调蓝 / 快捷菜单青 / 引导紫，三色都在 token 内，且不参与文字对比度。 */
   background:
-    radial-gradient(760px 560px at -8% 38%, rgba(68, 103, 138, 0.16), transparent 62%),
-    radial-gradient(680px 460px at 6% -14%, rgba(68, 103, 138, 0.13), transparent 62%),
-    radial-gradient(560px 420px at 104% 0%, rgba(96, 100, 132, 0.12), transparent 64%),
-    radial-gradient(720px 520px at 76% 112%, rgba(84, 124, 136, 0.12), transparent 62%),
+    radial-gradient(820px 620px at -10% 46%, rgba(58, 110, 165, 0.27), transparent 64%),
+    radial-gradient(700px 480px at 4% -16%, rgba(66, 104, 150, 0.22), transparent 62%),
+    radial-gradient(600px 460px at 106% -4%, rgba(101, 94, 152, 0.19), transparent 64%),
+    radial-gradient(760px 560px at 74% 116%, rgba(66, 128, 140, 0.19), transparent 62%),
     linear-gradient(168deg, #f4f6f9 0%, #e9edf3 52%, #eceff4 100%);
   display: flex;
   font-size: var(--rm-fs-13); color: var(--rm-text); line-height: 1.55;
@@ -337,15 +337,15 @@ body {
 .btn:hover { background: #fff; box-shadow: inset 0 1px 0 #fff, var(--rm-sh-2); }
 .btn:active { transform: translateY(0.5px); box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.10); }
 .btn.primary {
-  border-color: rgba(46, 79, 107, 0.85); color: #fff;
-  background: linear-gradient(180deg, #4C729B, #3A5B7E);
+  border-color: rgba(42, 83, 120, 0.85); color: #fff;
+  background: linear-gradient(180deg, #4A76AB, #345C8A);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--rm-glow);
 }
-.btn.primary:hover { background: linear-gradient(180deg, #446a92, #33526f); }
+.btn.primary:hover { background: linear-gradient(180deg, #3f6a9c, #2c507a); }
 .btn.small { height: 26px; padding: 0 9px; font-size: var(--rm-fs-12); border-radius: var(--rm-r-sm); }
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--rm-text-2); }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.7); color: var(--rm-text); }
-.btn.danger { border-color: transparent; color: #fff; background: linear-gradient(180deg, #B4665E, #9C4A42); }
+.btn.danger { border-color: transparent; color: #fff; background: linear-gradient(180deg, #BB6459, #A84036); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
 .pill {
@@ -475,7 +475,7 @@ body {
 }
 .matrix td.k { color: var(--rm-text); font-weight: 500; }
 .matrix td.on { color: var(--rm-text); }
-.matrix td.own { color: var(--rm-accent-strong); font-weight: 600; background: rgba(68, 103, 138, 0.07); }
+.matrix td.own { color: var(--rm-accent-strong); font-weight: 600; background: rgba(58, 110, 165, 0.08); }
 .matrix td.sel { box-shadow: inset 0 0 0 1.5px var(--rm-accent); border-radius: 5px; color: var(--rm-text); }
 .matrix tr:hover td { background: rgba(255, 255, 255, 0.5); }
 .matrix tr:hover td.own { background: var(--rm-accent-soft); }
@@ -627,7 +627,7 @@ table.tbl tr:last-child td { border-bottom: none; }
       <div class="principle">
         <span class="n">1</span>
         <h4>一个强调色</h4>
-        <p>全应用只保留一种低饱和钢蓝（#44678A）。其它颜色只表达语义，不再用颜色区分「页面」。</p>
+        <p>全应用只保留一种钢蓝（#3A6EA5）。其它颜色只表达语义，不再用颜色区分「页面」。</p>
       </div>
       <div class="principle">
         <span class="n">2</span>
@@ -660,16 +660,16 @@ table.tbl tr:last-child td { border-bottom: none; }
     <h3>核心色板</h3>
     <div class="swatches">
       <div class="swatch">
-        <div class="chip" style="background:#44678A"></div>
-        <div class="lab"><b>强调色 accent</b><span>#44678A · 主按钮 / 选中 / 图标</span></div>
+        <div class="chip" style="background:#3A6EA5"></div>
+        <div class="lab"><b>强调色 accent</b><span>#3A6EA5 · 主按钮 / 选中 / 图标</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#2E4F6B"></div>
-        <div class="lab"><b>强调色（小字）</b><span>#2E4F6B · 8.6:1，小字用它</span></div>
+        <div class="chip" style="background:#2A5378"></div>
+        <div class="lab"><b>强调色（小字）</b><span>#2A5378 · 8.1:1，小字用它</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:rgba(68,103,138,.10)"></div>
-        <div class="lab"><b>强调底色</b><span>rgba(68,103,138,.10)</span></div>
+        <div class="chip" style="background:rgba(58,110,165,.12)"></div>
+        <div class="lab"><b>强调底色</b><span>rgba(58,110,165,.12)</span></div>
       </div>
       <div class="swatch">
         <div class="chip" style="background:linear-gradient(150deg,#f4f6f9,#e9edf3 55%,#eceff4)"></div>
@@ -692,28 +692,28 @@ table.tbl tr:last-child td { border-bottom: none; }
         <div class="lab"><b>文字 / 装饰</b><span>#93A0AF · 只做图标与分隔</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#7FA68C"></div>
-        <div class="lab"><b>成功 / 填充</b><span>#7FA68C · 开关、进度（灰绿）</span></div>
+        <div class="chip" style="background:#62A377"></div>
+        <div class="lab"><b>成功 / 填充</b><span>#62A377 · 开关、进度</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#4C7A5D"></div>
-        <div class="lab"><b>成功 / 文字</b><span>#4C7A5D · 状态胶囊文字</span></div>
+        <div class="chip" style="background:#3F7F55"></div>
+        <div class="lab"><b>成功 / 文字</b><span>#3F7F55 · 状态胶囊文字</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#C0A063"></div>
-        <div class="lab"><b>警告 / 填充</b><span>#C0A063 · 沙金，不用亮橙</span></div>
+        <div class="chip" style="background:#C8A253"></div>
+        <div class="lab"><b>警告 / 填充</b><span>#C8A253 · 沙金，不用亮橙</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#8A6A33"></div>
-        <div class="lab"><b>警告 / 文字</b><span>#8A6A33 · 5.0:1</span></div>
+        <div class="chip" style="background:#8F6C2E"></div>
+        <div class="lab"><b>警告 / 文字</b><span>#8F6C2E · 4.8:1</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#C07972"></div>
-        <div class="lab"><b>危险 / 填充</b><span>#C07972 · 陶土红</span></div>
+        <div class="chip" style="background:#C96E62"></div>
+        <div class="lab"><b>危险 / 填充</b><span>#C96E62 · 陶土红</span></div>
       </div>
       <div class="swatch">
-        <div class="chip" style="background:#9C4A42"></div>
-        <div class="lab"><b>危险 / 文字</b><span>#9C4A42 · 6.1:1</span></div>
+        <div class="chip" style="background:#A84036"></div>
+        <div class="lab"><b>危险 / 文字</b><span>#A84036 · 6.1:1</span></div>
       </div>
       <div class="swatch">
         <div class="chip" style="background:#eef2f8"></div>
@@ -764,17 +764,17 @@ table.tbl tr:last-child td { border-bottom: none; }
         <tr>
           <td>遥控器像素图高亮</td>
           <td><code>#2f6fed</code> 亮蓝描边 + 蓝色发光</td>
-          <td>换成 <code>--rm-accent</code>（#44678A）；<code>pulseGlow</code> 的蓝色辉光改为 2px 静态描边（引导态才保留呼吸动画）</td>
+          <td>换成 <code>--rm-accent</code>（#3A6EA5）；<code>pulseGlow</code> 的蓝色辉光改为 2px 静态描边（引导态才保留呼吸动画）</td>
         </tr>
         <tr>
           <td>状态点 / 胶囊</td>
           <td>iOS 亮绿 <code>#34c759</code>、亮橙 <code>#ff9f0a</code>、亮红 <code>#ff3b30</code></td>
-          <td>灰绿 <code>#7FA68C</code>、沙金 <code>#C0A063</code>、陶土红 <code>#C07972</code>；文字用深一档（4.9–6.1:1）</td>
+          <td>灰绿 <code>#62A377</code>、沙金 <code>#C8A253</code>、陶土红 <code>#C96E62</code>；文字用深一档（4.9–6.1:1）</td>
         </tr>
         <tr>
           <td>主按钮</td>
           <td>亮蓝渐变 + 蓝色辉光</td>
-          <td>深钢蓝渐变（#4C729B→#3A5B7E）+ 极轻投影；整屏只保留它一个「实底强调」</td>
+          <td>深钢蓝渐变（#4A76AB→#345C8A）+ 极轻投影；整屏只保留它一个「实底强调」</td>
         </tr>
       </tbody>
     </table>
@@ -1378,7 +1378,7 @@ table.tbl tr:last-child td { border-bottom: none; }
       <div class="decision">
         <div class="q">① 强调色定在哪个蓝？</div>
         <div class="a">现状三套：#007aff（应用+快捷菜单）/#2f6fed（测试组件）/ #0EA5E9（图标），饱和度都偏高。</div>
-        <div class="rec">建议统一为低饱和钢蓝 #44678A（原 #007aff 太亮）</div>
+        <div class="rec">建议统一为钢蓝 #3A6EA5（原 #007aff 太亮，再压一档到 #44678A 又偏灰）</div>
       </div>
       <div class="decision">
         <div class="q">② 侧栏图标改成单色还是保留彩色？</div>

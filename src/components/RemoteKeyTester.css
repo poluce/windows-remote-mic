@@ -58,7 +58,7 @@
 }
 
 .matrix-card.all-passed {
-  border-color: rgba(76, 122, 93, 0.35);
+  border-color: rgba(63, 127, 85, 0.38);
   background: var(--rm-ok-soft);
 }
 

@@ -172,8 +172,8 @@
 }
 
 .x2pro-remote .hit-ok.active::before {
-  border: 2px solid rgba(68, 103, 138, 0.95);
-  box-shadow: 0 0 6px rgba(68, 103, 138, 0.55);
+  border: 2px solid rgba(58, 110, 165, 0.95);
+  box-shadow: 0 0 6px rgba(58, 110, 165, 0.55);
 }
 
 /* 上下左右：90° 扇形边框（只描边，不填充中间） */
@@ -186,7 +186,7 @@
 }
 .x2pro-remote .dpad-hit .fan-frame path {
   fill: none;
-  stroke: rgba(68, 103, 138, 0.95);
+  stroke: rgba(58, 110, 165, 0.95);
   stroke-width: 2;
 }
 
@@ -348,16 +348,16 @@
 
 @keyframes pulseGlow {
   0% {
-    box-shadow: 0 0 0 0 rgba(68, 103, 138, 0.55);
-    outline: 2px solid rgba(68, 103, 138, 0.7);
+    box-shadow: 0 0 0 0 rgba(58, 110, 165, 0.55);
+    outline: 2px solid rgba(58, 110, 165, 0.7);
   }
   50% {
-    box-shadow: 0 0 10px 4px rgba(68, 103, 138, 0.6);
+    box-shadow: 0 0 10px 4px rgba(58, 110, 165, 0.6);
     outline: 2.5px solid var(--rm-accent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(68, 103, 138, 0.55);
-    outline: 2px solid rgba(68, 103, 138, 0.7);
+    box-shadow: 0 0 0 0 rgba(58, 110, 165, 0.55);
+    outline: 2px solid rgba(58, 110, 165, 0.7);
   }
 }
 

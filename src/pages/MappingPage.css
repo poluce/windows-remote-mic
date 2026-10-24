@@ -413,7 +413,7 @@
 
 /* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
 .matrix-cell.own {
-  background: rgba(68, 103, 138, 0.07);
+  background: rgba(58, 110, 165, 0.08);
   color: var(--rm-accent-strong);
   font-weight: 600;
 }
