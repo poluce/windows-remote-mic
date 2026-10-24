@@ -1,4 +1,5 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 import {
   bridgeStateLabel,
@@ -7,7 +8,7 @@ import {
   useRuntimeStatus,
 } from "../store/runtimeStatus";
 
-import { IconBluetooth } from "../components/icons";
+import { IconBluetooth, IconMic } from "../components/icons";
 import { DRIVER_OPTIONS, useVbCableDriver } from "./connection/useVbCableDriver";
 import { useConnectionActions } from "./connection/useConnectionActions";
 
@@ -51,6 +52,21 @@ export function ConnectionPage() {
     setDriverOpen,
     driverRef,
   } = useVbCableDriver();
+
+  // 「下一步」卡里的语音输入按钮（引导首次使用的人把麦克风绑定到 CABLE Output）。
+  const [voiceMsg, setVoiceMsg] = useState("");
+
+  async function triggerVoiceTyping() {
+    if (!isTauri()) {
+      setVoiceMsg("浏览器预览：请在桌面应用内操作");
+      return;
+    }
+    try {
+      setVoiceMsg(await invoke<string>("trigger_voice_typing"));
+    } catch (err) {
+      setVoiceMsg(`唤出失败：${err}`);
+    }
+  }
 
   const bridgeTone =
     bridgeState === "running"
@@ -317,6 +333,109 @@ export function ConnectionPage() {
       </section>
       </div>
       </div>
+
+      {/* 下一步：未连接时给上手三步，已就绪时给使用提示。
+          语音桥在等待 / 重试 / 失败时，上面的卡片已经有对应说明，这里不重复。 */}
+      {!effectiveConnected && (
+        <section className="card next-card">
+          <div className="next-card-head">
+            <div>
+              <div className="next-card-title">还没连上遥控器</div>
+              <p className="next-card-sub">
+                按下面三步走，一般一分钟内就能开始说话。
+              </p>
+            </div>
+            <button
+              className="btn primary"
+              onClick={scan}
+              disabled={!isTauri() || scanning}
+            >
+              {scanning ? "扫描中…" : "扫描遥控器"}
+            </button>
+          </div>
+          <ol className="next-steps">
+            <li className="next-step">
+              <span className="next-no">1</span>
+              <div>
+                <div className="next-title">唤醒遥控器</div>
+                <div className="next-detail">
+                  按一下遥控器任意键，指示灯亮起即已唤醒（长时间不用会休眠）。
+                </div>
+              </div>
+            </li>
+            <li className="next-step">
+              <span className="next-no">2</span>
+              <div>
+                <div className="next-title">在 Windows 蓝牙里配对</div>
+                <div className="next-detail">
+                  长按「主页 + 菜单」直到指示灯快闪，再到系统蓝牙设置里添加并连接 RC003。
+                </div>
+              </div>
+            </li>
+            <li className="next-step">
+              <span className="next-no">3</span>
+              <div>
+                <div className="next-title">回到本页连接</div>
+                <div className="next-detail">
+                  点「扫描」找到 RC003 后点「连接」；连上后长按麦克风键即可说话。
+                </div>
+              </div>
+            </li>
+          </ol>
+        </section>
+      )}
+
+      {effectiveConnected && bridgeState === "running" && (
+        <section className="card next-card">
+          <div className="next-card-head">
+            <div>
+              <div className="next-card-title">链路已就绪，可以开始用了</div>
+              <p className="next-card-sub">
+                长按遥控器麦克风键说话，松开结束；识别出的文字会输入到当前光标处。
+              </p>
+            </div>
+            <button
+              className="btn"
+              onClick={triggerVoiceTyping}
+              disabled={!isTauri()}
+            >
+              <IconMic size={14} />
+              唤出语音输入条
+            </button>
+          </div>
+          <ol className="next-steps">
+            <li className="next-step">
+              <span className="next-no">1</span>
+              <div>
+                <div className="next-title">首次使用需要绑一次麦克风</div>
+                <div className="next-detail">
+                  按 Win+H 打开语音条 →「设置」→ 麦克风选「CABLE Output」。
+                  <span className="next-note">一次即可，永久记忆；电脑自带麦克风不受影响。</span>
+                </div>
+              </div>
+            </li>
+            <li className="next-step">
+              <span className="next-no">2</span>
+              <div>
+                <div className="next-title">说话没反应？</div>
+                <div className="next-detail">
+                  到「诊断 → 按键测试」确认 13 个键都能收到信号，再检查虚拟声卡是否为「CABLE Input」。
+                </div>
+              </div>
+            </li>
+            <li className="next-step">
+              <span className="next-no">3</span>
+              <div>
+                <div className="next-title">想改按键动作</div>
+                <div className="next-detail">
+                  在「按键映射」页可改 13 个键的动作，也能按前台应用分别设置。
+                </div>
+              </div>
+            </li>
+          </ol>
+          {voiceMsg && <p className="hint">{voiceMsg}</p>}
+        </section>
+      )}
     </div>
   );
 }

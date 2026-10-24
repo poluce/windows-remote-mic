@@ -1,21 +1,99 @@
 /* 日志页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
 
 /* ---------- 日志预览 ---------- */
+/* 每一行拆成「时间 / 级别 / 内容」三段：级别单独成列并对齐，
+   排障时竖着扫一眼就能定位 WARN / ERROR，不用逐字读。 */
 .log-preview {
   max-height: 300px;
   overflow: auto;
-  padding: 12px 14px;
+  padding: 8px 12px;
   background: var(--rm-sunken);
-  border: 1px solid var(--rm-line);
+  border: 1px solid var(--rm-line-cool);
   border-radius: var(--rm-r-md);
   font-size: var(--rm-fs-12);
-  line-height: 1.75;
-  white-space: pre-wrap;
-  word-break: break-all;
+  line-height: 1.7;
   margin-top: 10px;
   color: var(--rm-text-2);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono",
     Menlo, monospace;
+}
+
+.log-line {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 1px 6px;
+  margin: 0 -6px;
+  border-radius: var(--rm-r-xs);
+}
+
+.log-line:hover {
+  background: rgba(23, 48, 82, 0.04);
+}
+
+.log-time {
+  flex: none;
+  color: var(--rm-text-4);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.log-lvl {
+  flex: none;
+  width: 46px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.log-msg {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--rm-text-2);
+}
+
+/* 不符合日志格式的行（例如「暂无日志内容」） */
+.log-msg-plain {
+  color: var(--rm-text-3);
+}
+
+/* 级别着色：只用语义色的「文字」档，不铺大色块，保持整块日志安静 */
+.lvl-info .log-lvl {
+  color: var(--rm-text-3);
+}
+
+.lvl-warn .log-lvl {
+  color: var(--rm-warn);
+}
+
+.lvl-warn .log-msg {
+  color: var(--rm-text);
+}
+
+.lvl-error .log-lvl {
+  color: var(--rm-err);
+}
+
+.lvl-error .log-msg {
+  color: var(--rm-text);
+}
+
+/* ERROR 整行给一层极淡的底，扫日志时不会漏 */
+.lvl-error {
+  background: var(--rm-err-soft);
+}
+
+.lvl-error:hover {
+  background: rgba(180, 51, 40, 0.2);
+}
+
+.lvl-debug .log-lvl {
+  color: var(--rm-accent-strong);
+}
+
+.lvl-debug .log-msg {
+  color: var(--rm-text-3);
 }
 
 .log-page .log-card {

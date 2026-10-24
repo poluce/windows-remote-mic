@@ -64,3 +64,96 @@
   margin-top: 6px;
   word-break: break-all;
 }
+
+/* ---------- 下一步 / 上手三步 ----------
+ * 连接页在「设备卡 + 语音链路卡」之后会有大片空白：未连接时给上手三步，
+ * 已就绪时给使用提示。两块都刻意比主卡轻（磨砂纸里再降一档），
+ * 让它们读起来像"补充说明"而不是第二块主内容。 */
+.next-card {
+  margin-top: 12px;
+  margin-bottom: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.72) 0%,
+    rgba(255, 255, 255, 0.55) 100%
+  );
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.next-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.next-card-title {
+  font-size: var(--rm-fs-14);
+  font-weight: 600;
+  color: var(--rm-text);
+}
+
+.next-card-sub {
+  margin: 4px 0 0;
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-3);
+  line-height: 1.6;
+}
+
+.next-card-head .btn {
+  flex: none;
+}
+
+.next-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.next-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-top: 1px solid var(--rm-line);
+}
+
+.next-step:first-child {
+  border-top: none;
+  padding-top: 2px;
+}
+
+.next-no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  font-size: var(--rm-fs-11);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.next-title {
+  font-size: var(--rm-fs-13);
+  font-weight: 500;
+  color: var(--rm-text);
+}
+
+.next-detail {
+  margin-top: 2px;
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-3);
+  line-height: 1.55;
+}
+
+.next-note {
+  color: var(--rm-text-4);
+}
