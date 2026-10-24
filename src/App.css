@@ -46,7 +46,7 @@ button {
 /* ---------- 细滚动条（替代 WebView2 默认宽条） ---------- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(19, 26, 36, 0.2) transparent;
+  scrollbar-color: var(--rm-scrollbar-thumb) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -59,14 +59,14 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(19, 26, 36, 0.18);
+  background: var(--rm-scrollbar-thumb);
   border: 2px solid transparent;
   border-radius: var(--rm-r-full);
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(19, 26, 36, 0.3);
+  background: var(--rm-scrollbar-thumb-hover);
   background-clip: padding-box;
 }
 
@@ -82,12 +82,7 @@ button {
   height: 100vh;
   display: flex;
   overflow: hidden;
-  background:
-    radial-gradient(820px 620px at -10% 46%, rgba(43, 111, 192, 0.40), transparent 64%),
-    radial-gradient(700px 480px at 4% -16%, rgba(58, 106, 172, 0.34), transparent 62%),
-    radial-gradient(600px 460px at 106% -4%, rgba(104, 92, 174, 0.30), transparent 64%),
-    radial-gradient(760px 560px at 74% 116%, rgba(52, 138, 148, 0.28), transparent 62%),
-    linear-gradient(168deg, #eef3fa 0%, #e2e9f4 52%, #e5ecf6 100%);
+  background: var(--rm-app-bg);
 }
 
 /* 1.5% 噪点：消掉大渐变的色带，让材质像纸而不是塑料 */
@@ -97,7 +92,7 @@ button {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.3;
+  opacity: var(--rm-noise-opacity);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
 }
 
@@ -113,17 +108,17 @@ button {
   flex-direction: column;
   overflow: hidden;
   padding: 18px 10px 12px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--rm-sidebar-glass);
   -webkit-backdrop-filter: blur(26px) saturate(200%);
   backdrop-filter: blur(26px) saturate(200%);
   border-right: 1px solid var(--rm-line-light);
-  box-shadow: inset -1px 0 0 rgba(19, 26, 36, 0.05);
+  box-shadow: var(--rm-sidebar-inset);
 }
 
 /* 不支持滤镜时退化为接近实色（观感几乎一致，只是少了背景色渗入） */
 @supports not (backdrop-filter: blur(1px)) {
   .sidebar {
-    background: rgba(255, 255, 255, 0.94);
+    background: var(--rm-sidebar-glass-opaque);
   }
 }
 
@@ -141,8 +136,8 @@ button {
   display: block;
   border-radius: 10px;
   border: 1px solid var(--rm-line-light);
-  background: linear-gradient(160deg, #fff, #eef3f9);
-  box-shadow: var(--rm-sh-1), inset 0 1px 0 #fff;
+  background: var(--rm-brand-logo-bg);
+  box-shadow: var(--rm-sh-1), var(--rm-brand-logo-inset);
 }
 
 .brand-name {
@@ -185,17 +180,17 @@ button {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--rm-nav-hover);
   color: var(--rm-text);
 }
 
-/* 选中项：白玻璃胶囊 + 左侧竖条，不靠颜色区分页面 */
+/* 选中项：玻璃胶囊 + 左侧竖条，不靠颜色区分页面 */
 .nav-item.active {
   background: var(--rm-hover);
   color: var(--rm-text);
   font-weight: 500;
-  box-shadow: var(--rm-sh-1), inset 0 1px 0 #fff,
-    0 0 0 1px rgba(19, 26, 36, 0.04);
+  box-shadow: var(--rm-sh-1), var(--rm-card-inset-top),
+    0 0 0 1px var(--rm-line);
 }
 
 .nav-item.active::before {
@@ -246,11 +241,11 @@ button {
   border-radius: var(--rm-r-md);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.82) 0%,
-    rgba(255, 255, 255, 0.62) 100%
+    var(--rm-sidebar-status-top) 0%,
+    var(--rm-sidebar-status-bottom) 100%
   );
   border: 1px solid var(--rm-line-light);
-  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 var(--rm-sidebar-status-inset);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -343,8 +338,8 @@ button {
     var(--rm-card-bottom) 100%
   );
   border: 1px solid var(--rm-line-light);
-  box-shadow: var(--rm-sh-card), inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  box-shadow: var(--rm-sh-card), inset 0 1px 0 var(--rm-card-inset-top),
+    inset 0 0 0 1px var(--rm-card-inset-ring);
 }
 
 /* 轻卡：嵌在别的卡里、或本身是次要信息（如侧栏状态块、测试矩阵）。
@@ -352,7 +347,7 @@ button {
 .card.flat {
   background: var(--rm-card-flat);
   border: 1px solid var(--rm-line-light);
-  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 var(--rm-card-soft-inset);
 }
 
 .card-title {
@@ -421,38 +416,42 @@ button {
   padding: 0 12px;
   border-radius: 10px;
   border: 1px solid var(--rm-line-strong);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--rm-raise);
   color: var(--rm-text);
   font-size: var(--rm-fs-13);
   font-weight: 400;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: inset 0 1px 0 #fff, var(--rm-sh-1);
+  box-shadow: var(--rm-raise-inset), var(--rm-sh-1);
   transition: background var(--rm-dur) var(--rm-ease),
     border-color var(--rm-dur) var(--rm-ease),
     box-shadow var(--rm-dur) var(--rm-ease), transform 120ms var(--rm-ease);
 }
 
 .btn:hover:not(:disabled) {
-  background: #fff;
-  box-shadow: inset 0 1px 0 #fff, var(--rm-sh-2);
+  background: var(--rm-raise-hover);
+  box-shadow: var(--rm-raise-inset), var(--rm-sh-2);
 }
 
 .btn:active:not(:disabled) {
   transform: translateY(0.5px);
-  box-shadow: inset 0 1px 2px rgba(19, 26, 36, 0.1);
+  box-shadow: inset 0 1px 3px var(--rm-hover-tint-strong);
 }
 
 .btn.primary {
-  border-color: rgba(31, 82, 136, 0.85);
-  background: linear-gradient(180deg, #2f75c6, #1e5b9c);
+  border-color: var(--rm-primary-border);
+  background: linear-gradient(180deg, var(--rm-primary-from), var(--rm-primary-to));
   color: var(--rm-text-inv);
   font-weight: 500;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--rm-glow);
+  box-shadow: inset 0 1px 0 var(--rm-raise-inset-strong), var(--rm-glow);
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #2b6fc0, #1c5694);
+  background: linear-gradient(
+    180deg,
+    var(--rm-primary-hover-from),
+    var(--rm-primary-hover-to)
+  );
 }
 
 /* 启用态（如按键测试里已开启的开关按钮）：淡底 + 深字，不用高饱和实底 */
@@ -465,7 +464,7 @@ button {
 }
 
 .btn.on:hover:not(:disabled) {
-  background: rgba(43, 111, 192, 0.2);
+  background: var(--rm-accent-tint-soft);
 }
 
 .btn.small {
@@ -483,20 +482,24 @@ button {
 }
 
 .btn.ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--rm-chip);
   color: var(--rm-text);
   box-shadow: none;
 }
 
 .btn.danger {
   border-color: transparent;
-  background: linear-gradient(180deg, #c0544d, #a02a20);
+  background: linear-gradient(180deg, var(--rm-danger-from), var(--rm-danger-to));
   color: var(--rm-text-inv);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--rm-sh-1);
+  box-shadow: inset 0 1px 0 var(--rm-danger-inset), var(--rm-sh-1);
 }
 
 .btn.danger:hover:not(:disabled) {
-  background: linear-gradient(180deg, #b43328, #8f241c);
+  background: linear-gradient(
+    180deg,
+    var(--rm-danger-hover-from),
+    var(--rm-danger-hover-to)
+  );
 }
 
 .btn:disabled {
@@ -585,8 +588,8 @@ button {
   height: 26px;
   border: none;
   border-radius: var(--rm-r-full);
-  background: rgba(19, 26, 36, 0.16);
-  box-shadow: inset 0 1px 2px rgba(19, 26, 36, 0.14);
+  background: var(--rm-switch-off);
+  box-shadow: var(--rm-switch-off-inset);
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
@@ -595,7 +598,7 @@ button {
 
 .switch.on {
   background: var(--rm-ok-fill);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--rm-switch-on-inset);
 }
 
 .switch-thumb {
@@ -605,8 +608,8 @@ button {
   width: 20px;
   height: 20px;
   border-radius: var(--rm-r-full);
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(19, 26, 36, 0.28), 0 0 0 0.5px rgba(19, 26, 36, 0.06);
+  background: var(--rm-switch-thumb);
+  box-shadow: var(--rm-switch-thumb-shadow);
   transition: left var(--rm-dur) var(--rm-ease), width 120ms var(--rm-ease);
 }
 
@@ -635,11 +638,11 @@ button {
   padding: 0 30px 0 10px;
   border-radius: 10px;
   border: 1px solid var(--rm-line-strong);
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: var(--rm-raise);
   color: var(--rm-text);
   font-size: var(--rm-fs-13);
   font-family: inherit;
-  box-shadow: inset 0 1px 0 #fff;
+  box-shadow: var(--rm-raise-inset);
   cursor: pointer;
   /* 去掉系统原生箭头，换成和自定义下拉一致的小三角（颜色取 --rm-text-4） */
   appearance: none;
@@ -652,13 +655,13 @@ button {
 }
 
 .select:hover {
-  border-color: rgba(19, 26, 36, 0.24);
+  border-color: var(--rm-line-strong);
 }
 
 .select:focus {
   outline: none;
   border-color: var(--rm-accent);
-  box-shadow: inset 0 1px 0 #fff, 0 0 0 3px var(--rm-accent-soft);
+  box-shadow: var(--rm-raise-inset), 0 0 0 3px var(--rm-accent-soft);
 }
 
 /* 自定义下拉（连接页虚拟声卡 / 设置页判定时长） */
@@ -676,23 +679,23 @@ button {
   padding: 0 10px;
   border-radius: 10px;
   border: 1px solid var(--rm-line-strong);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--rm-raise);
   color: var(--rm-text);
   font-size: var(--rm-fs-13);
   cursor: pointer;
   text-align: left;
-  box-shadow: inset 0 1px 0 #fff;
+  box-shadow: var(--rm-raise-inset);
   transition: border-color var(--rm-dur) var(--rm-ease),
     box-shadow var(--rm-dur) var(--rm-ease);
 }
 
 .status-select-trigger:hover {
-  border-color: rgba(19, 26, 36, 0.24);
+  border-color: var(--rm-line-strong);
 }
 
 .status-select-trigger.open {
   border-color: var(--rm-accent);
-  box-shadow: inset 0 1px 0 #fff, 0 0 0 3px var(--rm-accent-soft);
+  box-shadow: var(--rm-raise-inset), 0 0 0 3px var(--rm-accent-soft);
 }
 
 .status-select-caret {
@@ -709,17 +712,17 @@ button {
   right: 0;
   z-index: var(--rm-z-menu);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--rm-line-light);
   border-radius: var(--rm-r-md);
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--rm-menu-bg);
   -webkit-backdrop-filter: var(--rm-blur-thin);
   backdrop-filter: var(--rm-blur-thin);
-  box-shadow: var(--rm-sh-2), inset 0 1px 0 #fff;
+  box-shadow: var(--rm-sh-2), var(--rm-menu-inset);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
   .status-select-menu {
-    background: #fff;
+    background: var(--rm-menu-fallback);
   }
 }
 
@@ -765,7 +768,7 @@ button {
   gap: 10px;
   padding: 12px 14px;
   border-radius: var(--rm-r-md);
-  border: 1px solid rgba(154, 108, 30, 0.26);
+  border: 1px solid var(--rm-warn-line);
   background: var(--rm-warn-soft);
   margin-top: 12px;
 }
@@ -787,7 +790,7 @@ button {
 }
 
 .callout.err {
-  border-color: rgba(180, 51, 40, 0.26);
+  border-color: var(--rm-err-line);
   background: var(--rm-err-soft);
 }
 
@@ -807,14 +810,15 @@ button {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(43, 111, 192, 0.16));
+  background: linear-gradient(160deg, var(--rm-card-inset-top), var(--rm-accent-tint));
   border: 1px solid var(--rm-line-light);
   color: var(--rm-accent-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: inset 0 1px 0 #fff, 0 4px 12px -8px rgba(43, 111, 192, 0.55);
+  box-shadow: var(--rm-card-inset-top) 0 0, var(--rm-sh-1),
+    0 4px 12px -8px var(--rm-accent-tint-soft);
 }
 
 .device-name {
@@ -963,7 +967,7 @@ button {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(19, 26, 36, 0.26);
+  background: var(--rm-overlay);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
 }
@@ -977,16 +981,16 @@ button {
   max-width: calc(100vw - 48px);
   border-radius: var(--rm-r-xl);
   padding: 22px 24px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--rm-dialog-bg);
   -webkit-backdrop-filter: blur(30px) saturate(180%);
   backdrop-filter: blur(30px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: var(--rm-sh-3), inset 0 1px 0 #fff;
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-3), var(--rm-dialog-inset);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
   .dialog {
-    background: #fff;
+    background: var(--rm-dialog-fallback);
   }
 }
 
@@ -1039,10 +1043,10 @@ button {
   font-size: var(--rm-fs-13);
   border: 1px solid var(--rm-line-strong);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--rm-raise);
   color: var(--rm-text);
   font-family: inherit;
-  box-shadow: inset 0 1px 2px rgba(19, 26, 36, 0.03);
+  box-shadow: var(--rm-input-inset);
 }
 
 .field input:focus {
@@ -1086,12 +1090,13 @@ button {
 
 /* ---------- 无障碍：尊重系统设置 ---------- */
 @media (prefers-reduced-transparency: reduce) {
+  /* 关掉滤镜后必须给足不透明度，否则文字会压在背景色斑上 */
   .sidebar,
   .status-select-menu,
   .dialog {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    background: rgba(255, 255, 255, 0.96);
+    background: var(--rm-glass-opaque);
   }
 
   .dialog-mask {

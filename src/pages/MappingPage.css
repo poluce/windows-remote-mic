@@ -80,7 +80,7 @@
 .trigger-btn {
   border: 1px solid var(--rm-line);
   border-radius: var(--rm-r-sm);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--rm-chip);
   color: var(--rm-text-2);
   padding: 6px 6px;
   cursor: pointer;
@@ -96,7 +96,7 @@
 
 .trigger-btn:hover {
   border-color: var(--rm-line-strong);
-  background: #fff;
+  background: var(--rm-chip-hover);
   color: var(--rm-text);
 }
 
@@ -146,7 +146,7 @@
   padding: 4px 9px;
   border-radius: var(--rm-r-sm);
   border: 1px solid var(--rm-line);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--rm-chip);
   color: var(--rm-text);
   font-family: inherit;
   line-height: 1.3;
@@ -158,7 +158,7 @@
 }
 
 .shortcut-btn:hover {
-  background: #fff;
+  background: var(--rm-chip-hover);
   border-color: var(--rm-line-strong);
 }
 
@@ -198,9 +198,9 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  border: 1px solid var(--surface);
-  background: var(--text-3);
-  color: #fff;
+  border: 1px solid var(--rm-solid);
+  background: var(--rm-text-3);
+  color: var(--rm-solid);
   font-size: 10px;
   line-height: 1;
   padding: 0;
@@ -233,7 +233,7 @@
   padding: 8px 12px;
   border: 1px solid var(--rm-line-strong);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--rm-raise);
   font: inherit;
   font-weight: 600;
   font-size: 15px;
@@ -274,7 +274,7 @@
   gap: 7px;
   height: 30px;
   border: 1px solid var(--rm-line);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--rm-chip);
   color: var(--rm-text-2);
   border-radius: var(--rm-r-full);
   padding: 0 12px;
@@ -287,7 +287,7 @@
 
 .scope-pill:hover {
   border-color: var(--rm-line-strong);
-  background: #fff;
+  background: var(--rm-chip-hover);
   color: var(--rm-text);
 }
 
@@ -312,7 +312,7 @@
   background: var(--rm-text-3);
   flex: none;
   filter: saturate(0.55);
-  box-shadow: 0 0 0 1px rgba(19, 26, 36, 0.12);
+  box-shadow: 0 0 0 1px var(--rm-line);
 }
 
 .scope-pill.active .scope-dot {
@@ -332,9 +332,9 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  border: 1px solid var(--surface);
-  background: var(--text-3);
-  color: #fff;
+  border: 1px solid var(--rm-solid);
+  background: var(--rm-text-3);
+  color: var(--rm-solid);
   font-size: 11px;
   line-height: 1;
   padding: 0;
@@ -413,7 +413,7 @@
 
 /* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
 .matrix-cell.own {
-  background: rgba(43, 111, 192, 0.12);
+  background: var(--rm-accent-tint);
   color: var(--rm-accent-strong);
   font-weight: 600;
 }
@@ -433,7 +433,7 @@
 }
 
 .matrix-cell[data-cell]:hover {
-  background: rgba(19, 26, 36, 0.035);
+  background: var(--rm-hover-tint);
 }
 
 .matrix-row.mic .matrix-key {

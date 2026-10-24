@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sidebar, type PageId } from "./components/Sidebar";
 import { ConnectionPage } from "./pages/ConnectionPage";
 import { MappingPage } from "./pages/MappingPage";
@@ -21,6 +21,13 @@ const FILL_PAGES: PageId[] = ["mapping"];
 
 function App() {
   const [page, setPage] = useState<PageId>("connection");
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // 切页时回到页面顶部：内容区是同一个滚动容器，不复位的话
+  // 从长页切到另一页会停在中间，看起来像"页面没加载完"。
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [page]);
 
   useEffect(() => {
     // 全局运行时状态初始化：事件监听不随页面切换而销毁。
@@ -34,7 +41,10 @@ function App() {
       <Sidebar page={page} onChange={setPage} />
 
       <main className="main">
-        <div className={`content${FILL_PAGES.includes(page) ? " content-fill" : ""}`}>
+        <div
+          ref={contentRef}
+          className={`content${FILL_PAGES.includes(page) ? " content-fill" : ""}`}
+        >
           {page === "connection" && <ConnectionPage />}
           {page === "mapping" && <MappingPage />}
           {page === "settings" && <SettingsPage />}

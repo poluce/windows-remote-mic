@@ -56,6 +56,10 @@
   --rm-err-fill: #d45f52;
   --rm-err-soft: rgba(180, 51, 40, 0.15);
 
+  /* 提示条描边（软色底的边，比底色深一档） */
+  --rm-warn-line: rgba(154, 108, 30, 0.26);
+  --rm-err-line: rgba(180, 51, 40, 0.26);
+
   /* ---------- 圆角阶梯 ---------- */
   --rm-r-xs: 6px;
   --rm-r-sm: 8px;
@@ -76,6 +80,85 @@
   --rm-sh-card-soft: 0 0 0 1px rgba(23, 48, 82, 0.07),
     0 6px 16px -14px rgba(23, 48, 82, 0.20);
   --rm-glow: 0 6px 16px -8px rgba(43, 111, 192, 0.42);
+
+
+  /* ---------- 页面底色（雾面底整段抽成 token，深色模式整块换掉） ---------- */
+  --rm-app-bg: radial-gradient(
+      820px 620px at -10% 46%,
+      rgba(43, 111, 192, 0.4),
+      transparent 64%
+    ),
+    radial-gradient(700px 480px at 4% -16%, rgba(58, 106, 172, 0.34), transparent 62%),
+    radial-gradient(600px 460px at 106% -4%, rgba(104, 92, 174, 0.3), transparent 64%),
+    radial-gradient(760px 560px at 74% 116%, rgba(52, 138, 148, 0.28), transparent 62%),
+    linear-gradient(168deg, #eef3fa 0%, #e2e9f4 52%, #e5ecf6 100%);
+  --rm-noise-opacity: 0.3;
+
+  /* ---------- 侧栏玻璃 ---------- */
+  --rm-sidebar-glass: rgba(255, 255, 255, 0.46);
+  --rm-sidebar-glass-opaque: rgba(255, 255, 255, 0.94); /* 不支持滤镜时的退化 */
+  --rm-glass-opaque: rgba(255, 255, 255, 0.96);
+  --rm-sidebar-inset: inset -1px 0 0 rgba(19, 26, 36, 0.05);
+  --rm-brand-logo-bg: linear-gradient(160deg, #fff, #eef3f9);
+  --rm-brand-logo-inset: inset 0 1px 0 #fff;
+
+  /* ---------- 交互面（按钮 / 输入 / chip / 下拉） ---------- */
+  --rm-raise: rgba(255, 255, 255, 0.72); /* 次级按钮、输入框底 */
+  --rm-raise-hover: #ffffff;
+  --rm-raise-inset: inset 0 1px 0 #fff; /* 控件顶部高光 */
+  --rm-raise-inset-strong: rgba(255, 255, 255, 0.22); /* 主按钮内高光 */
+  --rm-chip: rgba(255, 255, 255, 0.7);
+  --rm-chip-hover: #ffffff;
+  --rm-nav-hover: rgba(255, 255, 255, 0.6);
+  --rm-input-inset: inset 0 1px 2px rgba(19, 26, 36, 0.03);
+  --rm-hover-tint: rgba(19, 26, 36, 0.035); /* 表格行 / 列表行悬停 */
+  --rm-hover-tint-strong: rgba(19, 26, 36, 0.1); /* 按钮按下 */
+  --rm-log-hover: rgba(23, 48, 82, 0.04);
+  --rm-accent-tint: rgba(43, 111, 192, 0.12); /* 矩阵覆盖格、设备图标 */
+  --rm-accent-tint-soft: rgba(43, 111, 192, 0.2);
+
+  /* ---------- 卡片内衬 ---------- */
+  --rm-card-inset-top: rgba(255, 255, 255, 0.95);
+  --rm-card-inset-ring: rgba(255, 255, 255, 0.28);
+  --rm-card-soft-top: rgba(255, 255, 255, 0.72);
+  --rm-card-soft-bottom: rgba(255, 255, 255, 0.55);
+  --rm-card-soft-inset: rgba(255, 255, 255, 0.9);
+  --rm-sidebar-status-top: rgba(255, 255, 255, 0.82);
+  --rm-sidebar-status-bottom: rgba(255, 255, 255, 0.62);
+  --rm-sidebar-status-inset: rgba(255, 255, 255, 0.92);
+
+  /* ---------- 控件细部 ---------- */
+  --rm-switch-off: rgba(19, 26, 36, 0.16);
+  --rm-switch-off-inset: inset 0 1px 2px rgba(19, 26, 36, 0.14);
+  --rm-switch-on-inset: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  --rm-switch-thumb: #ffffff;
+  --rm-switch-thumb-shadow: 0 1px 3px rgba(19, 26, 36, 0.28),
+    0 0 0 0.5px rgba(19, 26, 36, 0.06);
+
+  /* ---------- 浮层（下拉 / 对话框 / 遮罩） ---------- */
+  --rm-menu-bg: rgba(255, 255, 255, 0.86);
+  --rm-menu-fallback: #ffffff;
+  --rm-menu-inset: inset 0 1px 0 #fff;
+  --rm-dialog-bg: rgba(255, 255, 255, 0.82);
+  --rm-dialog-fallback: #ffffff;
+  --rm-dialog-inset: inset 0 1px 0 #fff;
+  --rm-overlay: rgba(19, 26, 36, 0.26);
+
+  /* ---------- 主按钮 / 危险按钮 ---------- */
+  --rm-primary-border: rgba(31, 82, 136, 0.85);
+  --rm-primary-from: #2f75c6;
+  --rm-primary-to: #1e5b9c;
+  --rm-primary-hover-from: #2b6fc0;
+  --rm-primary-hover-to: #1c5694;
+  --rm-danger-from: #c0544d;
+  --rm-danger-to: #a02a20;
+  --rm-danger-hover-from: #b43328;
+  --rm-danger-hover-to: #8f241c;
+  --rm-danger-inset: rgba(255, 255, 255, 0.2);
+
+  /* ---------- 滚动条 ---------- */
+  --rm-scrollbar-thumb: rgba(19, 26, 36, 0.18);
+  --rm-scrollbar-thumb-hover: rgba(19, 26, 36, 0.3);
 
   /* ---------- 字号阶梯 ---------- */
   --rm-fs-11: 11px;
@@ -139,4 +222,151 @@
   --radius: var(--rm-r-lg);
   --radius-sm: var(--rm-r-sm);
   --shadow: var(--rm-sh-1);
+}
+
+/* ============================================================================
+ * 深色主题
+ * ----------------------------------------------------------------------------
+ * 只覆盖「随主题变化」的 token，几何/字号/间距共用。
+ * 原则：
+ *   1) 深色下不能靠"更白"表示层级，改用"更亮一点的面 + 更弱的描边"；
+ *   2) 所有 inset 白色高光降到 6%–8%，否则在深底上是一道刺眼的白线；
+ *   3) 语义色整体提亮（深底上原来的深色文字会糊掉），但保留低饱和基调；
+ *   4) 阴影加重：深色界面靠投影区分层级的需要更强。
+ * ==========================================================================*/
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 底色与表面 */
+  --rm-bg: #0d1219;
+  --rm-app-bg: radial-gradient(
+      820px 620px at -10% 46%,
+      rgba(58, 124, 196, 0.3),
+      transparent 64%
+    ),
+    radial-gradient(700px 480px at 4% -16%, rgba(74, 110, 170, 0.26), transparent 62%),
+    radial-gradient(600px 460px at 106% -4%, rgba(112, 96, 180, 0.24), transparent 64%),
+    radial-gradient(760px 560px at 74% 116%, rgba(56, 142, 150, 0.22), transparent 62%),
+    linear-gradient(168deg, #141b26 0%, #0d1219 52%, #101722 100%);
+  --rm-noise-opacity: 0.16;
+  --rm-glass: rgba(20, 27, 38, 0.62);
+  --rm-card: rgba(30, 38, 50, 0.92);
+  --rm-card-top: rgba(35, 44, 58, 0.97);
+  --rm-card-bottom: rgba(24, 31, 42, 0.9);
+  --rm-card-flat: rgba(28, 36, 47, 0.82);
+  --rm-solid: #1b2431;
+  --rm-sunken: rgba(6, 10, 16, 0.42);
+  --rm-hover: rgba(255, 255, 255, 0.08);
+
+  /* 描边 */
+  --rm-line: rgba(255, 255, 255, 0.1);
+  --rm-line-strong: rgba(255, 255, 255, 0.18);
+  --rm-line-light: rgba(255, 255, 255, 0.09);
+  --rm-line-cool: rgba(140, 175, 215, 0.16);
+  --rm-line-cool-strong: rgba(140, 175, 215, 0.26);
+
+  /* 文字四级 */
+  --rm-text: #e9eff7;
+  --rm-text-2: #b6c2d2;
+  --rm-text-3: #8f9daf;
+  --rm-text-4: #66748a;
+
+  /* 强调色（深底上需要更亮才读得出来） */
+  --rm-accent: #5b9bd9;
+  --rm-accent-strong: #8fc0ee;
+  --rm-accent-soft: rgba(91, 155, 217, 0.18);
+  --rm-accent-line: rgba(91, 155, 217, 0.45);
+
+  /* 语义色 */
+  --rm-ok: #6cc48a;
+  --rm-ok-fill: #3f9c62;
+  --rm-ok-soft: rgba(63, 156, 98, 0.2);
+  --rm-warn: #dfb25e;
+  --rm-warn-fill: #c08a2a;
+  --rm-warn-soft: rgba(192, 138, 42, 0.2);
+  --rm-err: #ea8378;
+  --rm-err-fill: #d1544a;
+  --rm-err-soft: rgba(209, 84, 74, 0.2);
+  --rm-warn-line: rgba(192, 138, 42, 0.34);
+  --rm-err-line: rgba(209, 84, 74, 0.34);
+
+  /* 阴影：深色下要更重 */
+  --rm-sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --rm-sh-2: 0 6px 18px -8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --rm-sh-3: 0 24px 60px -28px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --rm-sh-card: 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 16px 36px -20px rgba(0, 0, 0, 0.75), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --rm-sh-card-soft: 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 6px 16px -14px rgba(0, 0, 0, 0.6);
+  --rm-glow: 0 6px 16px -8px rgba(91, 155, 217, 0.5);
+
+  /* 侧栏 */
+  --rm-sidebar-glass: rgba(18, 25, 35, 0.58);
+  --rm-sidebar-glass-opaque: rgba(18, 25, 35, 0.96);
+  --rm-glass-opaque: rgba(20, 27, 38, 0.96);
+  --rm-sidebar-inset: inset -1px 0 0 rgba(255, 255, 255, 0.06);
+  --rm-brand-logo-bg: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+  --rm-brand-logo-inset: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  /* 交互面 */
+  --rm-raise: rgba(255, 255, 255, 0.06);
+  --rm-raise-hover: rgba(255, 255, 255, 0.11);
+  --rm-raise-inset: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --rm-raise-inset-strong: rgba(255, 255, 255, 0.18);
+  --rm-chip: rgba(255, 255, 255, 0.05);
+  --rm-chip-hover: rgba(255, 255, 255, 0.1);
+  --rm-nav-hover: rgba(255, 255, 255, 0.06);
+  --rm-input-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  --rm-hover-tint: rgba(255, 255, 255, 0.05);
+  --rm-hover-tint-strong: rgba(255, 255, 255, 0.12);
+  --rm-log-hover: rgba(255, 255, 255, 0.05);
+  --rm-accent-tint: rgba(91, 155, 217, 0.16);
+  --rm-accent-tint-soft: rgba(91, 155, 217, 0.24);
+
+  /* 卡片内衬 */
+  --rm-card-inset-top: rgba(255, 255, 255, 0.06);
+  --rm-card-inset-ring: rgba(255, 255, 255, 0.04);
+  --rm-card-soft-top: rgba(255, 255, 255, 0.055);
+  --rm-card-soft-bottom: rgba(255, 255, 255, 0.03);
+  --rm-card-soft-inset: rgba(255, 255, 255, 0.06);
+  --rm-sidebar-status-top: rgba(255, 255, 255, 0.07);
+  --rm-sidebar-status-bottom: rgba(255, 255, 255, 0.04);
+  --rm-sidebar-status-inset: rgba(255, 255, 255, 0.06);
+
+  /* 控件细部 */
+  --rm-switch-off: rgba(255, 255, 255, 0.14);
+  --rm-switch-off-inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  --rm-switch-on-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  --rm-switch-thumb: #f3f6fa;
+  --rm-switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px rgba(0, 0, 0, 0.3);
+
+  /* 浮层 */
+  --rm-menu-bg: rgba(28, 36, 48, 0.92);
+  --rm-menu-fallback: #1b2431;
+  --rm-menu-inset: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --rm-dialog-bg: rgba(30, 38, 50, 0.9);
+  --rm-dialog-fallback: #1b2431;
+  --rm-dialog-inset: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --rm-overlay: rgba(0, 0, 0, 0.55);
+
+  /* 主按钮 / 危险按钮（白字对比度 4.9 / 5.3 起） */
+  --rm-primary-border: rgba(91, 155, 217, 0.5);
+  --rm-primary-from: #3573b4;
+  --rm-primary-to: #2a5f97;
+  --rm-primary-hover-from: #2f6aa8;
+  --rm-primary-hover-to: #24568a;
+  --rm-danger-from: #b34b42;
+  --rm-danger-to: #8f241c;
+  --rm-danger-hover-from: #a84036;
+  --rm-danger-hover-to: #7d1f18;
+  --rm-danger-inset: rgba(255, 255, 255, 0.16);
+
+  /* 滚动条 */
+  --rm-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --rm-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }

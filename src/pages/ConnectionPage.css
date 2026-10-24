@@ -74,10 +74,10 @@
   margin-bottom: 0;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.72) 0%,
-    rgba(255, 255, 255, 0.55) 100%
+    var(--rm-card-soft-top) 0%,
+    var(--rm-card-soft-bottom) 100%
   );
-  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 var(--rm-card-soft-inset);
 }
 
 .next-card-head {

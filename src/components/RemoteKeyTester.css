@@ -45,7 +45,7 @@
 .matrix-card {
   padding: 6px 10px;
   border-radius: var(--rm-r-sm);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--rm-chip);
   border: 1px solid var(--rm-line-cool);
   display: flex;
   flex-direction: row;

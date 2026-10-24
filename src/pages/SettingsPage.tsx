@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useRuntimeStatus } from "../store/runtimeStatus";
+import { setThemePref, useResolvedTheme, useThemePref, type ThemePref } from "../store/theme";
 import {
   checkForUpdates,
   downloadAndInstallUpdate,
@@ -8,6 +9,12 @@ import {
   useUpdateStatus,
 } from "../store/updateStatus";
 import "./SettingsPage.css";
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: "system", label: "跟随系统" },
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+];
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";
@@ -37,6 +44,8 @@ export function SettingsPage() {
   const [doubleClickMs, setDoubleClickMs] = useState(300);
   const [msg, setMsg] = useState("");
   const { tapStatus } = useRuntimeStatus();
+  const themePref = useThemePref();
+  const resolvedTheme = useResolvedTheme();
   const update = useUpdateStatus();
   const updateBusy = isUpdateBusy(update.phase);
 
@@ -165,6 +174,32 @@ export function SettingsPage() {
           <p>按键拦截、长按与双击判定，以及关于与更新。</p>
         </div>
       </div>
+
+      <div className="section-label">外观</div>
+      <section className="card form-card">
+        <div className="form-row">
+          <div className="form-text">
+            <div className="form-label">主题</div>
+            <p className="hint">
+              跟随系统时会随 Windows 的浅色 / 深色设置自动切换
+              {themePref === "system" && `（当前为${resolvedTheme === "dark" ? "深色" : "浅色"}）`}。
+            </p>
+          </div>
+          <div className="theme-options" role="group" aria-label="主题">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`btn small${themePref === opt.value ? " on" : ""}`}
+                aria-pressed={themePref === opt.value}
+                onClick={() => setThemePref(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div className="section-label">按键信号</div>
       <section className="card form-card">

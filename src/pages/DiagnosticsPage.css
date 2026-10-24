@@ -36,10 +36,18 @@
   color: var(--rm-text);
 }
 
+/* 左侧标签固定宽度不换行：右侧值很长时（例如窗口标题），
+   否则标签会被挤成一行一个字。 */
+.check-row > :first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 /* 自检行里的说明文字不参与两端对齐，靠左并允许收缩 */
 .check-row .hint {
   margin: 0;
   text-align: left;
+  min-width: 0;
 }
 
 .check-row:last-child {
