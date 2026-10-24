@@ -60,6 +60,8 @@ pub fn save_mapping(edit: MappingEdit, state: State<AppState>) -> Result<(), Str
 
     let store = config_store().ok_or("无法创建配置目录")?;
     let mut cfg = store.load().map_err(|e| e.to_string())?;
+    // 保存动作 = 同时启用这条绑定：禁用只是临时状态，重新绑定就应该恢复响应。
+    let enabled = edit.enabled.unwrap_or(true);
     if let Some(binding) = cfg
         .mapping
         .bindings
@@ -67,11 +69,13 @@ pub fn save_mapping(edit: MappingEdit, state: State<AppState>) -> Result<(), Str
         .find(|b| b.button == button && b.trigger == trigger)
     {
         binding.action = action;
+        binding.enabled = enabled;
     } else {
         cfg.mapping.bindings.push(core_mapping::KeyBinding {
             button,
             trigger,
             action,
+            enabled,
         });
     }
     store.save(&cfg).map_err(|e| e.to_string())?;
@@ -94,8 +98,73 @@ pub fn get_mappings() -> Vec<MappingEntry> {
             trigger: trigger_key(&b.trigger),
             action: action_label(&b.action),
             action_key: action_key(&b.action),
+            enabled: b.enabled,
         })
         .collect()
+}
+
+/// 清除一条全局绑定（映射表右上角 ×）。
+#[tauri::command]
+pub fn clear_mapping_binding(
+    button: String,
+    trigger: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let button = parse_button(&button).ok_or("未知按键")?;
+    let trigger = parse_trigger(&trigger).ok_or("未知触发")?;
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    let before = cfg.mapping.bindings.len();
+    cfg.mapping
+        .bindings
+        .retain(|b| !(b.button == button && b.trigger == trigger));
+    if cfg.mapping.bindings.len() == before {
+        // 本来就没有这条绑定：不写盘、不重载。
+        return Ok(());
+    }
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    state.dispatcher.update_mapping(cfg.mapping);
+    core_log::log_info(&format!(
+        "[commands/mapping] 已取消关联：{} · {}",
+        button.display_name(),
+        trigger_key(&trigger)
+    ));
+    Ok(())
+}
+
+/// 切换一条全局绑定的启用状态（映射表点击格子本体）。
+#[tauri::command]
+pub fn set_mapping_binding_enabled(
+    button: String,
+    trigger: String,
+    enabled: bool,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let button = parse_button(&button).ok_or("未知按键")?;
+    let trigger = parse_trigger(&trigger).ok_or("未知触发")?;
+    let store = config_store().ok_or("无法创建配置目录")?;
+    let mut cfg = store.load().map_err(|e| e.to_string())?;
+    let Some(binding) = cfg
+        .mapping
+        .bindings
+        .iter_mut()
+        .find(|b| b.button == button && b.trigger == trigger)
+    else {
+        return Err("这条绑定不存在".into());
+    };
+    if binding.enabled == enabled {
+        return Ok(());
+    }
+    binding.enabled = enabled;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    state.dispatcher.update_mapping(cfg.mapping);
+    core_log::log_info(&format!(
+        "[commands/mapping] 绑定已{}：{} · {}",
+        if enabled { "启用" } else { "禁用" },
+        button.display_name(),
+        trigger_key(&trigger)
+    ));
+    Ok(())
 }
 
 /// 将按键校准表保存到 `config.json`，并热更新调度器的虚拟键反查表。

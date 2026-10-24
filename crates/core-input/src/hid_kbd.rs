@@ -10,9 +10,15 @@ pub const REPORT_LEN: usize = 8;
 /// Consumer Control 报告长度（1 字节位图）。
 pub const CONSUMER_REPORT_LEN: usize = 1;
 
-/// 标准 Consumer Control（媒体键）报告描述符，单集合、无 Report ID。
+/// 标准 Consumer Control（媒体键 + 系统音量键）报告描述符，单集合、无 Report ID。
 ///
 /// 键盘页（0x07）没有播放/暂停这类 usage，媒体键必须走 Consumer 页（0x0C）。
+/// 系统音量键（volume_up / volume_down / volume_mute）也走这里：
+/// 键盘页的 `0x7F/0x80/0x81` 只在声明了对应 usage 范围的键盘描述符里有效，
+/// 而我们的 Boot Keyboard 描述符只声明到 `0x65`（标准键盘最大键位），
+/// 直接塞 0x80 会被 Windows HID 栈忽略（实测音量加映射「日志执行了但系统无反应」）。
+/// 把这几个 token 路由到 Consumer 设备的 `0xE9/0xEA/0xE2`，语义正确且系统原生支持。
+///
 /// 这里做成独立的一台虚拟 HID 设备，键盘设备保持 Boot Keyboard 原样不受影响。
 pub const CONSUMER_REPORT_DESCRIPTOR: &[u8] = &[
     0x05, 0x0C, // Usage Page (Consumer)
@@ -21,13 +27,16 @@ pub const CONSUMER_REPORT_DESCRIPTOR: &[u8] = &[
     0x15, 0x00, //   Logical Minimum (0)
     0x25, 0x01, //   Logical Maximum (1)
     0x75, 0x01, //   Report Size (1)
-    0x95, 0x04, //   Report Count (4)
+    0x95, 0x07, //   Report Count (7)
     0x09, 0xCD, //   Usage (Play/Pause)
     0x09, 0xB5, //   Usage (Scan Next Track)
     0x09, 0xB6, //   Usage (Scan Previous Track)
     0x09, 0xB7, //   Usage (Stop)
+    0x09, 0xE9, //   Usage (Volume Increment)
+    0x09, 0xEA, //   Usage (Volume Decrement)
+    0x09, 0xE2, //   Usage (Mute)
     0x81, 0x06, //   Input (Data,Var,Rel)
-    0x95, 0x04, //   Report Count (4)
+    0x95, 0x01, //   Report Count (1)
     0x81, 0x01, //   Input (Const) ; padding
     0xC0, // End Collection
 ];
@@ -36,8 +45,11 @@ const CONSUMER_PLAY_PAUSE: u8 = 0x01;
 const CONSUMER_NEXT: u8 = 0x02;
 const CONSUMER_PREV: u8 = 0x04;
 const CONSUMER_STOP: u8 = 0x08;
+const CONSUMER_VOLUME_UP: u8 = 0x10;
+const CONSUMER_VOLUME_DOWN: u8 = 0x20;
+const CONSUMER_VOLUME_MUTE: u8 = 0x40;
 
-/// Consumer 页媒体键 token -> 报告位。返回 `None` 表示不是媒体键。
+/// Consumer 页 media / 音量 token -> 报告位。返回 `None` 表示不是 Consumer 键。
 pub fn consumer_bit(tok: &str) -> Option<u8> {
     let t = tok.trim().to_ascii_lowercase();
     Some(match t.as_str() {
@@ -45,6 +57,9 @@ pub fn consumer_bit(tok: &str) -> Option<u8> {
         "next_track" | "media_next" => CONSUMER_NEXT,
         "prev_track" | "media_prev" => CONSUMER_PREV,
         "media_stop" => CONSUMER_STOP,
+        "volume_up" => CONSUMER_VOLUME_UP,
+        "volume_down" => CONSUMER_VOLUME_DOWN,
+        "volume_mute" | "mute" => CONSUMER_VOLUME_MUTE,
         _ => return None,
     })
 }
@@ -91,30 +106,70 @@ const MOD_RSHIFT: u8 = 0x20;
 const MOD_RALT: u8 = 0x40;
 const MOD_RWIN: u8 = 0x80;
 
+/// 虚拟键盘（Boot Keyboard）报告里按键数组声明的 usage 上限。
+///
+/// HID Usage Tables 里虽然有 `0x80`（Keyboard Volume Up）这类标准编号，但
+/// **设备能不能发，取决于它自己的报告描述符声明了什么**。本虚拟键盘使用
+/// 标准 Boot Keyboard 描述符（usage `0x00–0x65`），超出范围的 usage 会被
+/// Windows HID 栈**静默丢弃**（历史 bug：音量键原样抄遥控器的 `0x80` 注入，
+/// 日志显示已执行、系统音量却毫无反应）。
+///
+/// 因此注入层的原则是「翻译」而不是「抄送」：
+/// - 源设备（遥控器）的 usage 只用于**识别**，不能原样当目标 usage；
+/// - 注入必须翻译到目标设备声明过的 usage，或改走 Consumer 页 / Win32 原语；
+/// - [`KeyboardState::add_key`] 用本常量做运行期校验，越界直接报错，
+///   避免再次出现「提交成功但系统不认」的静默失效。
+///
+/// 本常量同时用于构造 [`REPORT_DESCRIPTOR`]，保证「描述符声明」与
+/// 「运行期校验」永远同源，有单测锁定。
+pub const KEYBOARD_USAGE_MAX: u8 = 0x65;
+
 /// 标准 Boot Keyboard 报告描述符（无 Report ID）。
 pub const REPORT_DESCRIPTOR: &[u8] = &[
-    0x05, 0x01, // Usage Page (Generic Desktop)
-    0x09, 0x06, // Usage (Keyboard)
-    0xA1, 0x01, // Collection (Application)
-    0x05, 0x07, //   Usage Page (Keyboard)
-    0x19, 0xE0, //   Usage Minimum (Left Control)
-    0x29, 0xE7, //   Usage Maximum (Right GUI)
-    0x15, 0x00, //   Logical Minimum (0)
-    0x25, 0x01, //   Logical Maximum (1)
-    0x75, 0x01, //   Report Size (1)
-    0x95, 0x08, //   Report Count (8)
-    0x81, 0x02, //   Input (Data,Var,Abs) ; modifiers
-    0x95, 0x01, //   Report Count (1)
-    0x75, 0x08, //   Report Size (8)
-    0x81, 0x01, //   Input (Const) ; reserved
-    0x95, 0x06, //   Report Count (6)
-    0x75, 0x08, //   Report Size (8)
-    0x15, 0x00, //   Logical Minimum (0)
-    0x25, 0x65, //   Logical Maximum (101)
-    0x05, 0x07, //   Usage Page (Keyboard)
-    0x19, 0x00, //   Usage Minimum (0)
-    0x29, 0x65, //   Usage Maximum (101)
-    0x81, 0x00, //   Input (Data,Array)
+    0x05,
+    0x01, // Usage Page (Generic Desktop)
+    0x09,
+    0x06, // Usage (Keyboard)
+    0xA1,
+    0x01, // Collection (Application)
+    0x05,
+    0x07, //   Usage Page (Keyboard)
+    0x19,
+    0xE0, //   Usage Minimum (Left Control)
+    0x29,
+    0xE7, //   Usage Maximum (Right GUI)
+    0x15,
+    0x00, //   Logical Minimum (0)
+    0x25,
+    0x01, //   Logical Maximum (1)
+    0x75,
+    0x01, //   Report Size (1)
+    0x95,
+    0x08, //   Report Count (8)
+    0x81,
+    0x02, //   Input (Data,Var,Abs) ; modifiers
+    0x95,
+    0x01, //   Report Count (1)
+    0x75,
+    0x08, //   Report Size (8)
+    0x81,
+    0x01, //   Input (Const) ; reserved
+    0x95,
+    0x06, //   Report Count (6)
+    0x75,
+    0x08, //   Report Size (8)
+    0x15,
+    0x00, //   Logical Minimum (0)
+    0x25,
+    KEYBOARD_USAGE_MAX, //   Logical Maximum (101)
+    0x05,
+    0x07, //   Usage Page (Keyboard)
+    0x19,
+    0x00, //   Usage Minimum (0)
+    0x29,
+    KEYBOARD_USAGE_MAX, //   Usage Maximum (101)
+    0x81,
+    0x00, //   Input (Data,Array)
     0xC0, // End Collection
 ];
 
@@ -199,9 +254,9 @@ fn token_to_part(tok: &str) -> Option<HidPart> {
         "down" => HidPart::Key(0x51),
         "up" => HidPart::Key(0x52),
         "apps" | "context_menu" => HidPart::Key(0x65),
-        "volume_mute" => HidPart::Key(0x7F),
-        "volume_up" => HidPart::Key(0x80),
-        "volume_down" => HidPart::Key(0x81),
+        // 注意：音量三键不在这里 —— 它们走 Consumer 页（见 consumer_bit），
+        // 键盘页 0x7F/0x80/0x81 超出本描述符声明的 usage 范围（0x00–0x65），
+        // 塞进键盘报告会被系统忽略。
         _ => return None,
     })
 }
@@ -253,6 +308,12 @@ impl KeyboardState {
     }
 
     fn add_key(&mut self, usage: u8) -> Result<(), String> {
+        if usage > KEYBOARD_USAGE_MAX {
+            return Err(format!(
+                "HID usage 0x{usage:02X} 超出虚拟键盘描述符声明范围（0x00–0x{KEYBOARD_USAGE_MAX:02X}）：\
+                 源设备 usage 不能原样注入，需要翻译到目标设备支持的通道"
+            ));
+        }
         if self.keys.contains(&usage) {
             return Ok(());
         }
@@ -320,14 +381,45 @@ mod tests {
     #[test]
     fn consumer_tokens_are_not_keyboard_tokens() {
         let mut s = KeyboardState::default();
-        // 媒体键必须由 vhid 路由到 Consumer 设备，键盘表不应接受。
+        // 媒体键 / 音量键必须由 vhid 路由到 Consumer 设备，键盘表不应接受。
+        // 尤其音量键：键盘页 0x80 超出 Boot Keyboard 描述符的 usage 范围，
+        // 误走键盘报告会被系统静默忽略（历史 bug：音量加映射无反应）。
         assert!(s.press_tokens(&["play_pause"]).is_err());
+        assert!(s.press_tokens(&["volume_up"]).is_err());
+        assert!(s.press_tokens(&["volume_down"]).is_err());
+        assert!(s.press_tokens(&["volume_mute"]).is_err());
         assert_eq!(consumer_bit("play_pause"), Some(CONSUMER_PLAY_PAUSE));
         assert_eq!(consumer_bit("media_play_pause"), Some(CONSUMER_PLAY_PAUSE));
         assert_eq!(consumer_bit("next_track"), Some(CONSUMER_NEXT));
         assert_eq!(consumer_bit("prev_track"), Some(CONSUMER_PREV));
         assert_eq!(consumer_bit("media_stop"), Some(CONSUMER_STOP));
+        assert_eq!(consumer_bit("volume_up"), Some(CONSUMER_VOLUME_UP));
+        assert_eq!(consumer_bit("volume_down"), Some(CONSUMER_VOLUME_DOWN));
+        assert_eq!(consumer_bit("volume_mute"), Some(CONSUMER_VOLUME_MUTE));
+        assert_eq!(consumer_bit("mute"), Some(CONSUMER_VOLUME_MUTE));
         assert_eq!(consumer_bit("rctrl"), None);
+    }
+
+    #[test]
+    fn consumer_volume_keys_use_separate_bits() {
+        let mut c = ConsumerState::default();
+        c.press_token("volume_up");
+        assert_eq!(c.report(), [CONSUMER_VOLUME_UP]);
+        c.release_token("volume_up");
+
+        c.press_token("volume_down");
+        assert_eq!(c.report(), [CONSUMER_VOLUME_DOWN]);
+        c.release_token("volume_down");
+
+        c.press_token("volume_mute");
+        assert_eq!(c.report(), [CONSUMER_VOLUME_MUTE]);
+        c.release_token("volume_mute");
+        assert!(c.is_empty());
+
+        // 音量与媒体键互不干扰。
+        c.press_token("volume_up");
+        c.press_token("play_pause");
+        assert_eq!(c.report(), [CONSUMER_VOLUME_UP | CONSUMER_PLAY_PAUSE]);
     }
 
     #[test]
@@ -365,11 +457,40 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_usage_max_is_single_source_with_descriptor() {
+        assert_eq!(
+            KEYBOARD_USAGE_MAX, 0x65,
+            "Boot Keyboard 标准键位范围是 0x00–0x65"
+        );
+        let pairs: Vec<[u8; 2]> = REPORT_DESCRIPTOR.windows(2).map(|w| [w[0], w[1]]).collect();
+        assert!(
+            pairs.contains(&[0x29, KEYBOARD_USAGE_MAX]),
+            "描述符 Usage Maximum 没跟着 KEYBOARD_USAGE_MAX 走"
+        );
+        assert!(
+            pairs.contains(&[0x25, KEYBOARD_USAGE_MAX]),
+            "描述符 Logical Maximum 没跟着 KEYBOARD_USAGE_MAX 走"
+        );
+    }
+
+    #[test]
+    fn keyboard_rejects_usage_outside_descriptor_range() {
+        let mut s = KeyboardState::default();
+        s.add_key(KEYBOARD_USAGE_MAX).expect("0x65 在声明范围内");
+        // 0x80 就是曾经被当音量+原样注入键盘、然后被系统静默丢弃的 usage。
+        let err = s.add_key(0x80).unwrap_err();
+        assert!(err.contains("超出"), "越界 usage 必须明确报错：{err}");
+        assert!(err.contains("0x80"), "{err}");
+    }
+
+    #[test]
     fn consumer_release_all_clears_all_bits() {
         let mut c = ConsumerState::default();
         c.press_token("play_pause");
         c.press_token("next_track");
         c.press_token("media_stop");
+        c.press_token("volume_up");
+        c.press_token("volume_mute");
         assert!(!c.is_empty());
         c.release_all();
         assert!(c.is_empty());

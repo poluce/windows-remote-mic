@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>按键映射 · 删除 / 禁用交互设计 v2</title>
+<style>
+  :root {
+    --card-top: rgba(255, 255, 255, 0.97);
+    --card-bottom: rgba(244, 249, 255, 0.82);
+    --line: rgba(23, 48, 82, 0.09);
+    --line-strong: rgba(23, 48, 82, 0.17);
+    --text: #131a24;
+    --text2: #46536a;
+    --text3: #5c6979;
+    --text4: #93a0af;
+    --accent: #2b6fc0;
+    --accent-strong: #1f5288;
+    --accent-soft: rgba(43, 111, 192, 0.15);
+    --accent-line: rgba(43, 111, 192, 0.42);
+    --err: #b43328;
+    --err-fill: #cf4a3f;
+    --err-soft: rgba(180, 51, 40, 0.15);
+    --err-line: rgba(180, 51, 40, 0.36);
+    --ok: #2f8450;
+    --ok-text: #3f7d5c;
+    --ok-soft: rgba(47, 132, 80, 0.16);
+    --sh-card: 0 0 0 1px rgba(23, 48, 82, 0.08),
+      0 16px 36px -20px rgba(23, 48, 82, 0.34),
+      0 2px 4px rgba(23, 48, 82, 0.05);
+    --sh-soft: 0 0 0 1px rgba(23, 48, 82, 0.07),
+      0 6px 16px -14px rgba(23, 48, 82, 0.2);
+    --app-bg: radial-gradient(820px 620px at -10% 46%, rgba(43, 111, 192, 0.4), transparent 64%),
+      radial-gradient(700px 480px at 4% -16%, rgba(58, 106, 172, 0.34), transparent 62%),
+      radial-gradient(600px 460px at 106% -4%, rgba(104, 92, 174, 0.3), transparent 64%),
+      radial-gradient(760px 560px at 74% 116%, rgba(52, 138, 148, 0.28), transparent 62%),
+      linear-gradient(168deg, #eef3fa 0%, #e2e9f4 52%, #e5ecf6 100%);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 34px 0 44px;
+    background: var(--app-bg);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { width: 1560px; margin: 0 auto; }
+
+  .sheet-head { padding: 0 6px 22px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--accent-strong);
+    background: var(--accent-soft); border: 1px solid var(--accent-line);
+    border-radius: 999px; padding: 4px 11px;
+  }
+  .sheet-head h1 { margin: 12px 0 6px; font-size: 30px; letter-spacing: -0.02em; }
+  .sheet-head p { margin: 0; color: var(--text2); font-size: 14px; line-height: 1.65; }
+  .sheet-head b { color: var(--text); }
+
+  .panel { margin-top: 22px; }
+  .panel-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; color: var(--text2);
+    margin: 0 6px 10px;
+  }
+  .panel-label::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--accent); }
+
+  .card {
+    background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+    border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-card);
+  }
+
+  .app {
+    position: relative; padding: 16px;
+    background: rgba(255, 255, 255, 0.42);
+    border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: var(--sh-card); backdrop-filter: blur(14px);
+  }
+  .scope-bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px 16px; }
+  .scope-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; color: var(--text2);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+  }
+  .scope-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text4); }
+  .scope-chip.on { color: var(--accent-strong); border-color: var(--accent-line); background: var(--accent-soft); font-weight: 600; }
+  .scope-chip.on .dot { background: var(--accent); }
+  .scope-add { color: var(--accent-strong); border-style: dashed; }
+
+  .content { display: grid; grid-template-columns: 452px 1fr; gap: 16px; }
+
+  .wizard { padding: 18px 18px 14px; display: flex; flex-direction: column; min-height: 476px; }
+  .wizard-label { font-size: 12px; font-weight: 700; color: var(--text3); margin: 0 0 9px; }
+  .wizard-block + .wizard-block { margin-top: 18px; }
+  .triggers { display: flex; gap: 8px; }
+  .trig {
+    font-family: inherit; font-size: 13px; color: var(--text2);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line); border-radius: 9px; padding: 8px 18px;
+  }
+  .trig.active { color: var(--accent-strong); font-weight: 700; background: var(--accent-soft); border-color: var(--accent-line); }
+  .cats { display: flex; gap: 7px; margin-bottom: 11px; }
+  .cat { font-size: 12px; color: var(--text2); background: rgba(255, 255, 255, 0.68); border: 1px solid var(--line); border-radius: 8px; padding: 5px 13px; }
+  .cat.on { color: var(--accent-strong); border-color: var(--accent-line); background: var(--accent-soft); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 7px; }
+  .act { font-size: 12px; color: var(--text2); background: rgba(255, 255, 255, 0.72); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; box-shadow: inset 0 1px 0 #fff; }
+  .act.on { color: #fff; background: var(--accent); border-color: var(--accent-strong); font-weight: 600; }
+  .hint { margin: 0 0 10px; font-size: 12px; color: var(--text3); line-height: 1.6; }
+  .hint b { color: var(--text); }
+
+  .wizard-foot { margin-top: auto; padding-top: 16px; border-top: 1px dashed var(--line); }
+  .btns { display: flex; align-items: center; gap: 9px; }
+  .btn {
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    border-radius: 9px; padding: 9px 18px;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, 0.82); color: var(--text2);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent-strong); color: #fff; box-shadow: 0 6px 16px -8px rgba(43, 111, 192, 0.55); }
+
+  /* 矩阵 */
+  .matrix { padding: 18px 18px 14px; }
+  .matrix-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .matrix-head h3 { margin: 0; font-size: 14px; }
+  .matrix-head span { font-size: 12px; color: var(--text3); }
+  table.mx { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
+  .mx th { text-align: left; font-weight: 600; color: var(--text3); background: rgba(23, 48, 82, 0.045); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .mx th:first-child { border-radius: 8px 0 0 0; width: 122px; }
+  .mx th:last-child { border-radius: 0 8px 0 0; }
+  .mx td { padding: 9px 10px; border-bottom: 1px solid rgba(23, 48, 82, 0.06); color: var(--text2); white-space: nowrap; }
+  .mx tr:last-child td { border-bottom: none; }
+  .mx .k { color: var(--text); font-weight: 600; }
+  .mx .empty-t { color: var(--text4); }
+
+  /* 格子 */
+  .cell {
+    position: relative; display: inline-flex; align-items: center; gap: 8px;
+    min-width: 150px; padding: 6px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, 0.72);
+    box-shadow: inset 0 1px 0 #fff; color: var(--text2);
+  }
+  .cell.enabled { border-color: var(--line); }
+  .cell.enabled .cell-txt { color: var(--ok-text); font-weight: 600; }
+  .cell.disabled {
+    background: var(--err-soft); border-color: var(--err-line);
+    color: var(--err); font-weight: 600;
+  }
+  .cell.disabled .cell-txt { color: var(--err); }
+  .cell.empty {
+    min-width: 74px; justify-content: center;
+    background: transparent; border: 1px dashed rgba(23, 48, 82, 0.2);
+    color: var(--text4); box-shadow: none;
+  }
+  .cell.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .cell-txt { line-height: 1.2; }
+  .cell-sub { font-size: 11px; color: var(--text4); font-weight: 400; }
+  .cell.disabled .cell-sub { color: rgba(180, 51, 40, 0.7); }
+
+  /* 红色圆圈 × */
+  .x {
+    position: absolute; top: -9px; right: -9px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--err-fill); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "Segoe UI", sans-serif; font-size: 13px; font-weight: 700; line-height: 1;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(180, 51, 40, 0.38);
+    opacity: 0; transform: scale(0.82); pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  .cell.mock-hover .x,
+  .cell.selected .x { opacity: 1; transform: none; pointer-events: auto; }
+  .cell.mock-hover {
+    background: #fff; border-color: var(--line-strong);
+    box-shadow: 0 2px 8px -4px rgba(23, 48, 82, 0.22), inset 0 1px 0 #fff;
+  }
+  .x.small { width: 18px; height: 18px; font-size: 12px; }
+
+  .matrix-legend { display: flex; gap: 16px; margin-top: 14px; font-size: 11.5px; color: var(--text3); flex-wrap: wrap; }
+  .lg { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 14px; border-radius: 5px; border: 1px solid var(--line); background: #fff; }
+  .sw.dis { background: var(--err-soft); border-color: var(--err-line); }
+  .sw.empty { background: transparent; border-style: dashed; }
+  .sw.own { background: var(--accent-soft); border-color: var(--accent-line); }
+
+  .co {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
+    box-shadow: 0 2px 6px rgba(43, 111, 192, 0.35);
+    flex: 0 0 auto;
+  }
+  .co.red { background: var(--err-fill); box-shadow: 0 2px 6px rgba(180, 51, 40, 0.35); }
+  .co.green { background: var(--ok); box-shadow: 0 2px 6px rgba(47, 132, 80, 0.3); }
+
+  .annotations { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 6px 0; }
+  .anno {
+    display: flex; gap: 9px; align-items: flex-start;
+    background: rgba(255, 255, 255, 0.52); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--text2); line-height: 1.55;
+  }
+  .anno b { color: var(--text); }
+
+  /* B 状态流转 */
+  .flow-card { padding: 18px 20px; }
+  .flow-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .state {
+    display: inline-flex; flex-direction: column; gap: 2px;
+    border-radius: 10px; padding: 10px 14px; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.8); font-size: 12.5px; color: var(--text2);
+  }
+  .state b { font-size: 13px; color: var(--text); }
+  .state.dis { background: var(--err-soft); border-color: var(--err-line); }
+  .state.dis b { color: var(--err); }
+  .state.ok b { color: var(--ok); }
+  .oper { color: var(--accent-strong); font-weight: 700; font-size: 12.5px; }
+  .oper.red { color: var(--err); }
+  .flow-note { margin: 12px 0 0; font-size: 12px; color: var(--text3); line-height: 1.7; }
+  .flow-note b { color: var(--text2); }
+  .divider { margin: 14px 0; border-top: 1px dashed var(--line); }
+
+  /* C 语义卡 */
+  .sem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .sem-card { padding: 15px 16px; }
+  .sem-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .sem-badge { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+  .sem-badge.del { background: var(--err-soft); color: var(--err); }
+  .sem-badge.tog { background: var(--accent-soft); color: var(--accent-strong); }
+  .sem-badge.prof { background: rgba(23, 48, 82, 0.08); color: var(--text3); }
+  .sem-card h4 { margin: 0; font-size: 13.5px; }
+  .sem-card p { margin: 6px 0 0; font-size: 12px; color: var(--text3); line-height: 1.65; }
+  .sem-card b { color: var(--text2); }
+
+  /* D 实现 */
+  .impl { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .impl-card { padding: 16px 18px; }
+  .impl-card h4 { margin: 0 0 9px; font-size: 13px; }
+  .impl-card ul { margin: 0; padding-left: 18px; color: var(--text2); font-size: 12.5px; line-height: 1.8; }
+  .impl-card code { font-family: "Cascadia Code", Consolas, monospace; font-size: 11.5px; background: rgba(23, 48, 82, 0.06); border-radius: 4px; padding: 1px 5px; color: var(--accent-strong); }
+  .footer-note { margin: 15px 6px 0; font-size: 12px; color: var(--text3); line-height: 1.7; }
+
+  /* Toast */
+  .toast {
+    display: flex; align-items: center; gap: 10px; width: max-content;
+    margin: 14px 4px 2px auto;
+    background: rgba(255, 255, 255, 0.96); border: 1px solid var(--line);
+    border-radius: 12px; padding: 11px 14px; font-size: 12.5px; color: var(--text2);
+    box-shadow: 0 18px 44px -20px rgba(23, 48, 82, 0.45), 0 2px 6px rgba(23, 48, 82, 0.08);
+  }
+  .toast .ok { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--ok-soft); color: var(--ok); font-weight: 700; font-size: 12px; }
+  .toast b { color: var(--text); }
+  .toast .undo { font-family: inherit; font-size: 12px; font-weight: 600; color: var(--accent-strong); background: transparent; border: none; padding: 2px 4px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="sheet-head">
+    <span class="tag">设计稿 v3 · 矩阵直接操作</span>
+    <h1>按键映射 · 删除 / 禁用交互设计</h1>
+    <p>核心：<b>悬停 / 选中</b>已绑定格子时，右上角出现<b>红色圆圈 ×</b>——点 × 取消关联（删除绑定）；<b>点击格子本体</b>切换禁用/启用。启用态文字为<b>微绿色</b>，禁用时整格红色填充，再次点击恢复。禁用保留记录和动作，× 才是真正删除。</p>
+  </header>
+
+  <!-- ================= A · 矩阵直接操作 ================= -->
+  <section class="panel">
+    <div class="panel-label">A · 映射表：悬停/选中出现 × · 点击本体切换禁用</div>
+    <div class="app">
+      <div class="scope-bar">
+        <span class="scope-chip on"><i class="dot"></i>全局</span>
+        <span class="scope-chip"><i class="dot" style="background:#D97757"></i>Claude Code 桌面版</span>
+        <span class="scope-chip"><i class="dot" style="background:#4D6BFE"></i>DeepSeek Harness</span>
+        <span class="scope-chip"><i class="dot" style="background:#F59E0B"></i>ZCode</span>
+        <span class="scope-chip scope-add">+ 新建应用</span>
+      </div>
+
+      <div class="content">
+        <!-- 左边动作面板 -->
+        <div class="wizard card">
+          <div class="wizard-block">
+            <div class="wizard-label">触发方式</div>
+            <div class="triggers">
+              <button class="trig active">单击</button>
+              <button class="trig">双击</button>
+              <button class="trig">长按</button>
+            </div>
+          </div>
+
+          <div class="wizard-block">
+            <div class="wizard-label">动作分类</div>
+            <div class="cats">
+              <span class="cat on">系统</span>
+              <span class="cat">自定义</span>
+              <span class="cat">其他</span>
+            </div>
+            <div class="actions">
+              <span class="act">回车</span>
+              <span class="act">退格</span>
+              <span class="act">Esc</span>
+              <span class="act">显示桌面</span>
+              <span class="act">聚焦输入框</span>
+              <span class="act">切换应用</span>
+              <span class="act">快捷菜单（开/关）</span>
+              <span class="act on">音量 +</span>
+              <span class="act">音量 −</span>
+              <span class="act">静音</span>
+              <span class="act">播放 / 暂停</span>
+              <span class="act">语音输入（Win+H）</span>
+            </div>
+          </div>
+
+          <div class="wizard-foot">
+            <p class="hint">目标格：<b>音量 + · 单击</b>（点击格子会设为编辑目标）</p>
+            <div class="btns"><button class="btn primary">保存此键</button></div>
+            <p class="hint" style="margin-top:10px">点击<b>空单元格</b> → 选动作 → 保存，即可建立绑定。</p>
+          </div>
+        </div>
+
+        <!-- 矩阵 -->
+        <div class="matrix card">
+          <div class="matrix-head">
+            <h3>映射表</h3>
+            <span>红色 × 永远是「删除」；点击格子本体是「禁用 / 启用」</span>
+          </div>
+          <table class="mx">
+            <thead>
+              <tr><th>按键</th><th>单击</th><th>双击</th><th>长按</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="k">电源</td><td><span class="cell enabled"><span class="cell-txt">取消（Esc）</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+              <tr><td class="k">麦克风</td><td colspan="3"><span class="cell enabled"><span class="cell-txt">按下 / 松开 → 豆包</span><span class="x">×</span></span></td></tr>
+              <tr><td class="k">上</td><td><span class="cell enabled"><span class="cell-txt">↑</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+
+              <tr class="highlight-row">
+                <td class="k">音量 +</td>
+                <td>
+                  <span class="cell enabled mock-hover"><span class="cell-txt">音量 +</span><span class="x">×</span></span>
+                  <span class="co" style="margin-left:8px">1</span>
+                </td>
+                <td>
+                  <span class="cell disabled selected"><span class="cell-txt">静音</span><span class="x">×</span></span>
+                  <span class="co red" style="margin-left:8px">2</span>
+                </td>
+                <td class="empty-t">—<span class="co green" style="margin-left:10px">3</span></td>
+              </tr>
+              <tr><td class="k">主页</td><td><span class="cell enabled"><span class="cell-txt">显示桌面</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+              <tr><td class="k">确定</td><td><span class="cell enabled"><span class="cell-txt">回车（Enter）</span><span class="x">×</span></span></td><td><span class="cell empty selected"><span class="cell-txt">—</span></span><span class="co" style="margin-left:8px">4</span></td><td><span class="cell enabled"><span class="cell-txt">豆包</span><span class="x">×</span></span></td></tr>
+              <tr><td class="k">音量 −</td><td><span class="cell enabled"><span class="cell-txt">音量 −</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+              <tr><td class="k">菜单</td><td><span class="cell enabled"><span class="cell-txt">快捷菜单（开/关）</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+              <tr><td class="k">TV</td><td><span class="cell enabled"><span class="cell-txt">切换应用（Alt+Tab）</span><span class="x">×</span></span></td><td class="empty-t">—</td><td class="empty-t">—</td></tr>
+            </tbody>
+          </table>
+
+          <div class="matrix-legend">
+            <span class="lg"><i class="sw"></i>已绑定（启用，文字微绿）</span>
+            <span class="lg"><i class="sw dis"></i>已禁用（点击恢复）</span>
+            <span class="lg"><i class="sw empty"></i>未绑定</span>
+            <span class="lg"><i class="co red" style="width:16px;height:16px;font-size:11px">×</i>取消关联（悬停 / 选中时显示）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast">
+        <span class="ok">✓</span>
+        <span>已取消关联：<b>音量 + · 长按</b></span>
+        <button class="undo">撤销</button>
+        <span class="co green">5</span>
+      </div>
+    </div>
+
+    <div class="annotations">
+      <div class="anno"><span class="co">1</span><div><b>红色圆圈 ×：</b>只在鼠标<b>悬停 / 选中</b>该格时出现；点击 = 取消关联（删除绑定），格子立刻变回「—」；点 × 不会触发禁用切换。</div></div>
+      <div class="anno"><span class="co red">2</span><div><b>点击已绑定格子：</b>启用态文字<b>微绿</b>；点击变红色填充 = 禁用，功能不触发；再点恢复微绿（动作保留，无需重选）。</div></div>
+      <div class="anno"><span class="co green">3</span><div><b>删除后：</b>格子变「—」，双击/长按不存在后，单击恢复「松开立即生效」；可撤销。</div></div>
+      <div class="anno"><span class="co">4</span><div><b>空单元格：</b>点击选中（蓝框）→ 左侧选动作 → 保存此键，建立绑定。</div></div>
+    </div>
+  </section>
+
+  <!-- ================= B · 状态流转 ================= -->
+  <section class="panel">
+    <div class="panel-label">B · 状态流转：删除 / 禁用是两条独立的路</div>
+    <div class="card flow-card">
+      <div class="flow-row">
+        <span class="state"><b>未绑定</b><span>格子显示 —</span></span>
+        <span class="oper">— 选动作 + 保存 →</span>
+        <span class="state ok"><b>已绑定（启用）</b><span>文字微绿</span></span>
+        <span class="oper">— 点击格子 →</span>
+        <span class="state dis"><b>已禁用</b><span>红色填充</span></span>
+        <span class="oper">— 再次点击 →</span>
+        <span class="state ok"><b>已绑定（启用）</b><span>恢复微绿</span></span>
+      </div>
+      <div class="divider"></div>
+      <div class="flow-row">
+        <span class="state ok"><b>已绑定（启用）</b></span>
+        <span class="oper red">— 点红色 × →</span>
+        <span class="state"><b>未绑定</b><span>格子显示 —</span></span>
+        <span class="oper red">或</span>
+        <span class="state dis"><b>已禁用</b></span>
+        <span class="oper red">— 点红色 × →</span>
+        <span class="state"><b>未绑定</b></span>
+      </div>
+      <p class="flow-note"><b>编辑已有动作：</b>点击该格子（会先切换一次禁用/启用，同时设为编辑目标）→ 左侧重选动作 → 点「保存此键」，保存后恢复启用并用新动作。想直接删掉就点 ×，一步到位。</p>
+    </div>
+  </section>
+
+  <!-- ================= C · 语义与作用域 ================= -->
+  <section class="panel">
+    <div class="panel-label">C · 三个必须说清的语义</div>
+    <div class="sem-grid">
+      <div class="sem-card card">
+        <div class="sem-head"><span class="sem-badge del">×</span><h4>× = 取消关联（真正删除）</h4></div>
+        <p>配置里这条记录被移除，该触发变成<b>未绑定</b>：不触发、不占手势。双击/长按删掉后，单击恢复「松开立即生效」。</p>
+        <p>作用域：全局作用域删除全局绑定；应用档案作用域删除的是<b>覆盖</b>（回到沿用全局）。</p>
+      </div>
+      <div class="sem-card card">
+        <div class="sem-head"><span class="sem-badge tog">◐</span><h4>点击 = 禁用 / 启用（保留记录）</h4></div>
+        <p>只翻转 <b>enabled</b> 标志，动作与条目都保留。启用时文字微绿，禁用时红色填充；禁用期间不触发、手势时序按未绑定处理；再次点击立即恢复。</p>
+        <p>× 只在悬停 / 选中时出现，矩阵更清爽；红色填充明确表示「被禁用，但配置还在」。</p>
+      </div>
+      <div class="sem-card card">
+        <div class="sem-head"><span class="sem-badge prof">档</span><h4>应用档案作用域</h4></div>
+        <p>格子显示的是「这份配置真正生效的绑定」：有覆盖显示覆盖，没有则显示全局（灰调）。× 只删覆盖；点击切换覆盖的启用状态。</p>
+        <p>没有覆盖的格子不提供 ×，避免误删全局；想让该应用里此键无动作，先保存一条覆盖再禁用。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= D · 实现要点 ================= -->
+  <section class="panel">
+    <div class="panel-label">D · 实现要点（与现有架构对齐）</div>
+    <div class="impl">
+      <div class="impl-card card">
+        <h4>数据层</h4>
+        <ul>
+          <li><code>KeyBinding</code> 新增 <code>enabled: bool</code>（serde 默认 true，旧配置自动兼容）；禁用只改标志，动作不丢。</li>
+          <li>旧配置里的「其他 → 禁用」动作（<code>ActionKind::Disabled</code>）迁移为未绑定（它本来就不执行动作）。</li>
+          <li>空列表 = 真的没有绑定；前端修复「空列表回退默认映射」的旧逻辑。</li>
+        </ul>
+      </div>
+      <div class="impl-card card">
+        <h4>命令与调度</h4>
+        <ul>
+          <li><code>clear_mapping_binding(button, trigger)</code>：× 删除；应用档案复用 <code>clear_profile_binding</code>。</li>
+          <li><code>set_mapping_binding_enabled(button, trigger, enabled)</code>：点击切换；写盘 + <code>dispatcher.update_mapping()</code> 热更新。</li>
+          <li>调度器：只有 <code>enabled</code> 的绑定参与动作执行与手势判定；禁用条目视同未绑定。</li>
+          <li>单格删除给 toast + 撤销；所有点击热更新即时生效，无需重启。</li>
+          <li>前端 CSS：<code>.cell:hover .x</code> / <code>.cell.selected .x</code> 才显示 ×；启用文字用微绿 token，禁用用红色填充。</li>
+        </ul>
+      </div>
+    </div>
+    <p class="footer-note">MVP 范围：全局作用域先落地（悬停/选中出现 ×、点击禁用/启用、启用文字微绿、toast 撤销、空列表修复）；应用档案作用域复用现有覆盖命令，第二步补齐「覆盖层禁用」。<b>本设计稿只描述交互，尚未实现。</b></p>
+  </section>
+
+</div>
+</body>
+</html>

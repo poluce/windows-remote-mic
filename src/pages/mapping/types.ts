@@ -4,6 +4,8 @@ export type MappingEntry = {
   trigger: string;
   action: string;
   action_key: string;
+  /** 是否启用；禁用时映射表显示红色，但动作与记录都保留。 */
+  enabled: boolean;
 };
 
 export type RemoteButton = {

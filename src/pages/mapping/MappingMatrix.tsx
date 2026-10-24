@@ -7,10 +7,16 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  * 为什么不是平铺列表：列表只列得出「已经配了什么」，看不出「哪些还没绑」。
  * 矩阵把全部格子摊开，空格显示 `—`。
  *
- * 三种底色各有含义：**蓝底＝被当前这份配置覆盖过**，深色＝沿用全局，
- * 灰 `—` ＝ 未绑定。颜色是相对信息（「和全局不同」），光靠它猜不出来，
- * 所以蓝底那句说明由调用方通过 `hint` 传进来——只在应用作用域才有意义，
- * 全局作用域下整句不出现。
+ * 格子状态：
+ * - **已绑定（启用）**：文字微绿；悬停 / 选中时右上角出现红色 ×；
+ * - **已禁用**：红色填充（动作保留，点格子恢复）；
+ * - **未绑定**：`—`，点击选中后在左侧选动作保存；
+ * - **应用档案覆盖**：蓝底（沿用全局的格子不带蓝底）。
+ *
+ * 交互（仅全局作用域开启，`interactive`）：
+ * - 点击已绑定格 = 切换禁用 / 启用，并把它设为编辑目标；
+ * - 点击空格 = 只选中，不切换状态；
+ * - 点右上角 × = 取消关联（删除绑定，`onClear`）。
  */
 export function MappingMatrix({
   title,
@@ -20,7 +26,10 @@ export function MappingMatrix({
   global,
   override,
   selected,
+  interactive = false,
   onSelect,
+  onCellClick,
+  onClear,
 }: {
   title: string;
   hint?: string;
@@ -29,7 +38,13 @@ export function MappingMatrix({
   global: Map<string, MappingEntry>;
   override: Map<string, MappingEntry>;
   selected: { button: string; trigger: string };
+  /** 全局作用域开启矩阵直接操作；应用档案作用域保持「点击选中」。 */
+  interactive?: boolean;
   onSelect: (button: string, trigger: string) => void;
+  /** 点击格子：bound 表示这一格当前有没有绑定。 */
+  onCellClick?: (button: string, trigger: string, bound: boolean) => void;
+  /** 点击右上角 ×：取消关联。 */
+  onClear?: (button: string, trigger: string) => void;
 }) {
   // 麦克风是 PTT 键，只有按下 / 松开，塞进三个触发列会误导。
   // 后端也不允许任何应用配置覆盖它（语音是全局语义），所以它永远读全局。
@@ -77,37 +92,84 @@ export function MappingMatrix({
                 const key = cellKey(button.key, t.key);
                 const own = override.get(key);
                 const entry = own ?? global.get(key);
+                const enabled = entry?.enabled !== false;
                 const isSelected =
                   selected.button === button.key && selected.trigger === t.key;
                 const cls = [
                   "matrix-cell",
-                  own ? "own" : entry ? "on" : "",
+                  entry ? (enabled ? "on" : "off") : "empty",
+                  own ? "own" : "",
                   isSelected ? "sel" : "",
                 ]
                   .filter(Boolean)
                   .join(" ");
+
+                const title = entry
+                  ? `${own ? "这份配置改过：" : "沿用全局："}${entry.action}${
+                      enabled ? "（点击禁用）" : "（已禁用，点击恢复）"
+                    }`
+                  : "未绑定（点击选中，再选动作保存）";
 
                 return (
                   <span
                     key={t.key}
                     className={cls}
                     data-cell={key}
-                    title={
-                      own
-                        ? `这份配置改过：${own.action}`
-                        : entry
-                          ? `沿用全局：${entry.action}`
-                          : "未绑定"
-                    }
-                    onClick={() => onSelect(button.key, t.key)}
+                    title={title}
+                    onClick={() => {
+                      if (interactive && onCellClick) {
+                        onCellClick(button.key, t.key, Boolean(entry));
+                      } else {
+                        onSelect(button.key, t.key);
+                      }
+                    }}
                   >
-                    {entry?.action || "—"}
+                    <span className="matrix-cell-content">
+                      <span className="matrix-cell-label">
+                        {entry?.action || "—"}
+                      </span>
+                    </span>
+                    {interactive && entry && (
+                      <button
+                        type="button"
+                        className="matrix-cell-x"
+                        title={`取消关联：${entry.action}`}
+                        aria-label={`取消关联 ${button.name} · ${t.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClear?.(button.key, t.key);
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 );
               })}
             </div>
           );
         })}
+      </div>
+
+      <div className="matrix-legend">
+        <span className="lg">
+          <i className="sw on" />
+          已绑定（文字微绿）
+        </span>
+        <span className="lg">
+          <i className="sw off" />
+          已禁用（点击恢复）
+        </span>
+        <span className="lg">
+          <i className="sw empty" />
+          未绑定
+        </span>
+        {interactive && (
+          <span className="lg">
+            <i className="sw x">×</i>
+            取消关联（悬停 / 选中显示）
+          </span>
+        )}
       </div>
     </>
   );

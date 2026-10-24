@@ -145,6 +145,33 @@ pub enum ActionKind {
     ToggleQuickMenu,
 }
 
+/// 动作的「按下语义」：决定一次物理按下该怎样变成动作。
+///
+/// 手势判定（单击 / 双击 / 长按）适合「一个动作对应一次点击」的按键，
+/// 但步进类和开关类动作必须**按一次执行一次**：如果也套双击窗口，
+/// 快速连按会被合并成「双击」（多数按键没有双击绑定）而**静默丢失**——
+/// 实测音量键快速连按时大量按键无反应，根因就在这。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PressSemantics {
+    /// 正常手势：单击要等双击窗口确认，双击/长按按绑定执行。
+    Gesture,
+    /// 按下立即执行一次，不参与双击/长按判定，也不连发（如静音、播放暂停）。
+    Instant,
+    /// 按下立即执行一次，按住超过长按阈值后按系统习惯连发（如系统音量 ±）。
+    Repeat,
+}
+
+impl ActionKind {
+    /// 该动作应该怎样响应一次物理按下。
+    pub fn press_semantics(&self) -> PressSemantics {
+        match self {
+            ActionKind::SystemVolumeUp | ActionKind::SystemVolumeDown => PressSemantics::Repeat,
+            ActionKind::SystemVolumeMute | ActionKind::PlayPause => PressSemantics::Instant,
+            _ => PressSemantics::Gesture,
+        }
+    }
+}
+
 /// 语音识别目标：麦克风键的 Voice 动作唤起哪一家的语音输入。
 ///
 /// 这是**系统级偏好**（在连接页「识别方案」里选），与按键映射解耦：

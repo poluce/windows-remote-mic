@@ -47,6 +47,8 @@
   --rm-ok: #2f8450;
   --rm-ok-fill: #45a866;
   --rm-ok-soft: rgba(47, 132, 80, 0.18);
+  /* 启用状态文字用的「微绿」：比 --rm-ok 更淡，避免整张表跳 */
+  --rm-ok-text: #3f7d5c;
 
   --rm-warn: #9a6c1e;
   --rm-warn-fill: #d4a63c;
@@ -281,6 +283,7 @@
   --rm-ok: #6cc48a;
   --rm-ok-fill: #3f9c62;
   --rm-ok-soft: rgba(63, 156, 98, 0.2);
+  --rm-ok-text: #7fc79a;
   --rm-warn: #dfb25e;
   --rm-warn-fill: #c08a2a;
   --rm-warn-soft: rgba(192, 138, 42, 0.2);

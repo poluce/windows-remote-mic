@@ -41,7 +41,7 @@ export function SettingsPage() {
   const [eatEnabled, setEatEnabled] = useState<boolean | null>(null);
   const [eatBusy, setEatBusy] = useState(false);
   const [longPressMs, setLongPressMs] = useState(550);
-  const [doubleClickMs, setDoubleClickMs] = useState(300);
+  const [doubleClickMs, setDoubleClickMs] = useState(250);
   const [msg, setMsg] = useState("");
   const { tapStatus } = useRuntimeStatus();
   const themePref = useThemePref();
@@ -250,7 +250,9 @@ export function SettingsPage() {
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">双击间隔</div>
-            <p className="hint">两次按下间隔多短算双击。</p>
+            <p className="hint">
+              两次按下间隔多短算双击。只有绑定了双击的按键才会等这个窗口；没绑双击的键，单击松开立即生效。
+            </p>
           </div>
           <select
             className="select timing-select"
@@ -259,6 +261,7 @@ export function SettingsPage() {
             onChange={(e) => saveTiming(longPressMs, Number(e.target.value))}
           >
             <option value={200}>0.2 秒</option>
+            <option value={250}>0.25 秒</option>
             <option value={300}>0.3 秒</option>
             <option value={400}>0.4 秒</option>
             <option value={500}>0.5 秒</option>

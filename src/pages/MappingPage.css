@@ -360,6 +360,7 @@
 
 .matrix {
   border-top: 1px solid var(--border);
+  overflow-x: hidden;
 }
 
 .matrix-row {
@@ -395,20 +396,88 @@
 }
 
 .matrix-cell {
+  position: relative;
   display: flex;
   align-items: center;
+  gap: 4px;
   border-left: 1px solid var(--border);
-  padding: 4px 8px;
+  /* 右侧留给右上角的 ×，避免文字压到角标下面 */
+  padding: 4px 28px 4px 8px;
   font-size: 11.5px;
   color: var(--text-3);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
 }
 
-/* 有绑定，但这一格是沿用全局的 */
+/* 动作文字 + × 的共同容器：宽度跟随内容，× 不会飘到整列最右边 */
+.matrix-cell-content {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* 文字自己负责省略，格子要留出右上角 × 的位置 */
+.matrix-cell-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 有绑定（启用）：文字微绿 */
 .matrix-cell.on {
-  color: var(--text);
+  color: var(--rm-ok-text);
+  font-weight: 600;
+}
+
+/* 已禁用：红色填充，点一下恢复 */
+.matrix-cell.off {
+  background: var(--rm-err-soft);
+  color: var(--rm-err);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--rm-err-line);
+}
+
+/* 未绑定 */
+.matrix-cell.empty {
+  color: var(--rm-text-4);
+}
+
+/* 右上角红色圆圈 ×：只在悬停 / 选中时出现 */
+.matrix-cell-x {
+  position: absolute;
+  /* 整格内侧右上角 */
+  top: 4px;
+  right: 5px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid var(--rm-solid);
+  border-radius: 50%;
+  background: var(--rm-err-fill);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(180, 51, 40, 0.35);
+}
+
+.matrix-cell:hover .matrix-cell-x,
+.matrix-cell.sel .matrix-cell-x {
+  display: inline-flex;
+}
+
+.matrix-cell-x:hover {
+  background: var(--rm-err);
 }
 
 /* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
@@ -550,6 +619,7 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 行分摊剩余高度；每行仍有 min-height，窗口太矮时不会把字压扁，
@@ -601,4 +671,110 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+
+/* ---------- 映射矩阵图例 ---------- */
+.matrix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--rm-text-3);
+}
+
+.matrix-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.matrix-legend .sw {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1px solid var(--rm-line);
+  background: var(--rm-solid);
+}
+
+.matrix-legend .sw.on {
+  background: var(--rm-ok-soft);
+  border-color: var(--rm-ok);
+}
+
+.matrix-legend .sw.off {
+  background: var(--rm-err-soft);
+  border-color: var(--rm-err-line);
+}
+
+.matrix-legend .sw.empty {
+  background: transparent;
+  border-style: dashed;
+}
+
+.matrix-legend .sw.x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--rm-err-fill);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ---------- 映射表操作 toast（删除后带撤销） ---------- */
+.mapping-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 11px 14px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-r-md);
+  background: var(--rm-glass-opaque);
+  box-shadow: var(--rm-sh-2);
+  font-size: 12.5px;
+  color: var(--rm-text-2);
+}
+
+.mapping-toast-msg {
+  min-width: 0;
+}
+
+.mapping-toast-undo {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  color: var(--rm-accent-strong);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mapping-toast-undo:hover {
+  text-decoration: underline;
+}
+
+.mapping-toast-close {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  color: var(--rm-text-4);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mapping-toast-close:hover {
+  color: var(--rm-text-2);
 }

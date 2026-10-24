@@ -36,10 +36,16 @@ use std::time::{Duration, Instant};
 use core_app_profile::{AppProfile, ProfileRegistry};
 use core_config::KeyCalibration;
 use core_mapping::trigger::{FeedOutcome, TriggerDetector};
-use core_mapping::{ActionKind, ButtonId, MappingConfig, Trigger, VoiceTarget};
+use core_mapping::{ActionKind, ButtonId, MappingConfig, PressSemantics, Trigger, VoiceTarget};
 
 /// tick 线程轮询间隔。
 const TICK_INTERVAL_MS: u64 = 25;
+
+/// 步进类动作（系统音量 ±）按住时的连发间隔（毫秒）。
+///
+/// 首次连发在长按阈值之后触发，之后按固定间隔重复；节奏接近 Windows
+/// 键盘音量键的自动重复。
+const REPEAT_STEP_INTERVAL_MS: u64 = 120;
 
 /// 自定义快捷键单次按住的兜底上限（毫秒）。
 ///
@@ -53,11 +59,32 @@ const TICK_INTERVAL_MS: u64 = 25;
 const DEFAULT_MAX_COMBO_HOLD_MS: u64 = 10_000;
 const DEFAULT_MAX_MIC_HOLD_MS: u64 = 180_000;
 
+/// 本次按下的处理方式（由动作语义决定，见 [`PressSemantics`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PressMode {
+    /// 正常手势（单击/双击/长按）。
+    #[default]
+    Gesture,
+    /// 按下即执行一次，不参与手势判定，也不连发（静音、播放暂停）。
+    Instant,
+    /// 按下即执行，按住由 tick 连发（系统音量 ±）。
+    Repeat,
+}
+
 /// 单个按键的运行时状态。
 #[derive(Default)]
 struct ButtonRuntime {
     detector: TriggerDetector,
     down: bool,
+    /// 本次按下的处理方式。步进/开关类动作不走手势判定。
+    press_mode: PressMode,
+    /// 连发模式下下一次执行的时刻（毫秒，调度器时间轴）。
+    next_repeat_at: u64,
+    /// 本次按下是否启用「简单单击」：该键没有双击绑定，松开即确认单击，
+    /// 不需要等双击窗口。手势判定仍保留给显式绑定了双击的按键。
+    simple_single: bool,
+    /// 简单单击模式下该键是否绑定了长按动作（用于长按阈值判定）。
+    simple_has_long: bool,
     /// 本次按住期间是否已触发过长按。
     long_executed: bool,
     /// 自定义快捷键已在物理按下时按住，松开时必须配对松开。
@@ -474,6 +501,10 @@ impl KeyDispatcher {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         for rt in inner.buttons.values_mut() {
             rt.down = false;
+            rt.press_mode = PressMode::Gesture;
+            rt.next_repeat_at = 0;
+            rt.simple_single = false;
+            rt.simple_has_long = false;
             rt.long_executed = false;
             rt.combo_held = false;
             rt.held_tokens = None;
@@ -505,6 +536,10 @@ impl KeyDispatcher {
                     });
                 }
                 rt.down = false;
+                rt.press_mode = PressMode::Gesture;
+                rt.next_repeat_at = 0;
+                rt.simple_single = false;
+                rt.simple_has_long = false;
                 rt.long_executed = false;
                 rt.combo_held = false;
                 rt.hold_started_ms = None;
@@ -570,7 +605,42 @@ impl KeyDispatcher {
             rt.combo_held = false;
             rt.held_tokens = None;
             rt.hold_started_ms = Some(now);
-            rt.detector.press(now);
+            rt.press_mode = PressMode::Gesture;
+            rt.next_repeat_at = 0;
+            // 步进/开关类动作：按下立即执行一次，不进入单击/双击/长按判定。
+            // 但如果用户显式给这个键绑了双击、或绑了不同动作的长按，必须让位给
+            // 手势判定——不能把用户配置的双击/长按吞掉。
+            let semantics = effective_press_semantics(mapping, profile, button);
+            if semantics != PressSemantics::Gesture {
+                if let Some(job) = build_job(mapping, profile, button, Trigger::SingleClick, rt) {
+                    match semantics {
+                        PressSemantics::Repeat => {
+                            rt.press_mode = PressMode::Repeat;
+                            rt.next_repeat_at = now + rt.detector.long_press_ms();
+                            jobs.push(job);
+                            return jobs;
+                        }
+                        PressSemantics::Instant => {
+                            rt.press_mode = PressMode::Instant;
+                            jobs.push(job);
+                            return jobs;
+                        }
+                        PressSemantics::Gesture => {}
+                    }
+                }
+            }
+            // 没有双击绑定的按键不需要等双击窗口：松开即确认单击。
+            // 有双击绑定才进入手势判定（单击延迟确认、双击不丢）。
+            let has_single =
+                resolve_action(mapping, profile, button, Trigger::SingleClick).is_some();
+            let has_double =
+                resolve_action(mapping, profile, button, Trigger::DoubleClick).is_some();
+            rt.simple_single = has_single && !has_double;
+            rt.simple_has_long =
+                resolve_action(mapping, profile, button, Trigger::LongPress).is_some();
+            if !rt.simple_single {
+                rt.detector.press(now);
+            }
             // 自定义快捷键按住说话：物理按下立即按住，不等长按阈值
             // （豆包等 IME 要的是键盘那种「一按住就生效」）。
             // Voice（Win+H）仍等 tick 识别长按后再发，避免点按误开语音条。
@@ -587,8 +657,42 @@ impl KeyDispatcher {
                 // 没有对应按下的释放（被抑制的回声），直接忽略
                 return jobs;
             }
+            let held_ms = rt
+                .hold_started_ms
+                .map(|started| now.saturating_sub(started))
+                .unwrap_or(0);
             rt.down = false;
             rt.hold_started_ms = None;
+            if rt.press_mode != PressMode::Gesture {
+                // 步进/开关类动作：松手即结束，没有延迟确认的手势事件。
+                rt.press_mode = PressMode::Gesture;
+                rt.next_repeat_at = 0;
+                return jobs;
+            }
+            if rt.simple_single {
+                // 没有双击绑定：松开即确认单击；长按动作仍按阈值生效。
+                let has_long = rt.simple_has_long;
+                rt.simple_single = false;
+                rt.simple_has_long = false;
+                if rt.combo_held {
+                    rt.combo_held = false;
+                    if let Some(job) = release_job(mapping, profile, button, rt) {
+                        jobs.push(job);
+                    }
+                } else if has_long && rt.long_executed {
+                    // 长按已在 tick 触发，松开不再补单击。
+                } else if has_long && held_ms >= rt.detector.long_press_ms() {
+                    // tick 漏掉时的长按兜底。
+                    if let Some(job) = build_job(mapping, profile, button, Trigger::LongPress, rt) {
+                        jobs.push(job);
+                    }
+                } else if let Some(job) =
+                    build_job(mapping, profile, button, Trigger::SingleClick, rt)
+                {
+                    jobs.push(job);
+                }
+                return jobs;
+            }
             // 先让检测器确认本次按住是否达到长按阈值（tick 漏掉时兜底）。
             let outcome = rt.detector.release(now);
             if rt.combo_held {
@@ -628,6 +732,37 @@ impl KeyDispatcher {
         } = &mut *inner;
         let profile = profile.as_ref();
         for (button, rt) in buttons.iter_mut() {
+            // 步进/开关类动作不走手势判定：步进类按住连发，开关类不做任何 tick。
+            match rt.press_mode {
+                PressMode::Repeat => {
+                    // 映射可能被热更新：中途加了双击/不同动作的长按绑定就退回手势，
+                    // 保证用户的显式配置立即优先。
+                    if effective_press_semantics(mapping, profile, *button)
+                        != PressSemantics::Repeat
+                    {
+                        rt.press_mode = PressMode::Gesture;
+                        continue;
+                    }
+                    if rt.down && now >= rt.next_repeat_at {
+                        if let Some(job) =
+                            build_job(mapping, profile, *button, Trigger::SingleClick, rt)
+                        {
+                            jobs.push(job);
+                            rt.next_repeat_at = now + REPEAT_STEP_INTERVAL_MS;
+                        } else {
+                            rt.press_mode = PressMode::Gesture;
+                        }
+                    }
+                    continue;
+                }
+                PressMode::Instant => {
+                    if !rt.down {
+                        rt.press_mode = PressMode::Gesture;
+                    }
+                    continue;
+                }
+                PressMode::Gesture => {}
+            }
             // 兜底：自定义快捷键按住远超任何合理时长，说明松开事件丢了
             // （BLE 断链等）。强制松开，避免修饰键一直卡在系统里。
             // 麦克风按键承载语音输入（如豆包等输入法），正常由硬件 AudioStopped 释放，
@@ -656,6 +791,23 @@ impl KeyDispatcher {
                         }
                     }
                 }
+            }
+            if rt.simple_single {
+                // 没有双击绑定：单击已在松开时确认，这里只负责长按动作。
+                if rt.down && rt.simple_has_long && !rt.long_executed {
+                    if let Some(started) = rt.hold_started_ms {
+                        if now.saturating_sub(started) >= rt.detector.long_press_ms() {
+                            // 先构建任务再置 long_executed：build_job 的长按门控
+                            // 会检查这个标志，提前置位会把任务吞掉。
+                            let job = build_job(mapping, profile, *button, Trigger::LongPress, rt);
+                            rt.long_executed = true;
+                            if let Some(job) = job {
+                                jobs.push(job);
+                            }
+                        }
+                    }
+                }
+                continue;
             }
             let was_long = rt.detector.is_long_held();
             let outcome = rt.detector.tick(now);
@@ -731,28 +883,64 @@ fn release_job(
     build_job(mapping, profile, button, Trigger::Release, rt)
 }
 
-/// 解析 (按键, 触发) 对应的动作：**应用配置优先，未覆盖时回落到全局映射**。
+/// 解析 (按键, 触发) 对应的**可执行**动作：应用配置优先，未覆盖时回落到全局映射。
+///
+/// 禁用（`enabled: false`）或旧的 `Disabled` 动作一律视为「没有动作」——
+/// 与未绑定完全一致：不触发，也不参与单击/双击/长按的手势判定。
 fn resolve_action(
     mapping: &MappingConfig,
     profile: Option<&AppProfile>,
     button: ButtonId,
     trigger: Trigger,
 ) -> Option<ActionKind> {
-    if let Some(action) = profile_override(profile, button, trigger) {
-        return Some(action);
+    let binding =
+        profile_binding(profile, button, trigger).or_else(|| mapping.binding(button, trigger))?;
+    if !binding.enabled || binding.action == ActionKind::Disabled {
+        return None;
     }
-    mapping.resolve(button, trigger).cloned()
+    Some(binding.action.clone())
 }
 
-/// 应用配置里对该 (按键, 触发) 的覆盖项。
+/// 当前配置下，这个按键应该使用哪种「按下语义」。
+///
+/// 步进/开关类动作（音量 ±、静音、播放暂停）默认走即时/连发语义；但只要用户
+/// **显式**给该键绑定了双击、或绑定了**不同动作**的长按，就必须退回到手势判定，
+/// 否则用户配置的双击/长按会被吞掉。长按与单击绑定同一个动作视为冗余
+/// （常见的「长按也是音量+」写法），仍然允许连发。
+fn effective_press_semantics(
+    mapping: &MappingConfig,
+    profile: Option<&AppProfile>,
+    button: ButtonId,
+) -> PressSemantics {
+    let Some(action) = resolve_action(mapping, profile, button, Trigger::SingleClick) else {
+        return PressSemantics::Gesture;
+    };
+    let semantics = action.press_semantics();
+    if semantics == PressSemantics::Gesture {
+        return PressSemantics::Gesture;
+    }
+    // 显式双击绑定：必须保留双击判定（单击会被延迟确认）。
+    if resolve_action(mapping, profile, button, Trigger::DoubleClick).is_some() {
+        return PressSemantics::Gesture;
+    }
+    // 长按绑定不同动作：保留长按判定；同一动作视为冗余，继续连发。
+    if let Some(long_action) = resolve_action(mapping, profile, button, Trigger::LongPress) {
+        if long_action != action {
+            return PressSemantics::Gesture;
+        }
+    }
+    semantics
+}
+
+/// 应用配置里对该 (按键, 触发) 的原始覆盖项（含 `enabled`）。
 ///
 /// 约定：**不覆盖 `Mic`**。语音 / 按住说话是全局长按语义、与具体应用无关，
 /// 让某份配置改掉它只会让该应用里的语音静默失效。
-fn profile_override(
+fn profile_binding(
     profile: Option<&AppProfile>,
     button: ButtonId,
     trigger: Trigger,
-) -> Option<ActionKind> {
+) -> Option<&core_mapping::KeyBinding> {
     if button == ButtonId::Mic {
         return None;
     }
@@ -760,7 +948,6 @@ fn profile_override(
         .bindings
         .iter()
         .find(|b| b.button == button && b.trigger == trigger)
-        .map(|b| b.action.clone())
 }
 
 /// 取当前前台应用命中的配置；没有加载任何配置时不查前台窗口。

@@ -79,7 +79,7 @@ fn default_long_press_ms() -> u64 {
 }
 
 fn default_double_click_ms() -> u64 {
-    300
+    250
 }
 
 impl Default for Config {
@@ -90,7 +90,7 @@ impl Default for Config {
             key_calibrations: std::collections::HashMap::new(),
             hid_tap_eat: true,
             long_press_ms: 550,
-            double_click_ms: 300,
+            double_click_ms: 250,
             voice_target: VoiceTarget::default(),
             shortcuts: Vec::new(),
             last_update_check_at: 0,

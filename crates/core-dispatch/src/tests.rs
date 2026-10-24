@@ -22,6 +22,7 @@ fn binding(button: ButtonId, trigger: Trigger, action: ActionKind) -> core_mappi
         button,
         trigger,
         action,
+        enabled: true,
     }
 }
 
@@ -76,11 +77,83 @@ fn calibration_overrides_vkey() {
 }
 
 #[test]
-fn single_click_confirmed_after_double_click_window() {
+fn single_click_fires_immediately_without_double_click_binding() {
     let d = dispatcher();
     assert!(jobs_of(&d, 38, true, 0).is_empty());
-    assert!(jobs_of(&d, 38, false, 50).is_empty());
+    // 默认映射没有双击绑定：松开立即确认单击，不再等双击窗口。
+    let jobs = jobs_of(&d, 38, false, 50);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+    assert!(d.tick_once(400).is_empty(), "单击已确认，不应再延迟触发");
+}
+
+#[test]
+fn double_click_binding_keeps_single_click_delayed() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            binding(ButtonId::Up, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    assert!(
+        jobs_of(&d, 38, false, 50).is_empty(),
+        "有双击绑定时单击必须等窗口确认"
+    );
     let jobs = d.tick_once(400);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+}
+
+#[test]
+fn rapid_presses_all_fire_without_double_click_binding() {
+    let d = dispatcher();
+    let mut fired = Vec::new();
+    for i in 0..4u64 {
+        let at = i * 150; // 150ms 间隔，远小于双击窗口
+        fired.extend(jobs_of(&d, 38, true, at));
+        fired.extend(jobs_of(&d, 38, false, at + 60));
+    }
+    assert_eq!(fired.len(), 4, "没有双击绑定时快速连按应全部生效");
+    assert!(fired
+        .iter()
+        .all(|j| j.trigger == Trigger::SingleClick && j.action == ActionKind::ArrowUp));
+}
+
+#[test]
+fn single_click_with_long_binding_is_immediate_and_long_press_fires() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            binding(ButtonId::Up, Trigger::LongPress, ActionKind::Return),
+        ],
+    });
+    // 短按：松开立即单击。
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    let jobs = jobs_of(&d, 38, false, 100);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    // 长按：阈值时触发长按，松开不再补单击。
+    assert!(jobs_of(&d, 38, true, 200).is_empty());
+    let jobs = d.tick_once(800);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::LongPress);
+    assert_eq!(jobs[0].action, ActionKind::Return);
+    assert!(jobs_of(&d, 38, false, 900).is_empty());
+}
+
+#[test]
+fn hold_without_long_binding_fires_single_on_release() {
+    let d = dispatcher();
+    // 只有单击绑定：按住超过长按阈值也不该产生任何动作，
+    // 松开时按单击处理（以前会被 LongPress 判定吞掉）。
+    jobs_of(&d, 38, true, 0);
+    assert!(d.tick_once(600).is_empty(), "没有长按绑定不应触发动作");
+    let jobs = jobs_of(&d, 38, false, 700);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].trigger, Trigger::SingleClick);
     assert_eq!(jobs[0].action, ActionKind::ArrowUp);
@@ -94,6 +167,7 @@ fn double_click_fires_on_second_release() {
             button: ButtonId::Up,
             trigger: Trigger::DoubleClick,
             action: ActionKind::Return,
+            enabled: true,
         }],
     });
     jobs_of(&d, 38, true, 0);
@@ -111,11 +185,10 @@ fn key_repeat_press_is_ignored() {
     assert!(jobs_of(&d, 38, true, 0).is_empty());
     // 按住期间系统重复的按下事件不应重置触发状态
     assert!(jobs_of(&d, 38, true, 100).is_empty());
-    assert!(
-        jobs_of(&d, 38, false, 150).is_empty(),
-        "正常松开产生待确认单击"
-    );
-    let _ = d.tick_once(500);
+    let jobs = jobs_of(&d, 38, false, 150);
+    assert_eq!(jobs.len(), 1, "松开立即确认单击");
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert!(d.tick_once(500).is_empty());
 }
 
 #[test]
@@ -124,9 +197,8 @@ fn spurious_release_is_ignored() {
     // 没有按下的释放（回声）不应进入触发状态机
     assert!(jobs_of(&d, 38, false, 0).is_empty());
     assert!(jobs_of(&d, 38, true, 100).is_empty());
-    jobs_of(&d, 38, false, 150);
-    // 释放时 held=50ms，单击在双击窗口后确认
-    let jobs = d.tick_once(500);
+    // 松开立即确认单击（默认映射没有双击绑定）
+    let jobs = jobs_of(&d, 38, false, 150);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].trigger, Trigger::SingleClick);
 }
@@ -139,6 +211,7 @@ fn long_press_fires_on_hold_and_release_does_not_double_fire() {
             button: ButtonId::Back,
             trigger: Trigger::LongPress,
             action: ActionKind::OpenApp("notepad".into()),
+            enabled: true,
         }],
     });
     jobs_of(&d, 166, true, 0);
@@ -159,12 +232,95 @@ fn long_press_fires_only_once() {
             button: ButtonId::VolumeUp,
             trigger: Trigger::LongPress,
             action: ActionKind::SystemVolumeUp,
+            enabled: true,
         }],
     });
     jobs_of(&d, 175, true, 0);
     assert_eq!(d.tick_once(600).len(), 1, "按住超过阈值触发一次");
     assert!(d.tick_once(750).is_empty(), "继续按住不再重复");
     assert!(jobs_of(&d, 175, false, 800).is_empty(), "松开确认不重复");
+}
+
+#[test]
+fn volume_double_click_binding_is_not_swallowed() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(ButtonId::VolumeUp, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    // 用户显式绑定了双击：必须退回手势判定，不能按下即执行。
+    assert!(
+        jobs_of(&d, 175, true, 0).is_empty(),
+        "有双击绑定时不能跳过手势"
+    );
+    assert!(jobs_of(&d, 175, false, 50).is_empty());
+    assert!(jobs_of(&d, 175, true, 100).is_empty());
+    let jobs = jobs_of(&d, 175, false, 150);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::DoubleClick);
+    assert_eq!(jobs[0].action, ActionKind::Return, "用户配置的双击必须生效");
+}
+
+#[test]
+fn volume_long_press_with_different_action_falls_back_to_gesture() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::LongPress,
+                ActionKind::SystemVolumeMute,
+            ),
+        ],
+    });
+    assert!(
+        jobs_of(&d, 175, true, 0).is_empty(),
+        "长按绑了别的动作 → 不能按下即执行"
+    );
+    let jobs = d.tick_once(600);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::LongPress);
+    assert_eq!(jobs[0].action, ActionKind::SystemVolumeMute);
+    assert!(jobs_of(&d, 175, false, 800).is_empty());
+}
+
+#[test]
+fn volume_long_press_with_same_action_keeps_repeat() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::LongPress,
+                ActionKind::SystemVolumeUp,
+            ),
+        ],
+    });
+    // 「长按也是音量+」属于冗余配置，应继续按下即执行 + 按住连发。
+    assert_eq!(jobs_of(&d, 175, true, 0).len(), 1);
+    let mut repeats = Vec::new();
+    for at in (575u64..=1000).step_by(125) {
+        repeats.extend(d.tick_once(at));
+    }
+    assert!(repeats.len() >= 2, "同动作长按绑定不应阻止连发");
+    assert!(jobs_of(&d, 175, false, 1050).is_empty());
+    assert!(d.tick_once(1500).is_empty());
 }
 
 #[test]
@@ -175,6 +331,7 @@ fn disabled_action_produces_no_job() {
             button: ButtonId::Up,
             trigger: Trigger::SingleClick,
             action: ActionKind::Disabled,
+            enabled: true,
         }],
     });
     jobs_of(&d, 38, true, 0);
@@ -203,12 +360,56 @@ fn update_mapping_takes_effect_immediately() {
             button: ButtonId::VolumeUp,
             trigger: Trigger::SingleClick,
             action: ActionKind::SystemVolumeMute,
+            enabled: true,
         }],
     });
-    jobs_of(&d, 175, true, 0);
-    jobs_of(&d, 175, false, 50);
-    let jobs = d.tick_once(400);
+    // 静音属于开关类动作：按下即执行，不再等待双击窗口。
+    let jobs = jobs_of(&d, 175, true, 0);
+    assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].action, ActionKind::SystemVolumeMute);
+    assert!(jobs_of(&d, 175, false, 50).is_empty());
+    assert!(d.tick_once(400).is_empty());
+}
+
+#[test]
+fn volume_action_fires_on_every_press_without_double_click_merge() {
+    let d = dispatcher(); // 默认映射：音量+ 单击 -> SystemVolumeUp
+    let mut fired = Vec::new();
+    for i in 0..4u64 {
+        let at = i * 200; // 200ms 间隔，落在 300ms 双击窗口内
+        let jobs = jobs_of(&d, 175, true, at);
+        assert_eq!(jobs.len(), 1, "第 {} 次按下应立即执行一格音量", i + 1);
+        fired.extend(jobs);
+        assert!(jobs_of(&d, 175, false, at + 80).is_empty());
+    }
+    assert_eq!(fired.len(), 4, "快速连按不能被合并成双击吞掉");
+    assert!(fired
+        .iter()
+        .all(|j| j.action == ActionKind::SystemVolumeUp && j.trigger == Trigger::SingleClick));
+}
+
+#[test]
+fn volume_action_repeats_while_held_and_stops_on_release() {
+    let d = dispatcher();
+    assert_eq!(jobs_of(&d, 175, true, 0).len(), 1, "按下立即执行一次");
+    // 默认长按阈值 550ms 之前不连发（避免轻按也当成长按）。
+    let mut t = 25u64;
+    while t < 550 {
+        assert!(d.tick_once(t).is_empty(), "阈值前不应连发: t={t}");
+        t += 25;
+    }
+    // 阈值之后按固定间隔连发。
+    let mut repeats = Vec::new();
+    for at in (575u64..=1000).step_by(125) {
+        repeats.extend(d.tick_once(at));
+    }
+    assert!(repeats.len() >= 2, "按住应连发，实际 {} 次", repeats.len());
+    assert!(repeats
+        .iter()
+        .all(|j| j.action == ActionKind::SystemVolumeUp && j.trigger == Trigger::SingleClick));
+    // 松手立即停止，且在真的松开后不再有任何重复。
+    assert!(jobs_of(&d, 175, false, 1050).is_empty());
+    assert!(d.tick_once(1500).is_empty(), "松手后不应继续连发");
 }
 
 #[test]
@@ -249,11 +450,13 @@ fn mic_combo_ptt_holds_from_physical_down() {
                 button: ButtonId::Mic,
                 trigger: Trigger::Press,
                 action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                enabled: true,
             },
             core_mapping::KeyBinding {
                 button: ButtonId::Mic,
                 trigger: Trigger::Release,
                 action: ActionKind::KeyCombo(vec!["rctrl".into()]),
+                enabled: true,
             },
         ],
     });
@@ -569,11 +772,13 @@ fn voice_job_preserves_trigger_for_ptt_dispatch() {
                 button: ButtonId::Mic,
                 trigger: Trigger::Press,
                 action: ActionKind::Voice,
+                enabled: true,
             },
             core_mapping::KeyBinding {
                 button: ButtonId::Mic,
                 trigger: Trigger::Release,
                 action: ActionKind::Voice,
+                enabled: true,
             },
         ],
     });
@@ -644,11 +849,11 @@ fn quick_menu_mode_routes_keys_to_handler_and_skips_mapping() {
         d.tick_once(400).is_empty(),
         "菜单独占模式下不应产生普通映射任务"
     );
-    // 切回普通模式后恢复普通单击。
+    // 切回普通模式后恢复普通单击（没有双击绑定：松开立即生效）。
     d.set_input_mode(InputMode::Normal);
     d.on_vkey(38, true);
     d.on_vkey(38, false);
-    let jobs = d.tick_once(400);
+    let jobs = drain_jobs(&d);
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].action, ActionKind::ArrowUp);
 }
@@ -726,9 +931,9 @@ fn profile_never_overrides_mic() {
     }
 }
 
-/// 配置可以把某个按键在某个应用里禁用掉。
+/// 配置可以把某个按键在某个应用里禁用掉（旧的 Disabled 动作视同未绑定）。
 #[test]
-fn profile_can_disable_a_button() {
+fn profile_disabled_action_is_inactive() {
     let mapping = MappingConfig::default();
     let profile = profile_with(vec![binding(
         ButtonId::Home,
@@ -742,7 +947,8 @@ fn profile_can_disable_a_button() {
             ButtonId::Home,
             Trigger::SingleClick
         ),
-        Some(ActionKind::Disabled)
+        None,
+        "禁用动作不应产生可执行动作"
     );
 }
 
@@ -870,4 +1076,94 @@ fn foreground_profile_matches_real_foreground_title() {
 
     let hit = foreground_profile(&registry).expect("应能只靠标题命中");
     assert_eq!(hit.display_name(), "标题测试");
+}
+
+// ---- 禁用绑定：保留记录与动作，但行为等同未绑定 ----
+
+fn disabled_binding(
+    button: ButtonId,
+    trigger: Trigger,
+    action: ActionKind,
+) -> core_mapping::KeyBinding {
+    core_mapping::KeyBinding {
+        button,
+        trigger,
+        action,
+        enabled: false,
+    }
+}
+
+#[test]
+fn disabled_single_binding_does_nothing() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![disabled_binding(
+            ButtonId::VolumeUp,
+            Trigger::SingleClick,
+            ActionKind::SystemVolumeUp,
+        )],
+    });
+    assert!(jobs_of(&d, 175, true, 0).is_empty(), "禁用后按下不应执行");
+    assert!(
+        jobs_of(&d, 175, false, 60).is_empty(),
+        "禁用后松开也不应执行"
+    );
+    assert!(d.tick_once(500).is_empty(), "禁用后不应有连发");
+}
+
+#[test]
+fn disabled_double_binding_restores_immediate_single() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            disabled_binding(ButtonId::Up, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    // 双击被禁用 → 不再占用双击窗口，单击松开立即生效。
+    let jobs = jobs_of(&d, 38, false, 80);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+    assert_eq!(jobs[0].action, ActionKind::ArrowUp);
+}
+
+#[test]
+fn disabled_long_binding_does_not_fire_long_press() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(ButtonId::Up, Trigger::SingleClick, ActionKind::ArrowUp),
+            disabled_binding(ButtonId::Up, Trigger::LongPress, ActionKind::Return),
+        ],
+    });
+    assert!(jobs_of(&d, 38, true, 0).is_empty());
+    assert!(d.tick_once(800).is_empty(), "禁用的长按不应触发");
+    // 长按绑定被禁用 → 按住再松开按「未绑定长按」处理，补一次单击。
+    let jobs = jobs_of(&d, 38, false, 850);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::SingleClick);
+}
+
+#[test]
+fn disabled_double_binding_keeps_volume_repeat() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            disabled_binding(
+                ButtonId::VolumeUp,
+                Trigger::DoubleClick,
+                ActionKind::SystemVolumeMute,
+            ),
+        ],
+    });
+    // 双击禁用 → 音量仍按即时/连发语义，不退回手势判定。
+    let jobs = jobs_of(&d, 175, true, 0);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].action, ActionKind::SystemVolumeUp);
 }
