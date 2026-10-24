@@ -415,7 +415,8 @@
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  padding: 2px 14px 2px 8px;
+  /* 右侧留白 = × 直径（18px）+ 间距：避免绝对定位的 × 压住动作文字 */
+  padding: 2px 26px 2px 8px;
   border-radius: 6px;
 }
 
