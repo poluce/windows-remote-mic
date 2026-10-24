@@ -24,6 +24,11 @@
 - 关闭主窗口后应用不退出、驻留后台且任务栏看不到入口：主窗口收到关闭请求时显式退出应用
   （此前启动时创建的隐藏 `quick-menu` 窗口会让 Tauri 认为仍有窗口存在，事件循环不结束）；
   退出路径仍走 `RunEvent::Exit`，由那里兜底释放虚拟 HID 上可能残留的按住状态。
+- 修复「音量 + / 音量 − / 静音」映射动作无效果（日志显示已执行，但系统音量不变）：
+  这三个动作此前被注入虚拟 HID 键盘的 Keyboard 页 usage `0x7F/0x80/0x81`，而 Boot Keyboard
+  描述符只声明到 `0x65`，超出范围的 usage 会被 Windows HID 栈静默忽略；现改走已有的
+  Consumer Control 虚拟设备（Volume Increment / Decrement / Mute `0xE9/0xEA/0xE2`），
+  日志中可见「虚拟 HID 媒体键设备已就绪」与 `按住 volume_up report=[10]`。
 
 ## [0.7.3] - 2026-10-24
 

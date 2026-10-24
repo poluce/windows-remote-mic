@@ -1,8 +1,29 @@
-//! 虚拟 HID 诊断与环境探测单测。
+//! 虚拟 HID 单测（诊断 / 环境探测 / 按键路由）。
 
 use std::path::Path;
 
 use super::diag::*;
+
+/// 音量键必须被路由到 Consumer 设备：键盘页 usage 0x7F/0x80/0x81 超出
+/// Boot Keyboard 描述符声明的范围（0x00–0x65），走键盘报告会被系统忽略。
+#[test]
+fn volume_tokens_route_to_consumer_device() {
+    let (keyboard, media) = super::split_tokens(&["volume_up"]);
+    assert!(
+        keyboard.is_empty(),
+        "volume_up 不该进键盘设备：{keyboard:?}"
+    );
+    assert_eq!(media, vec!["volume_up"]);
+
+    let (keyboard, media) = super::split_tokens(&["volume_down", "volume_mute"]);
+    assert!(keyboard.is_empty(), "音量键不该进键盘设备：{keyboard:?}");
+    assert_eq!(media, vec!["volume_down", "volume_mute"]);
+
+    // 普通组合键与媒体键混排时各走各的设备。
+    let (keyboard, media) = super::split_tokens(&["lctrl", "c", "play_pause"]);
+    assert_eq!(keyboard, vec!["lctrl", "c"]);
+    assert_eq!(media, vec!["play_pause"]);
+}
 
 /// 断言不限环境相关的取值，只要求整条诊断链路能跑完（含注册表读取）并给出结论。
 /// 用 `--nocapture` 可看到本机的真实取值。
