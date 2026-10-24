@@ -450,7 +450,8 @@
 /* 右上角红色圆圈 ×：只在悬停 / 选中时出现 */
 .matrix-cell-x {
   position: absolute;
-  top: -1px;
+  /* 贴内容容器的右上角，而不是文字中间 */
+  top: -7px;
   right: 0;
   z-index: 2;
   display: none;
