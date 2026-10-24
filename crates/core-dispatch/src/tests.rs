@@ -168,6 +168,88 @@ fn long_press_fires_only_once() {
 }
 
 #[test]
+fn volume_double_click_binding_is_not_swallowed() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(ButtonId::VolumeUp, Trigger::DoubleClick, ActionKind::Return),
+        ],
+    });
+    // 用户显式绑定了双击：必须退回手势判定，不能按下即执行。
+    assert!(
+        jobs_of(&d, 175, true, 0).is_empty(),
+        "有双击绑定时不能跳过手势"
+    );
+    assert!(jobs_of(&d, 175, false, 50).is_empty());
+    assert!(jobs_of(&d, 175, true, 100).is_empty());
+    let jobs = jobs_of(&d, 175, false, 150);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::DoubleClick);
+    assert_eq!(jobs[0].action, ActionKind::Return, "用户配置的双击必须生效");
+}
+
+#[test]
+fn volume_long_press_with_different_action_falls_back_to_gesture() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::LongPress,
+                ActionKind::SystemVolumeMute,
+            ),
+        ],
+    });
+    assert!(
+        jobs_of(&d, 175, true, 0).is_empty(),
+        "长按绑了别的动作 → 不能按下即执行"
+    );
+    let jobs = d.tick_once(600);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].trigger, Trigger::LongPress);
+    assert_eq!(jobs[0].action, ActionKind::SystemVolumeMute);
+    assert!(jobs_of(&d, 175, false, 800).is_empty());
+}
+
+#[test]
+fn volume_long_press_with_same_action_keeps_repeat() {
+    let d = dispatcher();
+    d.update_mapping(MappingConfig {
+        bindings: vec![
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::SingleClick,
+                ActionKind::SystemVolumeUp,
+            ),
+            binding(
+                ButtonId::VolumeUp,
+                Trigger::LongPress,
+                ActionKind::SystemVolumeUp,
+            ),
+        ],
+    });
+    // 「长按也是音量+」属于冗余配置，应继续按下即执行 + 按住连发。
+    assert_eq!(jobs_of(&d, 175, true, 0).len(), 1);
+    let mut repeats = Vec::new();
+    for at in (575u64..=1000).step_by(125) {
+        repeats.extend(d.tick_once(at));
+    }
+    assert!(repeats.len() >= 2, "同动作长按绑定不应阻止连发");
+    assert!(jobs_of(&d, 175, false, 1050).is_empty());
+    assert!(d.tick_once(1500).is_empty());
+}
+
+#[test]
 fn disabled_action_produces_no_job() {
     let d = dispatcher();
     d.update_mapping(MappingConfig {

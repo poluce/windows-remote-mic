@@ -599,21 +599,25 @@ impl KeyDispatcher {
             rt.press_mode = PressMode::Gesture;
             rt.next_repeat_at = 0;
             // 步进/开关类动作：按下立即执行一次，不进入单击/双击/长按判定。
-            // 否则快速连按会被合并成「双击」（通常没有双击绑定）而静默丢失。
-            if let Some(job) = build_job(mapping, profile, button, Trigger::SingleClick, rt) {
-                match job.action.press_semantics() {
-                    PressSemantics::Repeat => {
-                        rt.press_mode = PressMode::Repeat;
-                        rt.next_repeat_at = now + rt.detector.long_press_ms();
-                        jobs.push(job);
-                        return jobs;
+            // 但如果用户显式给这个键绑了双击、或绑了不同动作的长按，必须让位给
+            // 手势判定——不能把用户配置的双击/长按吞掉。
+            let semantics = effective_press_semantics(mapping, profile, button);
+            if semantics != PressSemantics::Gesture {
+                if let Some(job) = build_job(mapping, profile, button, Trigger::SingleClick, rt) {
+                    match semantics {
+                        PressSemantics::Repeat => {
+                            rt.press_mode = PressMode::Repeat;
+                            rt.next_repeat_at = now + rt.detector.long_press_ms();
+                            jobs.push(job);
+                            return jobs;
+                        }
+                        PressSemantics::Instant => {
+                            rt.press_mode = PressMode::Instant;
+                            jobs.push(job);
+                            return jobs;
+                        }
+                        PressSemantics::Gesture => {}
                     }
-                    PressSemantics::Instant => {
-                        rt.press_mode = PressMode::Instant;
-                        jobs.push(job);
-                        return jobs;
-                    }
-                    PressSemantics::Gesture => {}
                 }
             }
             rt.detector.press(now);
@@ -683,16 +687,20 @@ impl KeyDispatcher {
             // 步进/开关类动作不走手势判定：步进类按住连发，开关类不做任何 tick。
             match rt.press_mode {
                 PressMode::Repeat => {
+                    // 映射可能被热更新：中途加了双击/不同动作的长按绑定就退回手势，
+                    // 保证用户的显式配置立即优先。
+                    if effective_press_semantics(mapping, profile, *button)
+                        != PressSemantics::Repeat
+                    {
+                        rt.press_mode = PressMode::Gesture;
+                        continue;
+                    }
                     if rt.down && now >= rt.next_repeat_at {
                         if let Some(job) =
                             build_job(mapping, profile, *button, Trigger::SingleClick, rt)
                         {
-                            if job.action.press_semantics() == PressSemantics::Repeat {
-                                jobs.push(job);
-                                rt.next_repeat_at = now + REPEAT_STEP_INTERVAL_MS;
-                            } else {
-                                rt.press_mode = PressMode::Gesture;
-                            }
+                            jobs.push(job);
+                            rt.next_repeat_at = now + REPEAT_STEP_INTERVAL_MS;
                         } else {
                             rt.press_mode = PressMode::Gesture;
                         }
@@ -821,6 +829,37 @@ fn resolve_action(
         return Some(action);
     }
     mapping.resolve(button, trigger).cloned()
+}
+
+/// 当前配置下，这个按键应该使用哪种「按下语义」。
+///
+/// 步进/开关类动作（音量 ±、静音、播放暂停）默认走即时/连发语义；但只要用户
+/// **显式**给该键绑定了双击、或绑定了**不同动作**的长按，就必须退回到手势判定，
+/// 否则用户配置的双击/长按会被吞掉。长按与单击绑定同一个动作视为冗余
+/// （常见的「长按也是音量+」写法），仍然允许连发。
+fn effective_press_semantics(
+    mapping: &MappingConfig,
+    profile: Option<&AppProfile>,
+    button: ButtonId,
+) -> PressSemantics {
+    let Some(action) = resolve_action(mapping, profile, button, Trigger::SingleClick) else {
+        return PressSemantics::Gesture;
+    };
+    let semantics = action.press_semantics();
+    if semantics == PressSemantics::Gesture {
+        return PressSemantics::Gesture;
+    }
+    // 显式双击绑定：必须保留双击判定（单击会被延迟确认）。
+    if resolve_action(mapping, profile, button, Trigger::DoubleClick).is_some() {
+        return PressSemantics::Gesture;
+    }
+    // 长按绑定不同动作：保留长按判定；同一动作视为冗余，继续连发。
+    if let Some(long_action) = resolve_action(mapping, profile, button, Trigger::LongPress) {
+        if long_action != action {
+            return PressSemantics::Gesture;
+        }
+    }
+    semantics
 }
 
 /// 应用配置里对该 (按键, 触发) 的覆盖项。
