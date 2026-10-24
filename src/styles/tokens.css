@@ -30,23 +30,23 @@
   --rm-text-inv: #fff;
 
   /* ---------- 强调色（低饱和钢蓝，全应用唯一） ---------- */
-  --rm-accent: #3a6ea5;
-  --rm-accent-strong: #2a5378;
-  --rm-accent-soft: rgba(58, 110, 165, 0.12);
-  --rm-accent-line: rgba(58, 110, 165, 0.34);
+  --rm-accent: #2b6fc0;
+  --rm-accent-strong: #1f5288;
+  --rm-accent-soft: rgba(43, 111, 192, 0.16);
+  --rm-accent-line: rgba(43, 111, 192, 0.42);
 
   /* ---------- 语义色：文字 / 填充 / 柔底 ---------- */
-  --rm-ok: #3f7f55;
-  --rm-ok-fill: #62a377;
-  --rm-ok-soft: rgba(63, 127, 85, 0.13);
+  --rm-ok: #2f8450;
+  --rm-ok-fill: #45a866;
+  --rm-ok-soft: rgba(47, 132, 80, 0.18);
 
-  --rm-warn: #8f6c2e;
-  --rm-warn-fill: #c8a253;
-  --rm-warn-soft: rgba(143, 108, 46, 0.13);
+  --rm-warn: #9a6c1e;
+  --rm-warn-fill: #d4a63c;
+  --rm-warn-soft: rgba(154, 108, 30, 0.18);
 
-  --rm-err: #a84036;
-  --rm-err-fill: #c96e62;
-  --rm-err-soft: rgba(168, 64, 54, 0.11);
+  --rm-err: #b43328;
+  --rm-err-fill: #d45f52;
+  --rm-err-soft: rgba(180, 51, 40, 0.15);
 
   /* ---------- 圆角阶梯 ---------- */
   --rm-r-xs: 6px;
@@ -62,7 +62,7 @@
     0 1px 2px rgba(19, 26, 36, 0.05);
   --rm-sh-3: 0 24px 60px -28px rgba(19, 26, 36, 0.35),
     0 2px 6px rgba(19, 26, 36, 0.06);
-  --rm-glow: 0 6px 16px -8px rgba(58, 110, 165, 0.38);
+  --rm-glow: 0 6px 16px -8px rgba(43, 111, 192, 0.42);
 
   /* ---------- 字号阶梯 ---------- */
   --rm-fs-11: 11px;
