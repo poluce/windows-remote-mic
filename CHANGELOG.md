@@ -29,6 +29,9 @@
   描述符只声明到 `0x65`，超出范围的 usage 会被 Windows HID 栈静默忽略；现改走已有的
   Consumer Control 虚拟设备（Volume Increment / Decrement / Mute `0xE9/0xEA/0xE2`），
   日志中可见「虚拟 HID 媒体键设备已就绪」与 `按住 volume_up report=[10]`。
+- 注入层增加「目标设备为准」的校验：虚拟键盘 `add_key` 对超出 `KEYBOARD_USAGE_MAX`
+  （Boot Keyboard 声明范围 `0x00–0x65`）的 usage 直接报错，不再静默提交；
+  描述符上限与校验常量同源，并补单测锁定（越界 usage、音量 token 不进键盘设备）。
 
 ## [0.7.3] - 2026-10-24
 

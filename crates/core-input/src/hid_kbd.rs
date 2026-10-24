@@ -106,30 +106,70 @@ const MOD_RSHIFT: u8 = 0x20;
 const MOD_RALT: u8 = 0x40;
 const MOD_RWIN: u8 = 0x80;
 
+/// 虚拟键盘（Boot Keyboard）报告里按键数组声明的 usage 上限。
+///
+/// HID Usage Tables 里虽然有 `0x80`（Keyboard Volume Up）这类标准编号，但
+/// **设备能不能发，取决于它自己的报告描述符声明了什么**。本虚拟键盘使用
+/// 标准 Boot Keyboard 描述符（usage `0x00–0x65`），超出范围的 usage 会被
+/// Windows HID 栈**静默丢弃**（历史 bug：音量键原样抄遥控器的 `0x80` 注入，
+/// 日志显示已执行、系统音量却毫无反应）。
+///
+/// 因此注入层的原则是「翻译」而不是「抄送」：
+/// - 源设备（遥控器）的 usage 只用于**识别**，不能原样当目标 usage；
+/// - 注入必须翻译到目标设备声明过的 usage，或改走 Consumer 页 / Win32 原语；
+/// - [`KeyboardState::add_key`] 用本常量做运行期校验，越界直接报错，
+///   避免再次出现「提交成功但系统不认」的静默失效。
+///
+/// 本常量同时用于构造 [`REPORT_DESCRIPTOR`]，保证「描述符声明」与
+/// 「运行期校验」永远同源，有单测锁定。
+pub const KEYBOARD_USAGE_MAX: u8 = 0x65;
+
 /// 标准 Boot Keyboard 报告描述符（无 Report ID）。
 pub const REPORT_DESCRIPTOR: &[u8] = &[
-    0x05, 0x01, // Usage Page (Generic Desktop)
-    0x09, 0x06, // Usage (Keyboard)
-    0xA1, 0x01, // Collection (Application)
-    0x05, 0x07, //   Usage Page (Keyboard)
-    0x19, 0xE0, //   Usage Minimum (Left Control)
-    0x29, 0xE7, //   Usage Maximum (Right GUI)
-    0x15, 0x00, //   Logical Minimum (0)
-    0x25, 0x01, //   Logical Maximum (1)
-    0x75, 0x01, //   Report Size (1)
-    0x95, 0x08, //   Report Count (8)
-    0x81, 0x02, //   Input (Data,Var,Abs) ; modifiers
-    0x95, 0x01, //   Report Count (1)
-    0x75, 0x08, //   Report Size (8)
-    0x81, 0x01, //   Input (Const) ; reserved
-    0x95, 0x06, //   Report Count (6)
-    0x75, 0x08, //   Report Size (8)
-    0x15, 0x00, //   Logical Minimum (0)
-    0x25, 0x65, //   Logical Maximum (101)
-    0x05, 0x07, //   Usage Page (Keyboard)
-    0x19, 0x00, //   Usage Minimum (0)
-    0x29, 0x65, //   Usage Maximum (101)
-    0x81, 0x00, //   Input (Data,Array)
+    0x05,
+    0x01, // Usage Page (Generic Desktop)
+    0x09,
+    0x06, // Usage (Keyboard)
+    0xA1,
+    0x01, // Collection (Application)
+    0x05,
+    0x07, //   Usage Page (Keyboard)
+    0x19,
+    0xE0, //   Usage Minimum (Left Control)
+    0x29,
+    0xE7, //   Usage Maximum (Right GUI)
+    0x15,
+    0x00, //   Logical Minimum (0)
+    0x25,
+    0x01, //   Logical Maximum (1)
+    0x75,
+    0x01, //   Report Size (1)
+    0x95,
+    0x08, //   Report Count (8)
+    0x81,
+    0x02, //   Input (Data,Var,Abs) ; modifiers
+    0x95,
+    0x01, //   Report Count (1)
+    0x75,
+    0x08, //   Report Size (8)
+    0x81,
+    0x01, //   Input (Const) ; reserved
+    0x95,
+    0x06, //   Report Count (6)
+    0x75,
+    0x08, //   Report Size (8)
+    0x15,
+    0x00, //   Logical Minimum (0)
+    0x25,
+    KEYBOARD_USAGE_MAX, //   Logical Maximum (101)
+    0x05,
+    0x07, //   Usage Page (Keyboard)
+    0x19,
+    0x00, //   Usage Minimum (0)
+    0x29,
+    KEYBOARD_USAGE_MAX, //   Usage Maximum (101)
+    0x81,
+    0x00, //   Input (Data,Array)
     0xC0, // End Collection
 ];
 
@@ -268,6 +308,12 @@ impl KeyboardState {
     }
 
     fn add_key(&mut self, usage: u8) -> Result<(), String> {
+        if usage > KEYBOARD_USAGE_MAX {
+            return Err(format!(
+                "HID usage 0x{usage:02X} 超出虚拟键盘描述符声明范围（0x00–0x{KEYBOARD_USAGE_MAX:02X}）：\
+                 源设备 usage 不能原样注入，需要翻译到目标设备支持的通道"
+            ));
+        }
         if self.keys.contains(&usage) {
             return Ok(());
         }
@@ -408,6 +454,33 @@ mod tests {
         // 兜底清空之后仍要能正常继续按键，否则等于把虚拟键盘弄坏。
         s.press_tokens(&["rctrl"]).unwrap();
         assert_eq!(s.report(), [MOD_RCTRL, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn keyboard_usage_max_is_single_source_with_descriptor() {
+        assert_eq!(
+            KEYBOARD_USAGE_MAX, 0x65,
+            "Boot Keyboard 标准键位范围是 0x00–0x65"
+        );
+        let pairs: Vec<[u8; 2]> = REPORT_DESCRIPTOR.windows(2).map(|w| [w[0], w[1]]).collect();
+        assert!(
+            pairs.contains(&[0x29, KEYBOARD_USAGE_MAX]),
+            "描述符 Usage Maximum 没跟着 KEYBOARD_USAGE_MAX 走"
+        );
+        assert!(
+            pairs.contains(&[0x25, KEYBOARD_USAGE_MAX]),
+            "描述符 Logical Maximum 没跟着 KEYBOARD_USAGE_MAX 走"
+        );
+    }
+
+    #[test]
+    fn keyboard_rejects_usage_outside_descriptor_range() {
+        let mut s = KeyboardState::default();
+        s.add_key(KEYBOARD_USAGE_MAX).expect("0x65 在声明范围内");
+        // 0x80 就是曾经被当音量+原样注入键盘、然后被系统静默丢弃的 usage。
+        let err = s.add_key(0x80).unwrap_err();
+        assert!(err.contains("超出"), "越界 usage 必须明确报错：{err}");
+        assert!(err.contains("0x80"), "{err}");
     }
 
     #[test]
