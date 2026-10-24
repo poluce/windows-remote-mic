@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote Mic · UI 改版设计稿 v1（雾面玻璃）</title>
+<style>
+/* ============================================================================
+ * 设计稿说明
+ * ----------------------------------------------------------------------------
+ * 这不是应用本身，是「Remote Mic 全应用视觉统一 / 现代化 / 轻毛玻璃」的可视稿。
+ * 布局尺寸按真实窗口 1000×700（tauri.conf.json 的 width/height）复刻，
+ * 页面内容取自真实页面（连接页、按键映射页）的文案与结构。
+ *
+ * 稿中的 CSS 变量即为建议落地的设计 token（--rm-*），实现时应搬进
+ * src/styles/tokens.css 由 App.css 引用；下面 .app 内的类名是建议的新结构，
+ * 与现有 class 的对应关系见文末《整改清单》。
+ * ==========================================================================*/
+
+/* ---------- 设计 token（建议落地到 src/styles/tokens.css） ---------- */
+:root {
+  /* 底色与表面 */
+  --rm-bg: #eef2f8;
+  --rm-glass: rgba(255, 255, 255, 0.46);      /* 浮层玻璃：真模糊（越低越透出底色） */
+  --rm-card: rgba(255, 255, 255, 0.78);       /* 内容卡片基色（旧） */
+  --rm-card-top: rgba(255, 255, 255, 0.96);   /* 卡片顶部：更实 */
+  --rm-card-bottom: rgba(244, 249, 255, 0.80);/* 卡片底部：略透 + 微蓝 */
+  --rm-card-flat: rgba(255, 255, 255, 0.66);  /* 轻卡：嵌套/次要 */
+  --rm-solid: #ffffff;
+  --rm-sunken: rgba(15, 23, 42, 0.04);        /* 沉底：内嵌区 */
+  --rm-hover: rgba(255, 255, 255, 0.92);
+
+  /* 描边：冷灰，不用纯黑 */
+  --rm-line: rgba(15, 23, 42, 0.08);
+  --rm-line-strong: rgba(15, 23, 42, 0.16);
+  --rm-line-light: rgba(255, 255, 255, 0.72); /* 玻璃上沿高光 */
+  --rm-line-cool: rgba(23, 48, 82, 0.09);     /* 卡片描边（冷调，不用灰黑） */
+
+  /* 文字四级（对比度：17.8 / 7.5 / 4.8 / 仅装饰） */
+  --rm-text: #131A24;
+  --rm-text-2: #46536A;
+  --rm-text-3: #5C6979;
+  --rm-text-4: #93A0AF;
+
+  /* 唯一强调色 */
+  --rm-accent: #2B6FC0;
+  --rm-accent-strong: #1F5288;               /* 小字/图标用，5.8:1 */
+  --rm-accent-soft: rgba(43, 111, 192, 0.16);
+  --rm-accent-line: rgba(43, 111, 192, 0.42);
+
+  /* 语义色：每个语义只有「填充色 / 文字色 / 底色」三档 */
+  --rm-ok: #2F8450;      --rm-ok-fill: #45A866;  --rm-ok-soft: rgba(47, 132, 80, 0.18);
+  --rm-warn: #9A6C1E;    --rm-warn-fill: #D4A63C; --rm-warn-soft: rgba(154, 108, 30, 0.18);
+  --rm-err: #B43328;     --rm-err-fill: #D45F52;  --rm-err-soft: rgba(180, 51, 40, 0.15);
+
+  /* 圆角阶梯（只允许这 6 档） */
+  --rm-r-xs: 6px; --rm-r-sm: 8px; --rm-r-md: 12px;
+  --rm-r-lg: 16px; --rm-r-xl: 20px; --rm-r-full: 999px;
+
+  /* 阴影阶梯（冷色投影，不用纯黑） */
+  --rm-sh-1: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --rm-sh-2: 0 6px 18px -8px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.05);
+  --rm-sh-3: 0 24px 60px -28px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --rm-sh-card: 0 0 0 1px rgba(23, 48, 82, 0.08),
+    0 16px 36px -20px rgba(23, 48, 82, 0.34), 0 2px 4px rgba(23, 48, 82, 0.05);
+  --rm-sh-card-soft: 0 0 0 1px rgba(23, 48, 82, 0.07),
+    0 6px 16px -14px rgba(23, 48, 82, 0.20);
+  --rm-glow: 0 6px 16px -8px rgba(43, 111, 192, 0.42);
+
+  /* 字号阶梯 */
+  --rm-fs-11: 11px; --rm-fs-12: 12px; --rm-fs-13: 13px; --rm-fs-14: 14px;
+  --rm-fs-16: 16px; --rm-fs-20: 20px; --rm-fs-26: 26px;
+
+  /* 间距阶梯（4 的倍数） */
+  --rm-sp-1: 4px; --rm-sp-2: 8px; --rm-sp-3: 12px; --rm-sp-4: 16px;
+  --rm-sp-5: 20px; --rm-sp-6: 24px; --rm-sp-8: 32px;
+
+  /* 动效 */
+  --rm-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --rm-dur: 180ms;
+
+  /* 玻璃参数 */
+  --rm-blur: blur(24px) saturate(180%);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI",
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ---------- 文档外壳（只服务设计稿，不属于产品界面） ---------- */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: #fbfcfe;
+  color: var(--rm-text);
+  font-size: var(--rm-fs-13);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+.doc { max-width: 1104px; margin: 0 auto; padding: 56px 32px 120px; }
+.doc-kicker {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: var(--rm-fs-11); font-weight: 600; letter-spacing: 0.08em;
+  color: var(--rm-accent-strong); text-transform: uppercase;
+}
+.doc-kicker::before {
+  content: ""; width: 18px; height: 2px; border-radius: 2px; background: var(--rm-accent);
+}
+.doc h1 { margin: 10px 0 6px; font-size: var(--rm-fs-26); line-height: 1.3; letter-spacing: -0.015em; }
+.doc-lead { margin: 0; max-width: 760px; color: var(--rm-text-2); font-size: var(--rm-fs-14); }
+.doc-meta {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px;
+  font-size: var(--rm-fs-12); color: var(--rm-text-3);
+}
+.doc-meta span {
+  padding: 2px 10px; border-radius: var(--rm-r-full);
+  background: var(--rm-sunken); border: 1px solid var(--rm-line);
+}
+.doc-sec { margin-top: 64px; scroll-margin-top: 24px; }
+.doc-sec > h2 {
+  margin: 0 0 4px; padding-top: 28px;
+  border-top: 1px solid var(--rm-line);
+  font-size: var(--rm-fs-16); letter-spacing: -0.005em;
+}
+.doc-sec > h2 .no { color: var(--rm-text-4); font-variant-numeric: tabular-nums; margin-right: 8px; }
+.doc-sec > .sub { margin: 0 0 22px; color: var(--rm-text-3); font-size: var(--rm-fs-12); }
+.doc h3 { margin: 28px 0 10px; font-size: var(--rm-fs-13); font-weight: 600; }
+.doc p { margin: 10px 0; color: var(--rm-text-2); }
+.doc code {
+  padding: 1px 5px; border-radius: 4px; background: var(--rm-sunken);
+  font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--rm-text);
+}
+
+/* ---------- 1. 原则 ---------- */
+.principles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 18px; }
+.principle {
+  padding: 16px; border-radius: var(--rm-r-lg);
+  background: var(--rm-solid); border: 1px solid var(--rm-line);
+  box-shadow: var(--rm-sh-1);
+}
+.principle .n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: var(--rm-r-xs);
+  background: var(--rm-accent-soft); color: var(--rm-accent-strong);
+  font-size: 11px; font-weight: 700; margin-bottom: 10px;
+}
+.principle h4 { margin: 0 0 4px; font-size: var(--rm-fs-12); }
+.principle p { margin: 0; font-size: 11.5px; line-height: 1.6; color: var(--rm-text-3); }
+
+/* ---------- 2. 色彩 / 材质 ---------- */
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+.swatch {
+  border-radius: var(--rm-r-md); border: 1px solid var(--rm-line);
+  overflow: hidden; background: var(--rm-solid);
+}
+.swatch .chip { height: 52px; }
+.swatch .lab { padding: 7px 10px; }
+.swatch .lab b { display: block; font-size: 11.5px; font-weight: 600; }
+.swatch .lab span { font-size: 10.5px; color: var(--rm-text-3); font-family: "Cascadia Mono", Consolas, monospace; }
+.swatch .chip.checker {
+  background-image: linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+    linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+  background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.material-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+.material {
+  position: relative; height: 148px; border-radius: var(--rm-r-lg);
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 14px; overflow: hidden;
+  background:
+    radial-gradient(320px 200px at 15% 0%, rgba(43, 111, 192, 0.28), transparent 65%),
+    radial-gradient(300px 220px at 90% 90%, rgba(104, 92, 174, 0.24), transparent 62%),
+    linear-gradient(150deg, #e9eef4, #eaeef3);
+  border: 1px solid var(--rm-line);
+}
+.material > .glass-swatch {
+  position: absolute; inset: 14px 14px 58px; border-radius: var(--rm-r-md);
+}
+.material.g1 > .glass-swatch {
+  background: var(--rm-glass);
+  -webkit-backdrop-filter: var(--rm-blur); backdrop-filter: var(--rm-blur);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+.material.g2 > .glass-swatch {
+  background: var(--rm-card);
+  border: 1px solid var(--rm-line);
+  box-shadow: var(--rm-sh-1), inset 0 1px 0 var(--rm-line-light);
+}
+.material.g3 > .glass-swatch {
+  background: var(--rm-sunken);
+  border: 1px solid var(--rm-line);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.material b { position: relative; font-size: var(--rm-fs-12); }
+.material span { position: relative; font-size: 11px; color: var(--rm-text-3); line-height: 1.5; }
+
+/* ---------- 3. 尺度 ---------- */
+.scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; margin-top: 16px; }
+.scale-item { display: flex; align-items: center; gap: 12px; }
+.scale-item .demo { flex: none; display: flex; align-items: center; justify-content: center; }
+.scale-item .meta { font-size: 11.5px; color: var(--rm-text-3); }
+.scale-item .meta b { display: block; color: var(--rm-text); font-size: var(--rm-fs-12); }
+.radius-demo { width: 44px; height: 44px; background: var(--rm-solid); border: 1px solid var(--rm-line); box-shadow: var(--rm-sh-1); }
+.shadow-demo { width: 64px; height: 40px; border-radius: var(--rm-r-md); background: var(--rm-solid); }
+.type-demo { width: 72px; text-align: left; }
+
+/* ============================================================================
+ * 4/5. 应用界面稿
+ * ==========================================================================*/
+.frame {
+  width: 1000px; height: 700px; margin: 22px 0 10px;
+  border-radius: 18px; overflow: hidden; position: relative;
+  box-shadow: 0 40px 80px -40px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(15, 23, 42, 0.10);
+  /* 窗口底 =「雾面底」：低饱和冷灰 + 三团柔光色斑，给玻璃提供可折射的层次。
+     色斑取强调蓝 / 快捷菜单青 / 引导紫，三色都在 token 内，且不参与文字对比度。 */
+  background:
+    radial-gradient(820px 620px at -10% 46%, rgba(43, 111, 192, 0.40), transparent 64%),
+    radial-gradient(700px 480px at 4% -16%, rgba(58, 106, 172, 0.34), transparent 62%),
+    radial-gradient(600px 460px at 106% -4%, rgba(104, 92, 174, 0.30), transparent 64%),
+    radial-gradient(760px 560px at 74% 116%, rgba(52, 138, 148, 0.28), transparent 62%),
+    linear-gradient(168deg, #eef3fa 0%, #e2e9f4 52%, #e5ecf6 100%);
+  display: flex;
+  font-size: var(--rm-fs-13); color: var(--rm-text); line-height: 1.55;
+}
+/* 细噪点：消掉渐变的色带，也让玻璃看起来像「有材质」而不是纯透明 */
+.frame::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* ---------- 侧栏：唯一真玻璃浮层 ---------- */
+.sb {
+  width: 232px; flex: none; height: 100%; position: relative; z-index: 2;
+  display: flex; flex-direction: column; padding: 18px 10px 12px;
+  background: var(--rm-glass);
+  -webkit-backdrop-filter: var(--rm-blur); backdrop-filter: var(--rm-blur);
+  border-right: 1px solid var(--rm-line-light);
+  box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.05);
+}
+.sb-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; }
+.sb-logo {
+  width: 36px; height: 36px; border-radius: 10px; flex: none;
+  background: linear-gradient(160deg, #fff, #eef3f9);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-1), inset 0 1px 0 #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: #0284c7;
+}
+.sb-name { font-size: var(--rm-fs-14); font-weight: 650; letter-spacing: -0.005em; }
+.sb-sub { font-size: var(--rm-fs-11); color: var(--rm-text-3); margin-top: 1px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.nav-item {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  height: 34px; padding: 0 10px; border: none; border-radius: var(--rm-r-sm);
+  background: transparent; color: var(--rm-text-2);
+  font: inherit; font-size: var(--rm-fs-13); text-align: left; cursor: pointer;
+  transition: background var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
+}
+.nav-item svg { flex: none; color: var(--rm-text-4); transition: color var(--rm-dur) var(--rm-ease); }
+.nav-item:hover { background: rgba(255, 255, 255, 0.6); color: var(--rm-text); }
+.nav-item:hover svg { color: var(--rm-text-3); }
+.nav-item.active {
+  background: var(--rm-hover); color: var(--rm-text); font-weight: 500;
+  box-shadow: var(--rm-sh-1), inset 0 1px 0 #fff, 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+.nav-item.active svg { color: var(--rm-accent); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: 1px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 2px; background: var(--rm-accent);
+}
+.nav-badge {
+  margin-left: auto; width: 7px; height: 7px; border-radius: var(--rm-r-full);
+  background: var(--rm-accent); box-shadow: 0 0 0 3px var(--rm-accent-soft);
+}
+
+.sb-status {
+  margin-top: auto; padding: 12px; border-radius: var(--rm-r-md);
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-1), inset 0 1px 0 #fff;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sb-row { display: flex; align-items: center; gap: 8px; font-size: var(--rm-fs-12); color: var(--rm-text-2); }
+.sb-row .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- 主内容区 ---------- */
+.pg { flex: 1; min-width: 0; height: 100%; overflow: hidden; padding: 24px 28px 20px; }
+.pg-in { height: 100%; display: flex; flex-direction: column; }
+.pg-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.pg-head h1 { margin: 0; font-size: var(--rm-fs-20); font-weight: 650; letter-spacing: -0.01em; }
+.pg-head p { margin: 3px 0 0; font-size: var(--rm-fs-12); color: var(--rm-text-3); }
+.pg-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* 卡片：一张有厚度的磨砂纸（顶部实、底部略透 + 冷调双层边 + 双层阴影） */
+.card {
+  border-radius: var(--rm-r-lg); padding: 18px 20px; margin-bottom: 14px;
+  background: linear-gradient(180deg, var(--rm-card-top) 0%, var(--rm-card-bottom) 100%);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-card), inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+/* 轻卡：工具条、次要信息 —— 去掉扩散阴影，不与主内容抢层级 */
+.card.flat {
+  background: var(--rm-card-flat);
+  border: 1px solid var(--rm-line-light);
+  box-shadow: var(--rm-sh-card-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.card-title { font-size: var(--rm-fs-12); font-weight: 600; color: var(--rm-text-2); margin-bottom: 14px; }
+
+/* 设备卡 */
+.device { display: flex; align-items: center; gap: 14px; }
+.device-ico {
+  width: 48px; height: 48px; border-radius: 14px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--rm-accent-strong);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(0, 122, 255, 0.12));
+  border: 1px solid var(--rm-line-light);
+  box-shadow: inset 0 1px 0 #fff, 0 4px 12px -6px rgba(0, 122, 255, 0.5);
+}
+.device-name { font-size: var(--rm-fs-14); font-weight: 600; }
+.device-model { font-size: var(--rm-fs-11); color: var(--rm-text-3); margin-top: 2px; letter-spacing: 0.01em; }
+.device-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.rows { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+
+/* 分组行（沿用 macOS 系统设置式的分组列表，只是换了材质） */
+.group { padding: 4px 18px; }
+.grp-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
+.grp-row + .grp-row { border-top: 1px solid var(--rm-line); }
+/* 分组卡：卡片自带 padding，这里只补行内边距，避免两层 padding 叠一起 */
+.card.group { padding: 4px 18px 6px; }
+.card.group .card-title { margin: 10px 0 2px; }
+.grp-label { font-size: var(--rm-fs-13); font-weight: 500; }
+.grp-value { display: flex; align-items: center; gap: 8px; font-size: var(--rm-fs-13); color: var(--rm-text-2); }
+
+/* ---------- 控件 ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--rm-line-strong);
+  background: rgba(255, 255, 255, 0.72); color: var(--rm-text);
+  font: inherit; font-size: var(--rm-fs-13); white-space: nowrap; cursor: pointer;
+  box-shadow: inset 0 1px 0 #fff, var(--rm-sh-1);
+  transition: background var(--rm-dur) var(--rm-ease), box-shadow var(--rm-dur) var(--rm-ease),
+    transform 120ms var(--rm-ease);
+}
+.btn:hover { background: #fff; box-shadow: inset 0 1px 0 #fff, var(--rm-sh-2); }
+.btn:active { transform: translateY(0.5px); box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.10); }
+.btn.primary {
+  border-color: rgba(31, 82, 136, 0.85); color: #fff;
+  background: linear-gradient(180deg, #2F75C6, #1E5B9C);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--rm-glow);
+}
+.btn.primary:hover { background: linear-gradient(180deg, #2b6fc0, #1c5694); }
+.btn.small { height: 26px; padding: 0 9px; font-size: var(--rm-fs-12); border-radius: var(--rm-r-sm); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--rm-text-2); }
+.btn.ghost:hover { background: rgba(255, 255, 255, 0.7); color: var(--rm-text); }
+.btn.danger { border-color: transparent; color: #fff; background: linear-gradient(180deg, #C0544D, #A02A20); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border-radius: var(--rm-r-full); font-size: var(--rm-fs-12); font-weight: 500;
+  white-space: nowrap; border: 1px solid transparent;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* 独立状态点（侧栏状态、下拉里用）：7px + 语义光晕 */
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rm-text-4); flex: none; }
+.dot.ok { background: var(--rm-ok-fill); box-shadow: 0 0 0 3px var(--rm-ok-soft); }
+.dot.warn { background: var(--rm-warn-fill); box-shadow: 0 0 0 3px var(--rm-warn-soft); }
+.dot.err { background: var(--rm-err-fill); box-shadow: 0 0 0 3px var(--rm-err-soft); }
+.pill.ok { background: var(--rm-ok-soft); color: var(--rm-ok); }
+.pill.warn { background: var(--rm-warn-soft); color: var(--rm-warn); }
+.pill.err { background: var(--rm-err-soft); color: var(--rm-err); }
+.pill.off { background: var(--rm-sunken); color: var(--rm-text-3); }
+
+.select {
+  display: flex; align-items: center; gap: 8px; height: 34px; min-width: 190px;
+  padding: 0 10px; border-radius: 10px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.8); border: 1px solid var(--rm-line-strong);
+  box-shadow: inset 0 1px 0 #fff;
+  font-size: var(--rm-fs-13); color: var(--rm-text);
+  transition: border-color var(--rm-dur) var(--rm-ease), box-shadow var(--rm-dur) var(--rm-ease);
+}
+.select:hover { border-color: rgba(15, 23, 42, 0.24); }
+.select .caret { margin-left: auto; color: var(--rm-text-4); font-size: 10px; }
+.select:focus-visible, .btn:focus-visible {
+  outline: 2px solid var(--rm-accent); outline-offset: 2px;
+}
+
+.switch {
+  position: relative; width: 44px; height: 26px; flex: none; padding: 0;
+  border: none; border-radius: var(--rm-r-full); cursor: pointer;
+  background: rgba(15, 23, 42, 0.16);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.14);
+  transition: background var(--rm-dur) var(--rm-ease);
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.28), 0 0 0 0.5px rgba(15, 23, 42, 0.06);
+  transition: left var(--rm-dur) var(--rm-ease), width 120ms var(--rm-ease);
+}
+.switch.on { background: var(--rm-ok-fill); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12); }
+.switch.on::after { left: 21px; }
+.switch:active::after { width: 24px; }
+.switch.on:active::after { left: 17px; }
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.seg {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px;
+  background: var(--rm-sunken); border: 1px solid var(--rm-line);
+}
+.seg button {
+  height: 26px; padding: 0 9px; border: none; border-radius: var(--rm-r-sm); white-space: nowrap;
+  background: transparent; color: var(--rm-text-3); font: inherit; font-size: var(--rm-fs-12);
+  cursor: pointer; transition: all var(--rm-dur) var(--rm-ease);
+}
+.seg button.on {
+  background: #fff; color: var(--rm-text); font-weight: 500;
+  box-shadow: var(--rm-sh-1), 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.input {
+  height: 34px; padding: 0 10px; border-radius: 10px; width: 100%;
+  border: 1px solid var(--rm-line-strong); background: rgba(255, 255, 255, 0.8);
+  font: inherit; font-size: var(--rm-fs-13); color: var(--rm-text);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+.input:focus { outline: none; border-color: var(--rm-accent); box-shadow: 0 0 0 3px var(--rm-accent-soft); }
+
+.hint { font-size: var(--rm-fs-11); color: var(--rm-text-3); line-height: 1.6; }
+
+/* 提示条：软色底 + 图标，替代「左侧 3px 硬边」的老写法 */
+.callout {
+  display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--rm-r-md);
+  border: 1px solid rgba(138, 106, 51, 0.22); background: var(--rm-warn-soft);
+}
+.callout .ico { flex: none; color: var(--rm-warn); margin-top: 1px; }
+.callout b { display: block; font-size: var(--rm-fs-12); color: var(--rm-warn); }
+.callout p { margin: 2px 0 0; font-size: var(--rm-fs-12); color: var(--rm-text-2); line-height: 1.6; }
+.callout.err { border-color: rgba(156, 74, 66, 0.22); background: var(--rm-err-soft); }
+.callout.err .ico, .callout.err b { color: var(--rm-err); }
+
+/* 映射页 */
+.scope { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scope .sp {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  border-radius: var(--rm-r-full); border: 1px solid var(--rm-line);
+  background: rgba(255, 255, 255, 0.7); font-size: var(--rm-fs-13); cursor: pointer;
+  transition: all var(--rm-dur) var(--rm-ease);
+}
+.scope .sp:hover { border-color: var(--rm-line-strong); background: #fff; }
+.scope .sp.on {
+  background: var(--rm-accent-soft); border-color: var(--rm-accent-line);
+  color: var(--rm-accent-strong); font-weight: 600;
+}
+.scope .sp.new { border-style: dashed; color: var(--rm-text-3); }
+/* 应用档案圆点颜色来自后端数据（profiles/*.json），统一降饱和 + 加一圈细边，避免跳色 */
+.scope .sd { width: 7px; height: 7px; border-radius: 50%; background: var(--rm-text-4); flex: none; filter: saturate(0.55); box-shadow: 0 0 0 1px rgba(19, 26, 36, 0.12); }
+.scope .sp.on .sd { background: var(--rm-accent); }
+
+.merged { display: grid; grid-template-columns: 132px 168px minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; }
+.merged > .col { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.merged > .col + .col { border-left: 1px solid var(--rm-line); padding-left: 12px; margin-left: 12px; }
+.wiz-label { font-size: var(--rm-fs-12); font-weight: 600; margin: 0 0 7px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip-btn {
+  height: 25px; padding: 0 7px; border-radius: var(--rm-r-sm); white-space: nowrap;
+  border: 1px solid var(--rm-line); background: rgba(255, 255, 255, 0.7);
+  font: inherit; font-size: var(--rm-fs-12); color: var(--rm-text-2); cursor: pointer;
+}
+.chip-btn:hover { background: #fff; border-color: var(--rm-line-strong); color: var(--rm-text); }
+.chip-btn.on { background: var(--rm-accent-soft); border-color: var(--rm-accent-line); color: var(--rm-accent-strong); font-weight: 500; }
+
+.matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--rm-fs-11); }
+.matrix th {
+  text-align: left; font-weight: 500; color: var(--rm-text-3);
+  padding: 6px 8px; border-bottom: 1px solid var(--rm-line);
+  background: rgba(255, 255, 255, 0.55);
+}
+.matrix td {
+  padding: 7px 8px; border-bottom: 1px solid var(--rm-line); color: var(--rm-text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.matrix td.k { color: var(--rm-text); font-weight: 500; }
+.matrix td.on { color: var(--rm-text); }
+.matrix td.own { color: var(--rm-accent-strong); font-weight: 600; background: rgba(43, 111, 192, 0.12); }
+.matrix td.sel { box-shadow: inset 0 0 0 1.5px var(--rm-accent); border-radius: 5px; color: var(--rm-text); }
+.matrix tr:hover td { background: rgba(255, 255, 255, 0.5); }
+.matrix tr:hover td.own { background: var(--rm-accent-soft); }
+
+/* 简化遥控器示意（真实应用保留现有像素图组件，此处只示意所占位置） */
+.remote-ph { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 4px; }
+.remote-body {
+  width: 96px; height: 300px; border-radius: 13px;
+  background: linear-gradient(135deg, #ececec 0%, #b8b8b8 60%, #c9c9c9 100%);
+  border: 1px solid #999; position: relative;
+  box-shadow: inset 2px 2px 5px rgba(255, 255, 255, 0.9), inset -2px -2px 5px rgba(0, 0, 0, 0.2);
+  display: flex; flex-direction: column; align-items: center; padding-top: 16px; gap: 14px;
+}
+.remote-body .rb-top { display: flex; gap: 20px; }
+.remote-body .rb-btn {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #3c3c3c, #0d0d0d);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+.remote-body .rb-dpad {
+  width: 74px; height: 74px; border-radius: 50%; position: relative;
+  background: radial-gradient(circle at 30% 30%, #4f4f4f, #333 60%, #1f1f1f);
+  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.3), 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+.remote-body .rb-dpad::after {
+  content: ""; position: absolute; inset: 17px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #4c4c4c, #383838 60%, #2a2a2a);
+  border: 3px solid #1a1a1a; box-shadow: 0 0 0 2px var(--rm-accent);
+}
+.remote-body .rb-mid { display: flex; gap: 22px; }
+.remote-body .rb-tall { width: 26px; height: 66px; border-radius: 13px; background: #101010; }
+.remote-body .rb-bot { display: flex; gap: 22px; }
+.remote-ph .cap { font-size: 10.5px; color: var(--rm-text-4); text-align: center; line-height: 1.5; }
+
+/* ---------- 组件库 ---------- */
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 16px; }
+.specimen {
+  padding: 18px; border-radius: var(--rm-r-lg); background: var(--rm-solid);
+  border: 1px solid var(--rm-line); box-shadow: var(--rm-sh-1);
+}
+.specimen > h4 {
+  margin: 0 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--rm-text-4); text-transform: uppercase;
+}
+.specimen .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.specimen .row + .row { margin-top: 12px; }
+.specimen .note { margin-top: 12px; font-size: 11px; color: var(--rm-text-3); }
+.sunken { background: var(--rm-sunken); border: 1px solid var(--rm-line); border-radius: var(--rm-r-md); padding: 10px 12px; }
+.logview {
+  font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.75;
+  background: var(--rm-sunken); border: 1px solid var(--rm-line);
+  border-radius: var(--rm-r-md); padding: 12px; color: var(--rm-text-2); white-space: pre;
+  overflow: hidden;
+}
+.logview .i { color: var(--rm-text-3); }
+.logview .w { color: var(--rm-warn); }
+.logview .e { color: var(--rm-err); }
+.logview .d { color: var(--rm-accent-strong); }
+.logview .t { color: var(--rm-text-4); }
+
+/* 对话框 */
+.dlg-scene {
+  position: relative; height: 250px; border-radius: var(--rm-r-md); overflow: hidden;
+  background:
+    radial-gradient(300px 200px at 20% 0%, rgba(68, 103, 138, 0.14), transparent 60%),
+    linear-gradient(150deg, #f0f3f7, #eaedf2);
+  display: flex; align-items: center; justify-content: center;
+}
+.dlg-mask {
+  position: absolute; inset: 0; background: rgba(19, 26, 36, 0.26);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+.dlg {
+  position: relative; width: 320px; border-radius: var(--rm-r-xl); padding: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: var(--rm-sh-3), inset 0 1px 0 #fff;
+}
+.dlg h5 { margin: 0 0 6px; font-size: var(--rm-fs-14); }
+.dlg p { margin: 0; font-size: var(--rm-fs-12); color: var(--rm-text-2); line-height: 1.6; }
+.dlg .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+/* ---------- 对比 ---------- */
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 16px; }
+.compare figure { margin: 0; }
+.compare figure img { width: 100%; border-radius: var(--rm-r-md); border: 1px solid var(--rm-line); display: block; }
+.compare figcaption { margin-top: 6px; font-size: 11px; color: var(--rm-text-3); }
+
+/* ---------- 表格 ---------- */
+table.tbl { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: var(--rm-fs-12); }
+table.tbl th, table.tbl td {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rm-line);
+  vertical-align: top;
+}
+table.tbl th { font-weight: 600; color: var(--rm-text-3); font-size: 11px; background: var(--rm-sunken); }
+table.tbl td code { font-size: 11px; }
+table.tbl tr:last-child td { border-bottom: none; }
+
+/* ---------- 决策卡 ---------- */
+.decisions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.decision {
+  padding: 16px; border-radius: var(--rm-r-lg); background: var(--rm-solid);
+  border: 1px solid var(--rm-line); box-shadow: var(--rm-sh-1);
+}
+.decision .q { font-size: var(--rm-fs-13); font-weight: 600; }
+.decision .a { margin-top: 6px; font-size: 11.5px; color: var(--rm-text-3); }
+.decision .rec {
+  display: inline-block; margin-top: 8px; padding: 1px 8px; border-radius: var(--rm-r-full);
+  background: var(--rm-accent-soft); color: var(--rm-accent-strong);
+  font-size: 11px; font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .principles, .swatches, .material-row, .gallery, .compare, .decisions { grid-template-columns: 1fr 1fr; }
+  .frame { transform-origin: top left; }
+}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="doc-kicker">Remote Mic · Design Spec</div>
+  <h1>全应用视觉统一 + 现代化 + 轻毛玻璃（设计稿 v1）</h1>
+  <p class="doc-lead">
+    目标：一套统一的色调与控件语言，现代但不炫技；毛玻璃只用在「浮在内容之上」的界面层，
+    内容是清晰的磨砂纸而不是一片糊。布局沿用现有信息结构，不做功能改版。
+  </p>
+  <div class="callout" style="margin:22px 0 0;display:flex;gap:10px;align-items:flex-start;border-color:rgba(76,122,93,.22);background:var(--rm-ok-soft)">
+    <div>
+      <b style="color:var(--rm-ok)">状态：已全部实现并通过真机验证（2026-10-24）</b>
+      <p style="margin:4px 0 0;color:var(--rm-text-2)">token 底座、外壳、控件统一、六页精修均已落地；快捷菜单（含画布里的应用品牌色）也已降饱和对齐。
+      真机 Tauri 窗口（WebView2、1000×700、遥控器在线）逐页验证，截图见 docs/项目/截图/全局外观-*.png。深色模式未做。</p>
+    </div>
+  </div>
+
+  <div class="doc-meta">
+    <span>分支 feat/ui-beautify</span>
+    <span>基于 main @ 52a072e (v0.7.2)</span>
+    <span>窗口基准 1000×700</span>
+    <span>WebView2 / Chromium</span>
+  </div>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s01"><span class="no">01</span>设计原则</h2>
+    <p class="sub">五条规则决定后面所有取舍；冲突时按编号靠前的优先。</p>
+    <div class="principles">
+      <div class="principle">
+        <span class="n">1</span>
+        <h4>一个强调色</h4>
+        <p>全应用只保留一种钢蓝（#2B6FC0）。其它颜色只表达语义，不再用颜色区分「页面」。</p>
+      </div>
+      <div class="principle">
+        <span class="n">2</span>
+        <h4>玻璃只给浮层</h4>
+        <p>侧栏、对话框、下拉、快捷菜单用真模糊；内容卡片用半透明磨砂，避免几十层滤镜。</p>
+      </div>
+      <div class="principle">
+        <span class="n">3</span>
+        <h4>冷灰四级文字</h4>
+        <p>灰阶统一到冷灰（slate），与图标、快捷菜单已有色系一致；文字只有四级。</p>
+      </div>
+      <div class="principle">
+        <span class="n">4</span>
+        <h4>几何成阶梯</h4>
+        <p>圆角 6/8/12/16/20、阴影 3 级、字号 7 档、间距 4 的倍数。不允许临时取值。</p>
+      </div>
+      <div class="principle">
+        <span class="n">5</span>
+        <h4>动效克制</h4>
+        <p>180ms、ease-out、只做状态反馈；不做装饰性循环动画，尊重 reduced-motion。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s02"><span class="no">02</span>色调与材质</h2>
+    <p class="sub">现有代码里同时存在 4 套蓝（#007aff / #2f6fed / #0EA5E9 / 快捷菜单的 #007aff）与 4 套绿，且饱和度都偏高；这里收敛成唯一一套低饱和色板。</p>
+
+    <h3>核心色板</h3>
+    <div class="swatches">
+      <div class="swatch">
+        <div class="chip" style="background:#2B6FC0"></div>
+        <div class="lab"><b>强调色 accent</b><span>#2B6FC0 · 主按钮 / 选中 / 图标</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#1F5288"></div>
+        <div class="lab"><b>强调色（小字）</b><span>#1F5288 · 8.0:1，小字用它</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:rgba(43,111,192,.16)"></div>
+        <div class="lab"><b>强调底色</b><span>rgba(43,111,192,.16)</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:linear-gradient(150deg,#f4f6f9,#e9edf3 55%,#eceff4)"></div>
+        <div class="lab"><b>雾面底</b><span>冷灰 + 低饱和柔光</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#131A24"></div>
+        <div class="lab"><b>文字 / 主</b><span>#131A24 · 17.5:1</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#46536A"></div>
+        <div class="lab"><b>文字 / 次</b><span>#46536A · 7.8:1</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#5C6979"></div>
+        <div class="lab"><b>文字 / 辅</b><span>#5C6979 · 5.6:1</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#93A0AF"></div>
+        <div class="lab"><b>文字 / 装饰</b><span>#93A0AF · 只做图标与分隔</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#45A866"></div>
+        <div class="lab"><b>成功 / 填充</b><span>#45A866 · 开关、进度</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#2F8450"></div>
+        <div class="lab"><b>成功 / 文字</b><span>#2F8450 · 状态胶囊文字</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#D4A63C"></div>
+        <div class="lab"><b>警告 / 填充</b><span>#D4A63C · 沙金，不用亮橙</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#9A6C1E"></div>
+        <div class="lab"><b>警告 / 文字</b><span>#9A6C1E · 4.8:1</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#D45F52"></div>
+        <div class="lab"><b>危险 / 填充</b><span>#D45F52 · 陶土红</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#B43328"></div>
+        <div class="lab"><b>危险 / 文字</b><span>#B43328 · 6.1:1</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#eef2f8"></div>
+        <div class="lab"><b>沉底 sunken</b><span>rgba(19,26,36,.04)</span></div>
+      </div>
+      <div class="swatch">
+        <div class="chip checker"></div>
+        <div class="lab"><b>描边 hairline</b><span>rgba(19,26,36,.08 / .16)</span></div>
+      </div>
+    </div>
+    <h3>三级材质</h3>
+    <div class="material-row">
+      <div class="material g1">
+        <div class="glass-swatch"></div>
+        <b>浮层玻璃</b>
+        <span>白 62% + blur(24px) saturate(180%)，内侧 1px 白色高光。<br>侧栏、对话框、下拉、快捷菜单。</span>
+      </div>
+      <div class="material g2">
+        <div class="glass-swatch"></div>
+        <b>内容卡片（磨砂纸）</b>
+        <span>竖向微渐变 96% → 80% 白（底部略带蓝）、双层边、双层冷色阴影。<br>所有可滚动的内容卡；工具条用轻卡变体。</span>
+      </div>
+      <div class="material g3">
+        <div class="glass-swatch"></div>
+        <b>沉底内嵌</b>
+        <span>rgba(15,23,42,.04) + 内阴影。<br>分组列表底、日志预览、分段控件槽。</span>
+      </div>
+    </div>
+    <h3>色彩克制规则：按键与选中态不用高饱和</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:24%">场景</th><th style="width:32%">不要</th><th>改为</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>选中的动作 / 触发方式 chip</td>
+          <td>整块高饱和蓝底 + 白字（现在的 <code>.shortcut-btn.active</code>、<code>.chip-btn.on</code>）</td>
+          <td>10% 淡底 + 强调色深字 + 1px 同色描边；选中靠「描边 + 底色微差」，不靠色块重量</td>
+        </tr>
+        <tr>
+          <td>矩阵里「本应用覆盖」的格子</td>
+          <td>强调蓝铺满整格</td>
+          <td>7% 淡底 + 深色字（本稿效果），一眼能分辨但不抢眼</td>
+        </tr>
+        <tr>
+          <td>应用档案圆点（Claude / Codex / ZCode）</td>
+          <td>后端下发的颜色原样显示（<code>#D97757</code> / <code>#4D6BFE</code> / <code>#F59E0B</code>），互相之间色相跳得很厉害</td>
+          <td>CSS <code>filter: saturate(.55)</code> + 1px 深色细环；数据不改，只在展示层降饱和。后续可考虑在种子档案里换柔和色</td>
+        </tr>
+        <tr>
+          <td>遥控器像素图高亮</td>
+          <td><code>#2f6fed</code> 亮蓝描边 + 蓝色发光</td>
+          <td>换成 <code>--rm-accent</code>（#2B6FC0）；<code>pulseGlow</code> 的蓝色辉光改为 2px 静态描边（引导态才保留呼吸动画）</td>
+        </tr>
+        <tr>
+          <td>状态点 / 胶囊</td>
+          <td>iOS 亮绿 <code>#34c759</code>、亮橙 <code>#ff9f0a</code>、亮红 <code>#ff3b30</code></td>
+          <td>灰绿 <code>#45A866</code>、沙金 <code>#D4A63C</code>、陶土红 <code>#D45F52</code>；文字用深一档（4.9–6.1:1）</td>
+        </tr>
+        <tr>
+          <td>主按钮</td>
+          <td>亮蓝渐变 + 蓝色辉光</td>
+          <td>钢蓝渐变（#2F75C6→#1E5B9C）+ 极轻投影；整屏只保留它一个「实底强调」</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="hint" style="margin-top:10px">
+      判断标准：把截图缩小到 25% 看整体——如果某个色块第一个跳出来、且它不是主按钮，那就是过饱和。
+      本稿的目标是「一眼先看到内容和层级，颜色只在需要时出现」。
+    </p>
+
+    <p class="hint" style="margin-top:10px">
+      为什么卡片不用真模糊：一屏 5–8 张卡各带一层 backdrop-filter，滚动时 WebView2 每帧重算模糊，
+      既掉帧又让 12px 中文发虚（模糊层上叠文字是不稳定组合）。玻璃感来自「侧栏 + 浮层 + 柔光底」，
+      不来自每张卡片。
+    </p>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s03"><span class="no">03</span>尺度</h2>
+    <p class="sub">现在代码里有 8 档圆角、6 种阴影、10 档字号；收敛成下面这些。</p>
+
+    <h3>圆角</h3>
+    <div class="scale-grid">
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:6px"></span><span class="meta"><b>6px · xs</b>角标、小徽标</span></div>
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:8px"></span><span class="meta"><b>8px · sm</b>小按钮、导航项</span></div>
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:12px"></span><span class="meta"><b>12px · md</b>输入框、按钮、提示条</span></div>
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:16px"></span><span class="meta"><b>16px · lg</b>内容卡片</span></div>
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:20px"></span><span class="meta"><b>20px · xl</b>对话框、浮层</span></div>
+      <div class="scale-item"><span class="demo radius-demo" style="border-radius:999px"></span><span class="meta"><b>999 · full</b>胶囊、开关</span></div>
+    </div>
+
+    <h3>阴影（冷色，不用纯黑）</h3>
+    <div class="scale-grid">
+      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-1)"></span><span class="meta"><b>sh-1</b>0 1px 2px rgba(15,23,42,.06)</span></div>
+      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-2)"></span><span class="meta"><b>sh-2</b>0 6px 18px -8px / 卡片、下拉</span></div>
+      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-sh-3)"></span><span class="meta"><b>sh-3</b>0 24px 60px -28px / 对话框</span></div>
+      <div class="scale-item"><span class="demo shadow-demo" style="box-shadow:var(--rm-glow);background:linear-gradient(180deg,#4C729B,#3A5B7E)"></span><span class="meta"><b>glow</b>主按钮的蓝色辉光</span></div>
+    </div>
+
+    <h3>字号</h3>
+    <div class="scale-grid">
+      <div class="scale-item"><span class="demo type-demo" style="font-size:11px">11 角标</span><span class="meta"><b>11px</b>徽标、遥控器说明</span></div>
+      <div class="scale-item"><span class="demo type-demo" style="font-size:12px">12 辅助</span><span class="meta"><b>12px</b>hint、胶囊、表头</span></div>
+      <div class="scale-item"><span class="demo type-demo" style="font-size:13px">13 正文</span><span class="meta"><b>13px</b>控件、列表、说明</span></div>
+      <div class="scale-item"><span class="demo type-demo" style="font-size:14px">14 强调</span><span class="meta"><b>14px</b>设备名、对话框标题</span></div>
+      <div class="scale-item"><span class="demo type-demo" style="font-size:16px">16 小节</span><span class="meta"><b>16px</b>区块标题</span></div>
+      <div class="scale-item"><span class="demo type-demo" style="font-size:20px">20 页面</span><span class="meta"><b>20px</b>页头标题</span></div>
+    </div>
+    <p class="hint" style="margin-top:10px">行高：正文 1.55–1.65；标题 1.3。数字统一 <code>font-variant-numeric: tabular-nums</code>（版本号、延迟秒数、包计数）。</p>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s04"><span class="no">04</span>界面稿 A：连接页</h2>
+    <p class="sub">真实窗口 1000×700。左侧是唯一的真玻璃浮层，内容卡为磨砂纸；空白区域由柔光底填充，不再是死灰。本稿只画内容区——系统标题栏仍由 Windows 绘制、保持现状，不在本次改动范围。</p>
+
+    <div class="frame" id="frameA">
+      <!-- 侧栏 -->
+      <aside class="sb">
+        <div class="sb-brand">
+          <span class="sb-logo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></svg>
+          </span>
+          <div>
+            <div class="sb-name">Remote Mic</div>
+            <div class="sb-sub">Windows 无线麦</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+            连接
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            按键映射
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+            通用设置
+            <span class="nav-badge"></span>
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5 7 5-14 2.5 7h4"/></svg>
+            诊断
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+            日志
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>
+            引导
+          </button>
+        </nav>
+        <div class="sb-status">
+          <div class="sb-row"><span class="dot ok"></span><span class="txt">遥控器已连接</span></div>
+          <div class="sb-row"><span class="dot ok"></span><span class="txt">语音桥运行中</span></div>
+          <div class="sb-row"><span class="dot ok"></span><span class="txt">返回/音量旁路已附着</span></div>
+        </div>
+      </aside>
+
+      <!-- 内容 -->
+      <main class="pg">
+        <div class="pg-in">
+          <div class="pg-head">
+            <div>
+              <h1>连接</h1>
+              <p>扫描并连接遥控器，查看语音链路与按键接管状态。</p>
+            </div>
+            <div class="right">
+              <button class="btn small ghost">帮助</button>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="device">
+              <span class="device-ico">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+              </span>
+              <div>
+                <div class="device-name">小米蓝牙遥控器 2 Pro</div>
+                <div class="device-model">RC003 · VID 0x2717 · PID 0x32B8</div>
+              </div>
+              <div class="device-actions">
+                <span class="pill ok"><span class="dot"></span>已连接</span>
+                <button class="btn">扫描</button>
+                <button class="btn">断开</button>
+              </div>
+            </div>
+            <div class="rows">
+              <span class="pill ok"><span class="dot"></span>ATVV 语音桥运行中</span>
+              <span class="pill ok"><span class="dot"></span>返回 / 音量旁路已附着</span>
+              <span class="pill ok"><span class="dot"></span>ATVV 端点就绪</span>
+            </div>
+          </section>
+
+          <section class="card group">
+            <div class="card-title" style="padding-top:14px">语音链路</div>
+            <div class="grp-row">
+              <span class="grp-label">虚拟声卡</span>
+              <span class="select">
+                <span class="dot ok"></span>
+                VB-CABLE
+                <span class="caret">▾</span>
+              </span>
+            </div>
+            <div class="grp-row">
+              <span class="grp-label">语音桥</span>
+              <span class="grp-value">
+                <span class="dot ok"></span>
+                ATVV 语音桥 · 运行中
+              </span>
+            </div>
+          </section>
+
+          <div class="callout">
+            <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <div>
+              <b>遥控器按键接管已开启</b>
+              <p>「断开」只会暂停本应用的语音桥与按键接管，不会断开 Windows 蓝牙链路；要彻底断开请在系统蓝牙设置中删除设备。</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <h3>关键改动</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:26%">位置</th><th>现在</th><th>改后</th></tr></thead>
+      <tbody>
+        <tr><td>侧栏导航</td><td>第 <code>0</code> 项 6 个饱和色块（蓝/紫/灰/靛/青/橙），是全应用最大噪音源</td><td>线性单色图标，选中项变白玻璃胶囊 + 强调蓝图标 + 左侧 3px 竖条；颜色不再承担「区分页面」职责</td></tr>
+        <tr><td>侧栏材质</td><td>实色 <code>#eceef3</code></td><td>真玻璃 <code>rgba(255,255,255,.62)</code> + <code>blur(24px)</code>，透出背后柔光底</td></tr>
+        <tr><td>页面标题</td><td>没有页头，页面从「设备」分区标签开始</td><td>统一页头：20px 标题 + 一行说明（所有页同一结构）</td></tr>
+        <tr><td>内容宽度</td><td>全局 1060，连接页自己 720，切页宽度跳变</td><td>统一 880 内容列（映射页铺满除外），左右留白一致</td></tr>
+        <tr><td>状态胶囊</td><td>5 套实现：<code>.badge</code> / <code>.device-status-pill</code> / <code>.vbcable-status</code> / <code>.status-dot</code> / <code>.pill-dot</code></td><td>统一 <code>.pill</code>（6px 圆点 + 12px/500 文字 + 语义底色），语义只有 ok/warn/err/off</td></tr>
+        <tr><td>按钮</td><td>高 26–28px、圆角 7，hover 只变底色</td><td>主 32px / 小 26px，圆角 10/8，内高光 + 悬停投影；主按钮蓝色辉光</td></tr>
+        <tr><td>提示条</td><td>左侧 3px 硬色条（老式 alert）</td><td>软色底 + 图标 + 标题/正文两级文字</td></tr>
+        <tr><td>空白</td><td>灰底一片空</td><td>柔光雾面底（三团低透明度色斑 + 1.5% 噪点），空白变成有层次的背景</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s05"><span class="no">05</span>界面稿 B：按键映射页</h2>
+    <p class="sub">信息密度最高的一页：验证新控件语言在窄栏 + 矩阵 + 遥控器像素图混排下仍然成立。</p>
+
+    <div class="frame" id="frameB">
+      <aside class="sb">
+        <div class="sb-brand">
+          <span class="sb-logo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></svg>
+          </span>
+          <div>
+            <div class="sb-name">Remote Mic</div>
+            <div class="sb-sub">Windows 无线麦</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>
+            连接
+          </button>
+          <button class="nav-item active">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            按键映射
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+            通用设置
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5 7 5-14 2.5 7h4"/></svg>
+            诊断
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+            日志
+          </button>
+          <button class="nav-item">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>
+            引导
+          </button>
+        </nav>
+        <div class="sb-status">
+          <div class="sb-row"><span class="dot"></span><span class="txt">遥控器未连接</span></div>
+          <div class="sb-row"><span class="dot warn"></span><span class="txt">等待遥控器上线</span></div>
+          <div class="sb-row"><span class="dot"></span><span class="txt">返回/音量旁路未附着</span></div>
+        </div>
+      </aside>
+
+      <main class="pg">
+        <div class="pg-in">
+          <div class="pg-head">
+            <div>
+              <h1>按键映射</h1>
+              <p>为 13 个按键配置单击 / 双击 / 长按 / 按下 / 松开，可按前台应用切换作用范围。</p>
+            </div>
+            <div class="right">
+              <button class="btn">校准按键</button>
+              <button class="btn primary">保存</button>
+            </div>
+          </div>
+
+          <section class="card flat" style="padding:12px 16px;margin-bottom:12px">
+            <div class="scope">
+              <button class="sp on"><span class="sd"></span>全局</button>
+              <button class="sp"><span class="sd" style="background:#f97316"></span>Claude Code 桌面版</button>
+              <button class="sp"><span class="sd" style="background:#94a3b8"></span>Codex 桌面版</button>
+              <button class="sp"><span class="sd" style="background:#eab308"></span>ZCode</button>
+              <button class="sp new">＋ 新建应用</button>
+            </div>
+          </section>
+
+          <section class="card" style="flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:0">
+            <div class="merged">
+              <!-- 列 1：遥控器像素图（现有组件保留） -->
+              <div class="col" style="align-items:center">
+                <div class="remote-ph">
+                  <div class="remote-body">
+                    <div class="rb-top"><span class="rb-btn"></span><span class="rb-btn"></span></div>
+                    <div class="rb-dpad"></div>
+                    <div class="rb-mid"><span class="rb-btn"></span><span class="rb-tall"></span></div>
+                    <div class="rb-bot"><span class="rb-btn"></span><span class="rb-btn"></span></div>
+                  </div>
+                  <div class="cap">遥控器像素图组件保留<br>仅高亮色换成强调蓝</div>
+                </div>
+              </div>
+
+              <!-- 列 2：触发方式 / 动作分类 / 动作 / 保存 -->
+              <div class="col">
+                <div class="wiz-label">触发方式</div>
+                <div class="seg" style="margin-bottom:12px">
+                  <button class="on">单击</button><button>双击</button><button>长按</button>
+                </div>
+                <div style="flex:1;min-height:0;overflow:hidden">
+                  <div class="wiz-label">动作分类</div>
+                  <div class="chips" style="margin-bottom:6px">
+                    <button class="chip-btn on">系统</button><button class="chip-btn">自定义</button><button class="chip-btn">其他</button>
+                  </div>
+                  <div style="border-top:1px solid var(--rm-line);margin:8px 0"></div>
+                  <div class="chips">
+                    <button class="chip-btn">回车</button><button class="chip-btn">退格</button><button class="chip-btn">Esc</button>
+                    <button class="chip-btn">显示桌面</button><button class="chip-btn">聚焦输入框</button>
+                    <button class="chip-btn">右键菜单</button><button class="chip-btn">切换应用</button>
+                    <button class="chip-btn">快捷菜单</button><button class="chip-btn">语音输入</button>
+                  </div>
+                </div>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--rm-line)">
+                  <div class="hint" style="margin-bottom:7px">当前：确定 · 单击</div>
+                  <button class="btn primary" style="width:100%">保存此键</button>
+                </div>
+              </div>
+
+              <!-- 列 3：映射表 -->
+              <div class="col">
+                <div class="wiz-label">映射表</div>
+                <div style="flex:1;min-height:0;overflow:hidden">
+                  <table class="matrix">
+                    <thead><tr><th style="width:52px">按键</th><th>单击</th><th>双击</th><th>长按</th></tr></thead>
+                    <tbody>
+                      <tr><td class="k">电源</td><td class="on">取消 (Esc)</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">麦克风</td><td class="on">按下 / 松开 → 豆包</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">上</td><td class="on">↑</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">左</td><td class="on">←</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">确定</td><td class="sel">回车 (Enter)</td><td>—</td><td class="own">豆包</td></tr>
+                      <tr><td class="k">右</td><td class="on">→</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">下</td><td class="on">豆包</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">返回</td><td class="on">删除 (退格)</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">音量 +</td><td class="on">音量 +</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">主页</td><td class="on">显示桌面 (Win+D)</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">音量 −</td><td class="on">音量 −</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">菜单</td><td class="on">快捷菜单 (开/关)</td><td>—</td><td>—</td></tr>
+                      <tr><td class="k">TV</td><td class="on">切换应用 (Alt+Tab)</td><td>—</td><td>—</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      映射页是「铺满不滚动」页（<code>.content-fill</code>），本次只改材质与控件密度，不改这套 flex/grid 压缩规则 —— 
+      那些 <code>min-height: 0</code> 与 <code>minmax(0,1fr)</code> 是踩过坑的，动它们必出滚动条。
+    </p>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s06"><span class="no">06</span>组件库</h2>
+    <p class="sub">落地时这些就是 <code>src/styles/ui.css</code> 里唯一的控件实现；各页面不再自造同名异形控件。</p>
+    <div class="gallery">
+      <div class="specimen">
+        <h4>按钮</h4>
+        <div class="row">
+          <button class="btn primary">连接</button>
+          <button class="btn">扫描</button>
+          <button class="btn ghost">取消</button>
+          <button class="btn danger">删除</button>
+        </div>
+        <div class="row">
+          <button class="btn small primary">重试连接</button>
+          <button class="btn small">重新检测</button>
+          <button class="btn small" disabled>不可用</button>
+        </div>
+        <div class="note">高度 32 / 小 26；圆角 10 / 8；主按钮蓝色辉光；disabled 统一 45% 透明。</div>
+      </div>
+      <div class="specimen">
+        <h4>状态胶囊</h4>
+        <div class="row">
+          <span class="pill ok"><span class="dot"></span>已连接</span>
+          <span class="pill warn"><span class="dot"></span>等待遥控器上线</span>
+          <span class="pill err"><span class="dot"></span>语音桥失败</span>
+          <span class="pill off"><span class="dot"></span>未运行</span>
+        </div>
+        <div class="note">唯一实现，替代 <code>.badge</code> / <code>.device-status-pill</code> / <code>.vbcable-status</code> / <code>.status-dot</code> 四套。</div>
+      </div>
+      <div class="specimen">
+        <h4>开关 / 分段</h4>
+        <div class="row">
+          <button class="switch on"></button>
+          <button class="switch"></button>
+          <button class="switch" disabled></button>
+          <div class="seg" style="margin-left:8px"><button class="on">单击</button><button>双击</button><button>长按</button></div>
+        </div>
+        <div class="note">开关 44×26（现 40×24），按压时拇指拉长；分段控件统一替代 <code>.category-tabs</code> 与 <code>.mode-tab</code>。</div>
+      </div>
+      <div class="specimen">
+        <h4>输入 / 下拉</h4>
+        <div class="row"><input class="input" placeholder="搜索应用…" style="max-width:240px"></div>
+        <div class="row">
+          <span class="select" style="min-width:200px">VB-CABLE<span class="caret">▾</span></span>
+          <span class="select" style="min-width:120px">550 ms<span class="caret">▾</span></span>
+        </div>
+        <div class="note">高度 34；聚焦 3px 强调色柔光环；下拉菜单用浮层玻璃（真模糊）。</div>
+      </div>
+      <div class="specimen">
+        <h4>提示条</h4>
+        <div class="callout">
+          <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 9v4M12 17v.01"/><path d="M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <div><b>语音桥正在重试</b><p>最近错误：会话超时 · 连续失败 2 次 · 约 8 秒后重试</p></div>
+        </div>
+        <div class="callout err" style="margin-top:10px">
+          <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+          <div><b>遥控器语音服务可能已挂起</b><p>链路正常但连续多次收不到语音数据，请取电池 10 秒后装回。</p></div>
+        </div>
+      </div>
+      <div class="specimen">
+        <h4>矩阵单元格状态</h4>
+        <div class="sunken" style="padding:0;overflow:hidden">
+          <table class="matrix">
+            <thead><tr><th style="width:56px">按键</th><th>单击</th><th>双击</th><th>长按</th></tr></thead>
+            <tbody>
+              <tr><td class="k">电源</td><td class="on">取消 (Esc)</td><td>—</td><td>—</td></tr>
+              <tr><td class="k">确定</td><td class="sel">回车 (Enter)</td><td>—</td><td class="own">豆包</td></tr>
+              <tr><td class="k">上</td><td class="on">↑</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">默认灰（未绑）/ <code>.on</code> 黑字 / <code>.own</code> 蓝底（本应用覆盖）/ <code>.sel</code> 蓝环（选中）；行高 34，悬停整行轻微提亮。</div>
+      </div>
+      <div class="specimen" style="grid-column:span 2">
+        <h4>对话框（浮层玻璃）</h4>
+        <div class="dlg-scene">
+          <div class="dlg-mask"></div>
+          <div class="dlg">
+            <h5>删除应用配置</h5>
+            <p>将删除「ZCode」的全部按键绑定与自定义快捷键，且无法撤销。全局配置不受影响。</p>
+            <div class="acts">
+              <button class="btn ghost">取消</button>
+              <button class="btn danger">删除</button>
+            </div>
+          </div>
+        </div>
+        <div class="note">遮罩 <code>rgba(15,23,42,.28)</code> + 3px 模糊；面板 82% 白 + 30px 模糊 + 20 圆角；这是全应用「玻璃最厚」的一层。</div>
+      </div>
+      <div class="specimen" style="grid-column:span 2">
+        <h4>日志预览</h4>
+        <div class="logview"><span class="t">[2026-10-23 16:02:11]</span> <span class="i">[INFO]</span> 语音桥监督线程启动
+<span class="t">[2026-10-23 16:02:12]</span> <span class="i">[INFO]</span> 链路监视器已就绪，等待遥控器上线
+<span class="t">[2026-10-23 16:02:19]</span> <span class="w">[WARN]</span> 会话结束：控制包=0 音频包=0
+<span class="t">[2026-10-23 16:02:19]</span> <span class="e">[ERROR]</span> 连续失败 5 次，进入 failed 等待
+<span class="t">[2026-10-23 16:02:31]</span> <span class="d">[DEBUG]</span> ATVV CAPS frame_size=120</div>
+        <div class="note">沉底内嵌 + 等宽字体；级别上色沿用语义色（INFO 灰 / WARN 琥珀 / ERROR 红 / DEBUG 蓝）。需要日志页按级别切 span，属可选项。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s07"><span class="no">07</span>与现状的差异</h2>
+    <p class="sub">左：现行 v0.7.2（真实截图）。右：本稿。差别集中在「灰阶冷度、图标颜色、控件高度、玻璃层次」。</p>
+    <div class="compare">
+      <figure>
+        <img src="../项目/截图/连接页-运行中.png" alt="现状：连接页">
+        <figcaption>现状 —— 6 色侧栏图标、实色侧栏、无页头、纯灰底、26px 高按钮</figcaption>
+      </figure>
+      <figure>
+        <img src="../项目/截图/按键映射-后端目录驱动.png" alt="现状：按键映射页">
+        <figcaption>现状 —— 映射页：内容很密，控件高度偏小，矩阵与遥控器同处白卡</figcaption>
+      </figure>
+    </div>
+
+    <h3>必须顺手修掉的不一致（审计结果）</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:30%">问题</th><th style="width:34%">证据</th><th>处理</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>两个未定义的 CSS 变量 → 颜色失效</td>
+          <td><code>--muted</code> 用在 <code>App.css:373</code>（崩溃提示）与 <code>ConnectionPage.css:166</code>（重连提示正文）；<code>--card</code> 用在 <code>App.css:357</code>（崩溃卡背景）</td>
+          <td>定义 <code>--rm-text-3</code> / <code>--rm-card</code>，两处文字恢复「次要灰」，崩溃卡恢复白底</td>
+        </tr>
+        <tr>
+          <td>4 套蓝、4 套绿</td>
+          <td><code>#007aff</code>(App) / <code>#2f6fed</code>(RemoteKeyTester + 遥控器高亮) / <code>#0EA5E9</code>(图标) / 快捷菜单 <code>#007aff</code>；绿：<code>#34c759</code> / <code>#248a3d</code> / <code>#2da44e</code> / <code>#22c55e</code></td>
+          <td>一个 accent + 语义三档；快捷菜单与遥控器高亮引用同一 token</td>
+        </tr>
+        <tr>
+          <td>测试组件自带 GitHub 色板</td>
+          <td><code>RemoteKeyTester.css</code> 用 <code>var(--x, #1f2328)</code> 形式写死 fallback，主题化后仍是旧色</td>
+          <td>去掉 fallback 硬编码，改用 token；<code>.trig-pill</code> 并入 <code>.pill</code></td>
+        </tr>
+        <tr>
+          <td>6 套「按钮」各自为政</td>
+          <td><code>.btn</code> / <code>.trigger-btn</code> / <code>.scope-pill</code> / <code>.shortcut-btn</code> / <code>.mode-tab</code> / <code>.status-select-trigger</code>：圆角 7/8/10、padding、hover 各不相同</td>
+          <td>只留 <code>.btn</code>（含 primary/small/ghost/danger）+ <code>.seg</code> + <code>.chip</code>；其余改名为语义变体</td>
+        </tr>
+        <tr>
+          <td>内容宽度不统一</td>
+          <td><code>.content</code> 1060px，<code>.conn-grid</code> 720px，其它页自然宽</td>
+          <td>统一 880px 内容列（映射页 <code>.content-fill</code> 保持铺满）</td>
+        </tr>
+        <tr>
+          <td>focus 反馈缺失</td>
+          <td>只有 <code>button</code> / <code>.select</code> / <code>.sim-input</code> / <code>.combo-input</code> 有 focus-visible；矩阵单元格、<code>.scope-pill</code>、<code>.trigger-btn</code> 没有</td>
+          <td>全局 <code>:focus-visible</code> 规则 + 允许 <code>tabindex</code> 的单元格补键盘焦点</td>
+        </tr>
+        <tr>
+          <td>WebView2 默认滚动条</td>
+          <td>未做 <code>::-webkit-scrollbar</code>；浅色界面上出现深灰宽条</td>
+          <td>8px 圆角细滚动条，透明轨道；hover 加深</td>
+        </tr>
+        <tr>
+          <td>次要文字对比度不达标（现存 a11y 缺陷）</td>
+          <td><code>--text-3: #86868b</code> 在 <code>#f5f5f7</code> 上实测 <b>3.33:1</b>，低于 WCAG AA 的 4.5:1；大量 12px hint 用的正是它</td>
+          <td>换成 <code>#5C6979</code>（白底 5.6:1 / 页底 5.0:1），12px 也达标；装饰性图标才用 <code>#93A0AF</code></td>
+        </tr>
+        <tr>
+          <td>启用态按钮「看起来没启用」</td>
+          <td><code>RemoteKeyTester.tsx:432</code> 写 <code>btn active</code>，但 <code>App.css</code> 没有 <code>.btn.active</code> 规则 → 启用态退化成普通次级按钮</td>
+          <td>补 <code>.btn.on</code>（accent 软底 + accent 文字 + 描边），与 <code>.chip-btn.on</code> 同一语义</td>
+        </tr>
+        <tr>
+          <td>全局 CSS 反而覆盖页面 CSS</td>
+          <td><code>App.tsx:11</code> 在页面 import 之后才引入 <code>App.css</code>；<code>.matrix-hint</code> 与 <code>.hint</code> 同特异度 → 页面写的 <code>margin:0</code> 被全局 <code>margin:10px</code> 盖掉</td>
+          <td>规范：页面想覆盖全局必须提高特异性或用变量，不靠加载顺序；顺带修掉这一处</td>
+        </tr>
+        <tr>
+          <td>浅色主题下的暗色残留</td>
+          <td><code>RemoteKeyTester.tsx:450</code> 内联 <code>background: rgba(255,255,255,0.06)</code>（暗色时代留下的）在浅底上几乎不可见</td>
+          <td>删除内联，改用 <code>.pill/dot</code> 或 <code>--rm-sunken</code></td>
+        </tr>
+        <tr>
+          <td>约 60 行死样式 + 重复定义</td>
+          <td><code>.sim-*</code>、<code>.eat-*</code>、<code>.mode-tab</code>、<code>.guided-*</code>、<code>.mapping-row</code> 在 TSX 已无结构；<code>.category-tabs</code> 定义两次；<code>.status-dot.off/.loading/.preview</code> 三条规则完全相同</td>
+          <td>删死样式、合并重复；<code>transition: all</code> 两处展开为具体属性</td>
+        </tr>
+        <tr>
+          <td>字号 / 圆角取值散乱</td>
+          <td>字号 10.5–20 共 10 档；圆角 7/8/9/10/12/14/999；阴影 6 种纯黑 alpha</td>
+          <td>7 档字号、8 档圆角、3 级冷色阴影；超出的替换为最近档</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s08"><span class="no">08</span>技术路线</h2>
+    <p class="sub">毛玻璃有两种做法：应用内 CSS 玻璃（可控、跨系统一致）与系统窗口效果（Mica/Acrylic，真透到桌面）。调研后只剩前者可行，原因见下。</p>
+
+    <div class="callout" style="margin-bottom:16px;border-color:rgba(0,122,255,.28);background:var(--rm-accent-soft)">
+      <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--rm-accent-strong)"><path d="M12 16v-5M12 8v.01"/><circle cx="12" cy="12" r="9"/></svg>
+      <div>
+        <b style="color:var(--rm-accent-strong)">关键结论：Mica 底 + CSS 磨砂玻璃这条路走不通</b>
+        <p>微软 WebView2 团队确认：<b>WebView2 背景 alpha=0（透明窗口）时 <code>backdrop-filter</code> 没有"背后的像素"可模糊，等于失效</b>，属 Chromium 设计而非 bug。
+        所以「窗口透出桌面壁纸 + 卡片在其上磨砂」无法实现，只能二选一：要么系统特效（锐利透出、Win11 only），要么应用内 CSS 玻璃。本稿选后者。</p>
+      </div>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th style="width:16%">路线</th><th style="width:26%">做法</th><th>代价 / 风险</th><th style="width:12%">结论</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>A · 应用内 CSS 玻璃</b></td>
+          <td>窗口底画「雾面底」（渐变 + 柔光斑 + 噪点），侧栏/浮层用 <code>backdrop-filter</code> 磨出层次。不动 <code>tauri.conf.json</code>、不动 Rust。</td>
+          <td>玻璃不会透到桌面；Win10 / Win11 表现一致；无需系统版本分支；回滚 = 一次 CSS revert。</td>
+          <td><b>本轮采用</b></td>
+        </tr>
+        <tr>
+          <td>B · 系统 Mica / Acrylic</td>
+          <td><code>windowEffects</code> + <code>transparent: true</code>（官方要求窗口必须透明），让窗口本体透出桌面壁纸。</td>
+          <td>Mica 仅 Win11（build ≥ 22000），Win10 直接无效；而透明窗口又会让 CSS 模糊失效；透明窗口历史问题一串：首帧白闪、文字渲染发虚、resize 掉帧、失焦失效。</td>
+          <td>本轮不做</td>
+        </tr>
+        <tr>
+          <td>C · 无边框自绘标题栏</td>
+          <td><code>decorations: false</code> + 拖拽区 + 自绘最小化/最大化/关闭。</td>
+          <td><code>titleBarStyle</code> 文档写明只对 macOS 有效；Windows 上丢 Snap Layouts（tauri#4531 仍 open）、拖边 resize 掉帧（#15569）、Win10 圆角/白边不一致；每次 Tauri 升级都要回归。</td>
+          <td>不建议</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>玻璃实现的 5 条硬约束</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:22%">约束</th><th>原因</th><th style="width:34%">落地做法</th></tr></thead>
+      <tbody>
+        <tr><td><b>祖先链上不能有 opacity / filter / mask</b></td><td>它们会成为 <i>backdrop root</i>，子层的 <code>backdrop-filter</code> 只模糊"父与子之间"的内容，于是静默失效（最容易被 React 的入场淡入动画踩到）</td><td>玻璃容器不做 fade-in；需要过渡时用 <code>transform</code> / 背景色，不用 <code>opacity</code></td></tr>
+        <tr><td><b>同屏真模糊 ≤ 3 层</b></td><td>每层每帧都要回读并重算下采样，滚动时成本随层数线性上升</td><td>只给「侧栏 / 下拉 / 对话框」；内容卡一律磨砂纸（不做滤镜）</td></tr>
+        <tr><td><b>blur ≤ 20px、saturate ≤ 180%</b></td><td>成本随半径与面积近似线性；超过 20px 观感也不再提升</td><td>侧栏 24px 已是上限，浮层 20–30px 但面积小</td></tr>
+        <tr><td><b>玻璃层本身是新层叠上下文</b></td><td>其内部的 <code>fixed</code> 子元素（下拉、Toast）会被困在层内，被相邻玻璃层盖住</td><td>下拉/对话框/Toast 一律挂在 <code>body</code> 顶层（portal），不塞进玻璃卡</td></tr>
+        <tr><td><b>圆角与滤镜写在同一个元素</b></td><td>父子各挂 radius 时模糊结果的裁切会出现亮边/漏光</td><td>需要外壳裁切时：父层 <code>overflow:hidden</code> 不带滤镜，子层带滤镜</td></tr>
+      </tbody>
+    </table>
+
+    <h3>降级与可访问性</h3>
+    <table class="tbl">
+      <thead><tr><th style="width:26%">场景</th><th>处理</th></tr></thead>
+      <tbody>
+        <tr><td>WebView2 不支持 <code>backdrop-filter</code></td><td><code>@supports not (backdrop-filter: blur(1px))</code> → 玻璃层退化为 94% 白实色（观感几乎一致，只是少了背景色渗入）</td></tr>
+        <tr><td>系统「减少透明效果」</td><td><code>@media (prefers-reduced-transparency: reduce)</code> 关掉滤镜、提高不透明度（Chromium 118+，仅作增强）</td></tr>
+        <tr><td>系统「减少动画」</td><td><code>@media (prefers-reduced-motion: reduce)</code> 把过渡压到 0.001ms</td></tr>
+        <tr><td>低端机 / 远程桌面掉帧</td><td>设置里留一个「降低视觉效果」开关（写进 config），关掉滤镜与噪点，而不是只靠媒体查询</td></tr>
+        <tr><td>对比度</td><td>玻璃上的次要文字必须落在 α≥0.85 的近白面上；小字一律用 <code>#131A24 / #46536A / #5C6979</code>，不用 <code>#93A0AF</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ==================================================================== -->
+  <section class="doc-sec">
+    <h2 id="s09"><span class="no">09</span>落地计划与待确认</h2>
+    <p class="sub">按「先底座、后页面、最后细节」推进，每步都可独立验收、独立回滚。</p>
+
+    <table class="tbl">
+      <thead><tr><th style="width:10%">阶段</th><th style="width:34%">内容</th><th style="width:30%">交付物</th><th>验收</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Token 底座：<code>src/styles/tokens.css</code> + <code>src/styles/ui.css</code>；App.css 改为引用；修 <code>--muted</code>/<code>--card</code> 两个真 bug</td><td>2 个新 CSS + App.css 瘦身；旧变量保留一版映射别名</td><td>六页均无「色块错乱 / 文字变黑」；<code>npm run build</code> 通过</td></tr>
+        <tr><td>2</td><td>外壳：雾面底、玻璃侧栏、单色导航图标、页头、统一内容宽度、细滚动条</td><td>App.css / Sidebar.tsx / 各页 page-head</td><td>1000×700 六页截图，切页内容不跳宽</td></tr>
+        <tr><td>3</td><td>组件统一：按钮 / 胶囊 / 开关 / 分段 / 输入 / 提示条 / 对话框；合并 5 套 pill、6 套按钮</td><td>ui.css + 各页替换 class</td><td>无同名异形控件残留（grep 旧 class 为空）</td></tr>
+        <tr><td>4</td><td>页面精修：连接页、映射页（矩阵/遥控器高亮）、诊断、设置、日志、引导</td><td>各页 CSS + 少量 TSX 结构</td><td>逐页真机截图进 <code>docs/项目/截图/</code></td></tr>
+        <tr><td>5</td><td>周边一致：<code>public/quick-menu.html</code> 与新建应用/快捷键对话框；深色模式预留（本轮不做）</td><td>quick-menu.html 色值、对话框</td><td>快捷菜单打开后配色与新界面一致</td></tr>
+      </tbody>
+    </table>
+
+    <h3>需要你拍板的 4 件事</h3>
+    <div class="decisions">
+      <div class="decision">
+        <div class="q">① 强调色定在哪个蓝？</div>
+        <div class="a">现状三套：#007aff（应用+快捷菜单）/#2f6fed（测试组件）/ #0EA5E9（图标），饱和度都偏高。</div>
+        <div class="rec">建议统一为钢蓝 #2B6FC0（在「太亮」和「太灰」之间取了第三档）</div>
+      </div>
+      <div class="decision">
+        <div class="q">② 侧栏图标改成单色还是保留彩色？</div>
+        <div class="a">彩色块能一眼区分页面，但与「色调一致」直接冲突，且 6 个饱和色是全应用最抢眼的东西。</div>
+        <div class="rec">建议单色 + 选中变蓝（本稿效果）</div>
+      </div>
+      <div class="decision">
+        <div class="q">③ 要不要系统级 Mica（透出桌面）？</div>
+        <div class="a">更「现代」，但只在 Win11 生效，Win10 要降级，且窗口配置改动牵连面大。</div>
+        <div class="rec">建议本轮只做应用内玻璃，Mica 留到下个版本</div>
+      </div>
+      <div class="decision">
+        <div class="q">④ 日志页要不要按级别上色？</div>
+        <div class="a">需要日志页把纯文本切成按级别着色的 span（TSX 小改，约 30 行）。</div>
+        <div class="rec">建议做 —— 排障时一眼看到 ERROR</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

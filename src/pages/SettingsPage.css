@@ -21,3 +21,11 @@
   min-width: 104px;
   flex: none;
 }
+
+/* 主题三选一：和按键判定行同一套 form-row 结构，控件用 .btn.small + .on */
+.theme-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}

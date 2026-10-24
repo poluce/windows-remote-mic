@@ -63,9 +63,16 @@ export function MappingPage() {
 
   return (
     <div className="page page-fill">
-      <div className="section-label">按键配置</div>
+      <div className="page-head page-head-compact">
+        <div>
+          <h1>按键映射</h1>
+          <p>为 13 个按键配置单击 / 双击 / 长按 / 按下 / 松开，可按前台应用切换作用范围。</p>
+        </div>
+      </div>
 
-      <section className="card">
+      {/* 作用范围条是工具条而不是内容卡：用轻卡（无扩散阴影），
+          避免这一页出现两张"浮起"的卡片与遥控器列抢注意力。 */}
+      <section className="card flat">
         <ScopeBar
           items={scopeItems}
           active={scope}
@@ -111,7 +118,7 @@ export function MappingPage() {
                     {categories.map((c) => (
                       <button
                         key={c.key}
-                        className={`btn small ${category === c.key ? "primary" : ""}`}
+                        className={`btn small${category === c.key ? " on" : ""}`}
                         onClick={() => {
                           setCategory(c.key);
                           setAction(c.actions[0]?.key || "disabled");
@@ -163,7 +170,7 @@ export function MappingPage() {
                         ?.actions.map((a) => (
                           <button
                             key={a.key}
-                            className={`btn small ${action === a.key ? "primary" : ""}`}
+                            className={`btn small${action === a.key ? " on" : ""}`}
                             onClick={() => setAction(a.key)}
                           >
                             {a.label}

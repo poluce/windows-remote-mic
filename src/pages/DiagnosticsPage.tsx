@@ -166,19 +166,26 @@ export function DiagnosticsPage() {
 
   return (
     <div className="page">
+      <div className="page-head">
+        <div>
+          <h1>诊断</h1>
+          <p>检查虚拟声卡、虚拟 HID、语音链路与按键测试。</p>
+        </div>
+      </div>
+
       <div className="section-label">状态与自检</div>
       <div className="diag-grid">
       <section className="card vbcable-card">
         <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
-        <span className={`vbcable-status ${data.has_vb_cable ? "ok" : "warn"}`}>
+        <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           {data.has_vb_cable ? "正常" : "未就绪"}
         </span>
-        <span className={`vbcable-status ${data.cable_input_present ? "ok" : "warn"}`}>
+        <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           CABLE 输入
         </span>
-        <span className={`vbcable-status ${data.cable_output_present ? "ok" : "warn"}`}>
+        <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
           <span className="pill-dot" />
           CABLE 输出
         </span>
@@ -188,7 +195,7 @@ export function DiagnosticsPage() {
           </button>
         )}
         {checked && !data.has_vb_cable && (
-          <span className="hint">
+          <span className="hint vbcable-msg">
             需网络与管理员权限；安装完成后需重启电脑，重启后点「重新检测」。
           </span>
         )}
@@ -217,7 +224,7 @@ export function DiagnosticsPage() {
               <div key={t.name} className="check-row">
                 <span>{t.name}</span>
                 <div>
-                  <span className={`badge badge-${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
+                  <span className={`pill ${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
                     {t.status.toUpperCase()}
                   </span>
                   {t.detail && <span className="hint multiline"> {t.detail}</span>}

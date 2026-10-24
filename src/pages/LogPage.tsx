@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import "./LogPage.css";
@@ -15,6 +15,22 @@ type LogInfo = {
   }[];
 };
 
+/**
+ * 日志行格式（core-log 写入）：`[2026-10-24 17:10:15.123] [INFO] 内容`
+ * 解析成三段用于着色；不符合格式的行（例如「暂无日志内容」提示）整行按普通文本渲染。
+ */
+type LogParts = { time: string; level: string; message: string };
+
+const LOG_LINE_RE = /^\[([^\]]+)\]\s+\[([A-Z]+)\]\s?([\s\S]*)$/;
+
+function parseLogLine(line: string): LogParts | null {
+  const m = LOG_LINE_RE.exec(line);
+  if (!m) return null;
+  const level = m[2];
+  if (!["DEBUG", "INFO", "WARN", "ERROR"].includes(level)) return null;
+  return { time: m[1], level, message: m[3] };
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -29,6 +45,12 @@ export function LogPage() {
   const logContentRef = useRef("");
   const logViewerRef = useRef<HTMLDivElement | null>(null);
   const [liveLogCount, setLiveLogCount] = useState(0);
+
+  // 日志最多保留 1000 行，按行拆一次即可；着色在渲染时按行匹配。
+  const logLines = useMemo(
+    () => (logContent ? logContent.split("\n") : ["（暂无日志内容）"]),
+    [logContent],
+  );
 
   async function refreshLogInfo() {
     if (!isTauri()) return;
@@ -152,7 +174,12 @@ export function LogPage() {
 
   return (
     <div className="page log-page">
-      <div className="section-label">运行日志</div>
+      <div className="page-head">
+        <div>
+          <h1>日志</h1>
+          <p>查看运行日志尾部，可清空、打开目录或临时开启 DEBUG。</p>
+        </div>
+      </div>
       <section className="card log-card">
         <div className="log-actions">
           <button className="btn" onClick={clearLogFile} disabled={!isTauri()}>
@@ -196,7 +223,26 @@ export function LogPage() {
         )}
         {logMsg && <p className="hint">{logMsg}</p>}
         <div className="log-preview" ref={logViewerRef}>
-          {logContent || "（暂无日志内容）"}
+          {logLines.map((line, i) => {
+            const parts = parseLogLine(line);
+            if (!parts) {
+              return (
+                <div className="log-line" key={i}>
+                  <span className="log-msg log-msg-plain">{line || " "}</span>
+                </div>
+              );
+            }
+            return (
+              <div
+                className={`log-line lvl-${parts.level.toLowerCase()}`}
+                key={i}
+              >
+                <span className="log-time">{parts.time}</span>
+                <span className="log-lvl">{parts.level}</span>
+                <span className="log-msg">{parts.message}</span>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>
