@@ -184,7 +184,13 @@ function installReportPathHooks() {
             dst_range: rangeOf(dst),
           });
         }
-        if (!eatEnabled) {
+        // 只有「吃掉开关打开」且「应用侧 hub 连接仍存活」时才吃掉。
+        // 应用退出/崩溃后 socket 会断开（output 置 null），即使 eat-mode.txt
+        // 还留着 "1"（崩溃路径来不及写 0），脚本也会停止清零并放行原始报告
+        // （检测延迟最迟约一个心跳周期）；否则注入在 WUDFHost 里的钩子会继续
+        // 把遥控器报告清零，而已经没有人消费这些报告、系统原生动作也被吃掉，
+        // 用户会觉得遥控器坏了。
+        if (!eatEnabled || output === null) {
           return;
         }
         // 先把清零前的原始报告转成 9 字节格式上报应用（应用据此注入
