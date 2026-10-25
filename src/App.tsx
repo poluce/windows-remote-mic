@@ -21,12 +21,14 @@ const FILL_PAGES: PageId[] = ["mapping"];
 
 function App() {
   const [page, setPage] = useState<PageId>("connection");
-  const contentRef = useRef<HTMLDivElement | null>(null);
+  // 滚动容器是 .main（不是 .content）：这样滚动条贴窗口右缘，
+  // 内容列在宽窗口里居中，不会把空白留在右侧。
+  const scrollRef = useRef<HTMLElement | null>(null);
 
   // 切页时回到页面顶部：内容区是同一个滚动容器，不复位的话
   // 从长页切到另一页会停在中间，看起来像"页面没加载完"。
   useEffect(() => {
-    contentRef.current?.scrollTo({ top: 0 });
+    scrollRef.current?.scrollTo({ top: 0 });
   }, [page]);
 
   useEffect(() => {
@@ -40,9 +42,8 @@ function App() {
     <div className="app-shell">
       <Sidebar page={page} onChange={setPage} />
 
-      <main className="main">
+      <main className="main" ref={scrollRef}>
         <div
-          ref={contentRef}
           className={`content${FILL_PAGES.includes(page) ? " content-fill" : ""}`}
         >
           {page === "connection" && <ConnectionPage />}

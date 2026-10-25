@@ -271,15 +271,20 @@ button {
   flex-direction: column;
   min-width: 0;
   height: 100vh;
-  overflow: hidden;
+  /* 滚动条贴窗口右缘：内容列只有 936px，如果把滚动交给内容列，
+     窗口拉宽后滚动条会停在窗口中间，右侧留出一条死白。 */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .content {
   flex: 1;
-  overflow-y: auto;
+  /* 由 .main 承担滚动，内容列在可用宽度里水平居中。 */
+  overflow: visible;
   padding: 24px 28px 44px;
   max-width: 936px;
   width: 100%;
+  margin: 0 auto;
 }
 
 /* 铺满页（按键映射）不受内容列宽限制 */
