@@ -21,7 +21,10 @@ pub fn get_last_update_check_at() -> u64 {
 #[tauri::command]
 pub fn set_last_update_check_at(timestamp: u64) -> Result<(), String> {
     let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    cfg.last_update_check_at = timestamp;
-    store.save(&cfg).map_err(|e| e.to_string())
+    store
+        .update(|cfg| {
+            cfg.last_update_check_at = timestamp;
+            Ok(())
+        })
+        .map(|_| ())
 }

@@ -1,7 +1,11 @@
 //! Remote Mic Tauri 应用外壳。
 //! 菜单键 → 快捷菜单：调度器经统一应用事件出口（quick_menu::handle_app_event）处理。
 
+mod agent_api;
+
 mod commands;
+
+mod services;
 
 mod support;
 
@@ -185,6 +189,7 @@ pub fn run() {
                 app.manage(AppState {
                     dispatcher: dispatcher.clone(),
                 });
+                crate::agent_api::start_if_enabled(app.handle().clone(), dispatcher.clone());
                 dispatcher
             };
 
@@ -394,6 +399,10 @@ pub fn run() {
             commands::app_profile::editor::delete_app_profile,
             commands::quick_menu::close_quick_menu,
             commands::quick_menu::toggle_quick_menu,
+            agent_api::get_agent_api_status,
+            agent_api::set_agent_api_enabled,
+            agent_api::regenerate_agent_api_token,
+            agent_api::get_agent_api_config,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -406,6 +415,7 @@ pub fn run() {
             // 让遥控器的返回/音量/TV 键回到系统原生行为。否则应用关了、
             // 按键却仍被脚本清零，用户会以为遥控器坏了。
             if let tauri::RunEvent::Exit = event {
+                crate::agent_api::stop();
                 core_hid::tap::write_eat_mode_file(false);
                 force_release_held_keys(app, "应用退出");
             }

@@ -5,7 +5,7 @@ use serde::Serialize;
 use core_mapping::{ActionKind, ButtonId, Trigger};
 
 /// 面向前端展示的映射条目。
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct MappingEntry {
     pub(crate) button: String,
     pub(crate) name: String,

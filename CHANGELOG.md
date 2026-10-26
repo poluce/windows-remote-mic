@@ -20,6 +20,29 @@
 
 ## [Unreleased]
 
+### 新增
+- **智能体接入（MCP）**：通用设置新增「允许智能体配置（MCP）」开关，默认关闭。
+  开启后应用在 `127.0.0.1` 随机端口提供本地 JSON-RPC，并生成一次性 token 写入
+  `%LOCALAPPDATA%\RemoteMic\RC003\agent-api.json`；随安装包分发 `remote-mic-mcp.exe`
+  （stdio MCP sidecar），支持 MCP 2026-07-28（modern，无 `initialize`）与 2025-11-25（legacy）
+  双 era、`server/discover`、12 个映射/触发/状态工具。关闭开关立即停止接口并删除 token。
+- 配置新增 `revision`（写版本号）与 `agent_api_enabled`；所有配置写操作收口到
+  `ConfigStore::update`（进程内写锁 + revision 自增），UI 与智能体并发修改不再互相覆盖。
+- 映射写操作抽出 service 层（`services::mapping`），Tauri command 与 MCP 共用同一套逻辑；
+  智能体修改后 emit `config-changed`，映射页自动刷新。
+
+### 构建
+- 新增 `crates/mcp-bridge`（`remote-mic-mcp.exe`）与 `scripts/prepare-mcp-sidecar.ps1`；
+  安装包通过 `tauri.bundle.conf.json` 的 `externalBin` 携带 sidecar。
+  打完整安装包用 `npm run tauri:build`（普通 `npm run tauri build` 不携带 sidecar）。
+
+### 修复
+- MCP 接入自查修复：JSON-RPC notification 不再误回响应；重复删除 / 重复设置同一状态不写盘、
+  不递增 revision；开启 MCP 失败时的提示不再被折叠在开关关闭态里；智能体修改配置后清空过期的
+  撤销 Toast，避免撤销覆盖智能体的新改动；MCP 启停加串行锁避免快速开关竞态；本地 RPC 缺
+  `Content-Length` 返回 411、坏 JSON 返回 `-32700`；sidecar 连接加 2 秒超时、legacy 兼容
+  2025-06-18；设置页状态文案与读取失败提示修正；事件监听卸载竞态修复。
+
 ## [0.7.5] - 2026-10-26
 
 ### 修复

@@ -1,10 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::{
-    action_key, action_label, button_key, config_store, parse_action, parse_button, parse_trigger,
-    trigger_key, AppState, MappingEdit, MappingEntry,
-};
+use crate::{config_store, services, AppState, MappingEdit, MappingEntry};
 
 /// 触发判定时间设置。
 #[derive(Serialize)]
@@ -16,12 +13,10 @@ pub struct TriggerTiming {
 /// 读取长按阈值与双击窗口（毫秒）。
 #[tauri::command]
 pub fn get_trigger_timing() -> TriggerTiming {
-    let cfg = config_store()
-        .and_then(|s| s.load().ok())
-        .unwrap_or_default();
+    let (long_press_ms, double_click_ms) = services::mapping::get_trigger_timing();
     TriggerTiming {
-        long_press_ms: cfg.long_press_ms,
-        double_click_ms: cfg.double_click_ms,
+        long_press_ms,
+        double_click_ms,
     }
 }
 
@@ -32,16 +27,8 @@ pub fn set_trigger_timing(
     double_click_ms: u64,
     state: State<AppState>,
 ) -> Result<TriggerTiming, String> {
-    let long_press_ms = long_press_ms.clamp(200, 2000);
-    let double_click_ms = double_click_ms.clamp(150, 1000);
-    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
-    let mut cfg = store.load().unwrap_or_default();
-    cfg.long_press_ms = long_press_ms;
-    cfg.double_click_ms = double_click_ms;
-    store.save(&cfg).map_err(|e| e.to_string())?;
-    state
-        .dispatcher
-        .set_trigger_timing(long_press_ms, double_click_ms);
+    let (long_press_ms, double_click_ms, _revision) =
+        services::mapping::set_trigger_timing(long_press_ms, double_click_ms, &state.dispatcher)?;
     core_log::log_info(&format!(
         "[commands/mapping] 触发时间已更新：长按={long_press_ms}ms，双击窗口={double_click_ms}ms"
     ));
@@ -54,53 +41,13 @@ pub fn set_trigger_timing(
 /// 将一条按键映射保存到 `config.json`，并热更新运行时调度器。
 #[tauri::command]
 pub fn save_mapping(edit: MappingEdit, state: State<AppState>) -> Result<(), String> {
-    let button = parse_button(&edit.button).ok_or("未知按键")?;
-    let trigger = parse_trigger(&edit.trigger).ok_or("未知触发")?;
-    let action = parse_action(&edit.action).ok_or("未知动作")?;
-
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    // 保存动作 = 同时启用这条绑定：禁用只是临时状态，重新绑定就应该恢复响应。
-    let enabled = edit.enabled.unwrap_or(true);
-    if let Some(binding) = cfg
-        .mapping
-        .bindings
-        .iter_mut()
-        .find(|b| b.button == button && b.trigger == trigger)
-    {
-        binding.action = action;
-        binding.enabled = enabled;
-    } else {
-        cfg.mapping.bindings.push(core_mapping::KeyBinding {
-            button,
-            trigger,
-            action,
-            enabled,
-        });
-    }
-    store.save(&cfg).map_err(|e| e.to_string())?;
-    state.dispatcher.update_mapping(cfg.mapping);
-    Ok(())
+    services::mapping::save_mapping(&edit, &state.dispatcher).map(|_| ())
 }
 
 /// 返回映射编辑器所需的全部持久化绑定（单击/双击/长按）。
 #[tauri::command]
 pub fn get_mappings() -> Vec<MappingEntry> {
-    let cfg = config_store()
-        .and_then(|s| s.load().ok())
-        .unwrap_or_default();
-    cfg.mapping
-        .bindings
-        .iter()
-        .map(|b| MappingEntry {
-            button: button_key(&b.button),
-            name: b.button.display_name().to_string(),
-            trigger: trigger_key(&b.trigger),
-            action: action_label(&b.action),
-            action_key: action_key(&b.action),
-            enabled: b.enabled,
-        })
-        .collect()
+    services::mapping::list_mappings()
 }
 
 /// 清除一条全局绑定（映射表右上角 ×）。
@@ -110,25 +57,13 @@ pub fn clear_mapping_binding(
     trigger: String,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let button = parse_button(&button).ok_or("未知按键")?;
-    let trigger = parse_trigger(&trigger).ok_or("未知触发")?;
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    let before = cfg.mapping.bindings.len();
-    cfg.mapping
-        .bindings
-        .retain(|b| !(b.button == button && b.trigger == trigger));
-    if cfg.mapping.bindings.len() == before {
-        // 本来就没有这条绑定：不写盘、不重载。
-        return Ok(());
+    let change = services::mapping::clear_mapping(&button, &trigger, &state.dispatcher)?;
+    if let Some(removed) = change.removed {
+        core_log::log_info(&format!(
+            "[commands/mapping] 已取消关联：{} · {}",
+            removed.name, removed.trigger
+        ));
     }
-    store.save(&cfg).map_err(|e| e.to_string())?;
-    state.dispatcher.update_mapping(cfg.mapping);
-    core_log::log_info(&format!(
-        "[commands/mapping] 已取消关联：{} · {}",
-        button.display_name(),
-        trigger_key(&trigger)
-    ));
     Ok(())
 }
 
@@ -140,30 +75,16 @@ pub fn set_mapping_binding_enabled(
     enabled: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let button = parse_button(&button).ok_or("未知按键")?;
-    let trigger = parse_trigger(&trigger).ok_or("未知触发")?;
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    let Some(binding) = cfg
-        .mapping
-        .bindings
-        .iter_mut()
-        .find(|b| b.button == button && b.trigger == trigger)
-    else {
-        return Err("这条绑定不存在".into());
-    };
-    if binding.enabled == enabled {
-        return Ok(());
+    let (entry, _revision, changed) =
+        services::mapping::set_mapping_enabled(&button, &trigger, enabled, &state.dispatcher)?;
+    if changed {
+        core_log::log_info(&format!(
+            "[commands/mapping] 绑定已{}：{} · {}",
+            if enabled { "启用" } else { "禁用" },
+            entry.name,
+            entry.trigger
+        ));
     }
-    binding.enabled = enabled;
-    store.save(&cfg).map_err(|e| e.to_string())?;
-    state.dispatcher.update_mapping(cfg.mapping);
-    core_log::log_info(&format!(
-        "[commands/mapping] 绑定已{}：{} · {}",
-        if enabled { "启用" } else { "禁用" },
-        button.display_name(),
-        trigger_key(&trigger)
-    ));
     Ok(())
 }
 
@@ -173,12 +94,7 @@ pub fn save_key_calibrations(
     calibrations: std::collections::HashMap<String, core_config::KeyCalibration>,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    cfg.key_calibrations = calibrations;
-    store.save(&cfg).map_err(|e| e.to_string())?;
-    state.dispatcher.update_calibrations(&cfg.key_calibrations);
-    Ok(())
+    services::mapping::save_calibrations(calibrations, &state.dispatcher).map(|_| ())
 }
 
 /// 暂停 / 恢复按键调度。按键测试与校准界面打开时应暂停，
@@ -200,10 +116,10 @@ pub fn set_dispatch_enabled(enabled: bool, state: State<AppState>) {
 /// 从 `config.json` 读取按键校准表。
 #[tauri::command]
 pub fn get_key_calibrations() -> std::collections::HashMap<String, core_config::KeyCalibration> {
-    let cfg = config_store()
+    config_store()
         .and_then(|s| s.load().ok())
-        .unwrap_or_default();
-    cfg.key_calibrations
+        .unwrap_or_default()
+        .key_calibrations
 }
 
 // ---------------------------------------------------------------------------
@@ -216,69 +132,30 @@ pub fn get_key_calibrations() -> std::collections::HashMap<String, core_config::
 /// 读自定义快捷键库。
 #[tauri::command]
 pub fn get_shortcuts() -> Vec<core_config::NamedShortcut> {
-    config_store()
-        .and_then(|s| s.load().ok())
-        .map(|cfg| cfg.shortcuts)
-        .unwrap_or_default()
+    services::mapping::list_shortcuts()
 }
 
 /// 新增或改名，返回改完之后的整个库。
-///
-/// `keys` 就是这条记录的身份——同一个组合只留一条，拿同样的 keys 再存一次
-/// 就是改名。这样前端不必区分「新增」和「改名」两条路径。
 #[tauri::command]
 pub fn save_shortcut(
     name: String,
     keys: Vec<String>,
 ) -> Result<Vec<core_config::NamedShortcut>, String> {
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err("请给这个快捷键起个名字".into());
-    }
-    let keys = normalize_keys(&keys);
-    if keys.is_empty() {
-        return Err("请先录制或输入快捷键".into());
-    }
-
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    match cfg.shortcuts.iter_mut().find(|s| s.keys == keys) {
-        Some(existing) => existing.name = name,
-        None => cfg
-            .shortcuts
-            .push(core_config::NamedShortcut { name, keys }),
-    }
-    store.save(&cfg).map_err(|e| e.to_string())?;
+    let (shortcuts, _revision) = services::mapping::save_shortcut(name, keys)?;
     core_log::log_info(&format!(
         "[commands/mapping] 自定义快捷键库已更新：{} 条",
-        cfg.shortcuts.len()
+        shortcuts.len()
     ));
-    Ok(cfg.shortcuts)
+    Ok(shortcuts)
 }
 
 /// 删掉一条。删不存在的 keys 也算成功——调用方要的结果是「它没了」。
 #[tauri::command]
 pub fn delete_shortcut(keys: Vec<String>) -> Result<Vec<core_config::NamedShortcut>, String> {
-    let keys = normalize_keys(&keys);
-    let store = config_store().ok_or("无法创建配置目录")?;
-    let mut cfg = store.load().map_err(|e| e.to_string())?;
-    let before = cfg.shortcuts.len();
-    cfg.shortcuts.retain(|s| s.keys != keys);
-    if cfg.shortcuts.len() == before {
-        return Ok(cfg.shortcuts);
-    }
-    store.save(&cfg).map_err(|e| e.to_string())?;
+    let (shortcuts, _revision) = services::mapping::delete_shortcut(keys)?;
     core_log::log_info(&format!(
         "[commands/mapping] 自定义快捷键库已更新：{} 条",
-        cfg.shortcuts.len()
+        shortcuts.len()
     ));
-    Ok(cfg.shortcuts)
-}
-
-/// 去空白 + 小写；空 token 丢掉。前端已经规范化过顺序，这里只做兜底。
-fn normalize_keys(keys: &[String]) -> Vec<String> {
-    keys.iter()
-        .map(|k| k.trim().to_ascii_lowercase())
-        .filter(|k| !k.is_empty())
-        .collect()
+    Ok(shortcuts)
 }

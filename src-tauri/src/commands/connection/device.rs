@@ -71,14 +71,13 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
 
 #[tauri::command]
 pub fn save_selected_device(device_id: String) -> Result<(), String> {
-    let mut cfg = config_store()
-        .and_then(|s| s.load().ok())
-        .unwrap_or_default();
-    cfg.selected_device_id = Some(device_id);
     config_store()
         .ok_or_else(|| "无法创建配置目录".to_string())?
-        .save(&cfg)
-        .map_err(|e| e.to_string())
+        .update(|cfg| {
+            cfg.selected_device_id = Some(device_id);
+            Ok(())
+        })
+        .map(|_| ())
 }
 
 /// 读取上次成功连接过的设备 ID（供连接页启动时自动重连一次）。

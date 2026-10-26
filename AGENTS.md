@@ -22,6 +22,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 - `main` 版本 **0.7.5**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`、`v0.7.0`、`v0.7.1`、`v0.7.2`、`v0.7.3`、`v0.7.4`、`v0.7.5`。
 - 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`，
   以及自动更新用的 `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`（见 [docs/项目/自动更新.md](docs/项目/自动更新.md)）。
+- **智能体接入（MCP）**：通用设置可开启/关闭本地 MCP 接口，sidecar `remote-mic-mcp.exe` 随安装包分发；默认关闭，仅本机可访问；详见 [docs/项目/智能体接入.md](docs/项目/智能体接入.md)。
 - 自动更新：应用内「通用设置 → 关于与更新」可检查 / 下载 / 安装新版本（Tauri v2 updater，NSIS passive 安装，需 UAC）；
   正式构建启动后立即静默检查一次，运行期间每 30 分钟复查；自动检查距上次成功检查 ≥1 小时才真正联网，
   手动检查不受频率限制（时间戳持久化在 `config.json` 的 `last_update_check_at`）。
@@ -58,6 +59,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   └── src/
 │       ├── lib.rs            # 应用装配：命令注册、窗口创建、调度器装配、生命周期
 │       ├── support/          # 外壳通用支撑：路径 / 状态 / 按键兜底 / panic / 映射编解码
+│       ├── services/         # UI 与 MCP 共用的配置 service（mapping/timing/shortcuts）
+│       ├── agent_api/        # 本地 JSON-RPC（127.0.0.1 + token + 发现文件）
 │       └── commands/         # connection / mapping / mapping_catalog / voice_bridge /
 │                             # audio_tools / vb_cable / app_profile（分 menu/editor） / diagnostics / log / quick_menu
 ├── crates/                   # Rust 核心库
@@ -73,7 +76,8 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-stats            # 本机统计（批量写盘）
 │   ├── core-hid              # HID 捕获（Raw Input + HOGP 旁路 Frida；tap 模块化为 config/hub/inject/runtime/status/watchdog）
 │   ├── core-input            # 按键注入、Win+H、单实例互斥等 Windows 输入能力
-│   └── core-app-profile      # 前台应用档案（按进程 exe 匹配、种子模板）
+│   ├── core-app-profile      # 前台应用档案（按进程 exe 匹配、种子模板）
+│   └── mcp-bridge            # 外部智能体接口：MCP stdio sidecar（remote-mic-mcp.exe）
 ├── profiles/                 # 应用档案种子模板（*.json，首次启动播种到用户目录）
 ├── public/quick-menu.html    # 快捷菜单窗口（独立 Canvas 页面）
 ├── scripts/                  # PowerShell 辅助脚本（构建 / 驱动 / VB-CABLE / Tap）
@@ -92,10 +96,12 @@ npm install
 npm run tauri dev          # 开发运行（Vite 端口 1420，前端热更新）
 npm run typecheck          # tsc --noEmit
 npm run build              # 前端构建（tsc + vite build）
-npm run build:installer    # 前端构建 + stage VB-CABLE 助手脚本（tauri build 会自动调用）
-npm run tauri build        # 打 NSIS 安装包
+npm run build:installer    # 前端构建 + stage VB-CABLE 助手脚本 + MCP sidecar（tauri build 会自动调用）
+npm run tauri:build        # 打 NSIS 安装包（含 remote-mic-mcp.exe；必须用这个，不是 tauri build）
 ```
 
+> `npm run tauri:build` 使用 `src-tauri/tauri.bundle.conf.json` 追加 `externalBin`，把 `remote-mic-mcp.exe` 放进安装包；
+> 普通 `npm run tauri build` 不携带 sidecar（避免 `cargo check` 依赖未生成的二进制）。
 > 本地打**完整**安装包前，先运行 `powershell -ExecutionPolicy Bypass -File scripts/prepare-vhid-bundle.ps1`
 > 把虚拟 HID 驱动 bundle 放进 `src-tauri/windows/driver/`；`hooks.nsh` 对缺失 bundle 用 `File /nonfatal`，所以
 > 不准备也能编译，但装出来的包不含驱动。
@@ -112,7 +118,7 @@ npm run typecheck
 npm run build
 ```
 
-v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate 测试 **5** 个。
+v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、app crate 测试 **5** 个。
 （原 `commands/audio.rs` 的 3 个测试已随监督状态机迁到 `core-voice/supervisor.rs`。）
 
 ### 从 WSL 调用（路径按本机实际情况替换）
@@ -183,7 +189,8 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
   - 原子写入；损坏时自动回退 `config.json.bak`（上一次成功保存）。
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
     `long_press_ms`（默认 550）、`double_click_ms`（默认 250）、`voice_target`、`shortcuts`、
-    `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）。
+    `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）、`revision`（配置写版本号）、
+    `agent_api_enabled`（是否允许外部智能体接入，默认 false）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
 - **单击时序**：只有显式绑定了双击的按键才会等双击窗口确认单击；**没有双击绑定的按键在松开
   瞬间立即执行**（快速连按每次都生效，不会被合并成双击吞掉）。绑了不同动作的长按仍按阈值触发一次。
@@ -415,12 +422,29 @@ v0.7.0 基线（含本次重构）：workspace 测试 **183** 个、app crate �
 - 应用内还可重新运行虚拟 HID 驱动安装（`install_vhid_driver`，用于修复 / 重装）。
 - 引导页 4 步：1) 蓝牙配对；2) 确认虚拟声卡驱动；3) 关键：Win+H 里把麦克风绑定为 CABLE Output；
   4) 模拟自检与日常使用。
-- 通用设置：拦截 HID 按键信号（eat 模式）、长按判定、双击间隔、「关于与更新」（检查 / 下载 / 安装更新）。
+- 通用设置：拦截 HID 按键信号（eat 模式）、长按判定、双击间隔、**智能体接入（MCP）开关**、「关于与更新」（检查 / 下载 / 安装更新）。
+
+### 8.1 智能体接入（MCP）
+
+- 用户界面：通用设置 →「智能体接入」卡片，**明确的开关**，默认关闭；开启后显示端口、
+  MCP 配置片段、复制配置 / 重新生成 token。
+- 应用内：`src-tauri/src/agent_api/` 在 `127.0.0.1` 随机端口起一个极简 HTTP JSON-RPC，
+  32 字节 token 写入 `%LOCALAPPDATA%\RemoteMic\RC003\agent-api.json`；只接受 POST /rpc，
+  校验 token / Host / 拒绝 Origin / 限流 / 64 KiB 上限。
+- 外部：`crates/mcp-bridge` 编译出 `remote-mic-mcp.exe`（console subsystem，stdio）。
+  支持 MCP **2026-07-28 modern**（无 initialize、每请求 `_meta`、`server/discover`）与
+  **2025-11-25 legacy**（initialize 握手）；工具 `remote_mic_*` 共 12 个，只做映射/触发/只读状态。
+- 写操作统一走 `services::mapping` → `ConfigStore::update`（全局写锁 + revision），
+  写成功后 `emit("config-changed")`，映射页自动刷新；MCP 删除/禁用立即生效。
+- 不暴露：驱动安装、按键注入、更新、日志清空、语音桥控制、eat 模式写、应用档案写。
+- 接入文档：[docs/项目/智能体接入.md](docs/项目/智能体接入.md)；设计：
+  [docs/design/mcp-agent-interface.md](docs/design/mcp-agent-interface.md)。
 
 ### 9. 打包与发版
 
 - **安装包内容**（NSIS，`perMachine`）：应用本体 + WebView2 bootstrapper + 虚拟 HID 驱动 bundle
-  （`core_input` 的 WinUHid）+ VB-CABLE **助手脚本**（不是 VB-CABLE 本体）。
+  （`core_input` 的 WinUHid）+ VB-CABLE **助手脚本**（不是 VB-CABLE 本体）+ MCP sidecar
+  `remote-mic-mcp.exe`（Tauri `externalBin`）。
 - `tauri.conf.json` 的 `beforeBuildCommand` = `npm run build:installer`（前端构建 + stage VB-CABLE 脚本）；
   完整包另需先运行 `scripts/prepare-vhid-bundle.ps1` 生成 `src-tauri/windows/driver/`。
 - `hooks.nsh` 在安装时：把驱动复制到 `$INSTDIR\vhid` 并调用安装 / 卸载脚本（一次 UAC 完成应用与驱动安装），

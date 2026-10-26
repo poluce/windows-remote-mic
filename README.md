@@ -13,6 +13,7 @@
 - 快捷菜单：右下角扇形菜单（默认由遥控器「菜单」键呼出，可改映射），支持遥控器独占操作与状态记忆
 - 虚拟声卡路由：输出到 VB-CABLE 等虚拟音频设备
 - 自动更新：应用内「通用设置 → 关于与更新」检查 / 下载 / 安装新版本（Tauri updater，安装包签名校验）
+- 智能体接入（MCP）：通用设置可开启/关闭本地 MCP 接口，让 Claude Code / Codex / DSH 等智能体读取和修改按键映射；默认关闭，仅本机可访问
 
 ## 技术栈
 
@@ -56,8 +57,8 @@ npm run dev
 # 启动 Tauri 桌面应用
 npm run tauri dev
 
-# 构建发布包
-npm run tauri build
+# 构建发布包（含 remote-mic-mcp.exe sidecar）
+npm run tauri:build
 ```
 
 ## 质量检查
