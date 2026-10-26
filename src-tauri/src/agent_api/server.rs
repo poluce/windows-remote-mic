@@ -123,10 +123,12 @@ fn handle(
         return respond_error(&mut stream, 429, "rate_limited", "请求过于频繁");
     }
 
-    let content_length: usize = header_map
+    let Some(content_length) = header_map
         .get("content-length")
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| "缺少 Content-Length".to_string())?;
+        .and_then(|v| v.parse::<usize>().ok())
+    else {
+        return respond_error(&mut stream, 411, "length_required", "缺少 Content-Length");
+    };
     if content_length > MAX_BODY {
         return respond_error(&mut stream, 413, "too_large", "请求体过大");
     }
@@ -149,7 +151,17 @@ fn handle(
         }
     }
 
-    let request: Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let request: Value = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(e) => {
+            let resp = json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": { "code": -32700, "message": format!("JSON 解析失败：{e}") }
+            });
+            return respond_json(&mut stream, 200, &resp);
+        }
+    };
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     if method.is_empty() {
@@ -230,6 +242,7 @@ fn respond_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<(),
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
+        411 => "Length Required",
         413 => "Payload Too Large",
         429 => "Too Many Requests",
         _ => "Error",

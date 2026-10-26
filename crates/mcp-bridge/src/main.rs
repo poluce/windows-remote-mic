@@ -63,13 +63,23 @@ fn main() {
         // legacy 握手
         if method == "initialize" {
             legacy_mode = true;
+            // 兼容 2025-06-18 旧客户端；其他请求回落到 2025-11-25。
+            let requested = params
+                .get("protocolVersion")
+                .and_then(Value::as_str)
+                .unwrap_or("2025-11-25");
+            let negotiated = if requested == "2025-06-18" {
+                "2025-06-18"
+            } else {
+                "2025-11-25"
+            };
             write_message(
                 &mut stdout,
                 &json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": {
-                        "protocolVersion": "2025-11-25",
+                        "protocolVersion": negotiated,
                         "capabilities": { "tools": {} },
                         "serverInfo": { "name": "remote-mic", "version": env!("CARGO_PKG_VERSION") }
                     }

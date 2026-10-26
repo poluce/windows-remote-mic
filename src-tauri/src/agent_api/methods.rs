@@ -129,7 +129,7 @@ pub fn dispatch(
             if changed {
                 emit_changed(app, revision);
             }
-            Ok(json!({ "binding": entry, "revision": revision }))
+            Ok(json!({ "binding": entry, "revision": revision, "changed": changed }))
         }
         "timing.get" => {
             let (long_press_ms, double_click_ms) = services::mapping::get_trigger_timing();

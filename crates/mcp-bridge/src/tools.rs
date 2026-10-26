@@ -59,14 +59,26 @@ pub fn call_tool(name: &str, args: Value) -> Result<(String, Value, Option<u64>)
         "remote_mic_clear_mapping" => {
             let data = rpc("mapping.clear", args)?;
             let revision = revision_of(&data);
-            Ok(("已取消关联".into(), data, revision))
+            let removed = data.get("removed").map(|v| !v.is_null()).unwrap_or(false);
+            Ok((
+                if removed {
+                    "已取消关联".into()
+                } else {
+                    "没有这条绑定，无需删除".into()
+                },
+                data,
+                revision,
+            ))
         }
         "remote_mic_set_mapping_enabled" => {
             let enabled = args.get("enabled").and_then(Value::as_bool).unwrap_or(true);
             let data = rpc("mapping.set_enabled", args)?;
             let revision = revision_of(&data);
+            let changed = data.get("changed").and_then(Value::as_bool).unwrap_or(true);
             Ok((
-                if enabled {
+                if !changed {
+                    "绑定状态未变化".into()
+                } else if enabled {
                     "已启用绑定".into()
                 } else {
                     "已禁用绑定".into()

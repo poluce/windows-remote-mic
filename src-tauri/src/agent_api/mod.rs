@@ -48,6 +48,9 @@ struct RunningAgent {
 
 static RUNNING: Mutex<Option<RunningAgent>> = Mutex::new(None);
 
+/// 串行化 start/stop，避免快速开关时「start 刚写完发现文件、stop 又把它删掉」的竞态。
+static LIFECYCLE: Mutex<()> = Mutex::new(());
+
 fn discovery_path() -> Result<PathBuf, String> {
     config_store()
         .map(|s| s.dir.join("agent-api.json"))
@@ -122,6 +125,7 @@ pub fn start(
     app: AppHandle,
     dispatcher: Arc<core_dispatch::KeyDispatcher>,
 ) -> Result<AgentApiStatus, String> {
+    let _lifecycle = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
     {
         let running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
         if running.is_some() {
@@ -169,6 +173,7 @@ pub fn start(
 
 /// 停止本地 RPC 并删除发现文件。
 pub fn stop() {
+    let _lifecycle = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut running) = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         remove_discovery();
         return;

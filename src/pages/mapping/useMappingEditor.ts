@@ -110,19 +110,31 @@ export function useMappingEditor() {
   useEffect(() => {
     if (!isTauri()) return;
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     listen("config-changed", () => {
       // 智能体刚改过配置：之前删除留下的撤销快照可能已经过期，
       // 先清掉，避免用户点撤销时把智能体的新改动覆盖回去。
       dismissToast();
-      void refreshMappings();
-      void refreshProfiles();
+      void refreshMappings().catch((err) => {
+        setSaveMsg(`智能体修改后刷新映射失败: ${err}`);
+      });
+      void refreshProfiles().catch((err) => {
+        setSaveMsg(`智能体修改后刷新应用配置失败: ${err}`);
+      });
       loadShortcuts().then(setShortcuts);
     })
       .then((fn) => {
-        unlisten = fn;
+        if (disposed) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       })
       .catch(() => {});
-    return () => unlisten?.();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [dismissToast, refreshMappings, refreshProfiles]);
 
   useEffect(() => {

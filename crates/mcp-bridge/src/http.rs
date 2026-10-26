@@ -49,34 +49,40 @@ fn discovery_path() -> Option<PathBuf> {
         }
     }
     if let Ok(base) = std::env::var("LOCALAPPDATA") {
-        return Some(
-            PathBuf::from(base)
-                .join("RemoteMic")
-                .join("RC003")
-                .join("agent-api.json"),
-        );
+        if !base.trim().is_empty() {
+            return Some(
+                PathBuf::from(base)
+                    .join("RemoteMic")
+                    .join("RC003")
+                    .join("agent-api.json"),
+            );
+        }
     }
     if let Ok(profile) = std::env::var("USERPROFILE") {
-        return Some(
-            PathBuf::from(profile)
-                .join("AppData")
-                .join("Local")
-                .join("RemoteMic")
-                .join("RC003")
-                .join("agent-api.json"),
-        );
+        if !profile.trim().is_empty() {
+            return Some(
+                PathBuf::from(profile)
+                    .join("AppData")
+                    .join("Local")
+                    .join("RemoteMic")
+                    .join("RC003")
+                    .join("agent-api.json"),
+            );
+        }
     }
     // WSL interop / 精简环境下 USERPROFILE 可能缺失，再用 USERNAME 拼默认路径。
     if let Ok(username) = std::env::var("USERNAME") {
-        return Some(
-            PathBuf::from(r"C:\Users")
-                .join(username)
-                .join("AppData")
-                .join("Local")
-                .join("RemoteMic")
-                .join("RC003")
-                .join("agent-api.json"),
-        );
+        if !username.trim().is_empty() {
+            return Some(
+                PathBuf::from(r"C:\Users")
+                    .join(username)
+                    .join("AppData")
+                    .join("Local")
+                    .join("RemoteMic")
+                    .join("RC003")
+                    .join("agent-api.json"),
+            );
+        }
     }
     None
 }
@@ -129,8 +135,10 @@ pub fn call_rpc(method: &str, params: Value) -> Result<Value, RpcCallError> {
         "params": params,
     })
     .to_string();
-    let addr = format!("127.0.0.1:{}", discovery.port);
-    let mut stream = TcpStream::connect(&addr).map_err(|e| {
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", discovery.port)
+        .parse()
+        .map_err(|e| RpcCallError::new("internal_error", format!("应用端口非法：{e}")))?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|e| {
         RpcCallError::new(
             "app_not_running",
             format!("连接 Remote Mic 失败（{addr}）：{e}"),

@@ -77,7 +77,10 @@ export function SettingsPage() {
       .catch(() => {});
     invoke<AgentApiStatus>("get_agent_api_status")
       .then(setAgentStatus)
-      .catch(() => setAgentStatus(null));
+      .catch((err) => {
+        setAgentStatus(null);
+        setAgentMsg(`读取智能体接口状态失败：${err}`);
+      });
     invoke<{ mcp_config: unknown }>("get_agent_api_config")
       .then((cfg) => setAgentConfig(JSON.stringify(cfg.mcp_config, null, 2)))
       .catch(() => {});
@@ -341,8 +344,12 @@ export function SettingsPage() {
             </p>
             {agentStatus && (
               <p className="hint">
-                状态：{agentStatus.running ? `运行中（127.0.0.1:${agentStatus.port}）` : "已停止"}
-                {agentStatus.running ? "" : "；开启后生成 token"}
+                状态：
+                {agentStatus.running
+                  ? `运行中（127.0.0.1:${agentStatus.port}）`
+                  : agentStatus.enabled
+                    ? "已停止（启动失败，请关闭开关后重试）"
+                    : "已停止；开启后生成 token"}
               </p>
             )}
             {agentStatus?.running && (
