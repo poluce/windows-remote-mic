@@ -6,6 +6,7 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -68,6 +69,13 @@ pub struct Config {
     /// 手动点「检查更新」不受此限制。放这里是为了重启后仍然生效。
     #[serde(default)]
     pub last_update_check_at: u64,
+    /// 配置写入版本号。每次经 `ConfigStore::update` 成功写盘后 +1；
+    /// 用于 UI / MCP 的乐观并发与撤销校验。旧配置读成 0。
+    #[serde(default)]
+    pub revision: u64,
+    /// 是否允许外部智能体通过 MCP 接口配置本应用。默认关闭。
+    #[serde(default)]
+    pub agent_api_enabled: bool,
 }
 
 fn default_hid_tap_eat() -> bool {
@@ -94,6 +102,8 @@ impl Default for Config {
             voice_target: VoiceTarget::default(),
             shortcuts: Vec::new(),
             last_update_check_at: 0,
+            revision: 0,
+            agent_api_enabled: false,
         }
     }
 }
@@ -117,6 +127,12 @@ pub enum ConfigError {
 }
 
 pub type Result<T> = std::result::Result<T, ConfigError>;
+
+/// 进程内所有 `config.json` 写操作的全局锁。
+///
+/// 现有命令是「各自 load → 改 → save」；UI 与 MCP 并发时没有这把锁会互相覆盖。
+/// 所有写路径必须走 `ConfigStore::update`。
+static CONFIG_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 impl ConfigStore {
     /// 创建以 `dir` 为根目录的存储（目录不存在时会创建）。
@@ -209,6 +225,25 @@ impl ConfigStore {
         }
 
         Ok(())
+    }
+
+    /// 在全局写锁内执行一次「load → 修改 → save」，成功后 revision +1。
+    ///
+    /// - `f` 返回 `Err` 时不写盘、不递增 revision；
+    /// - 返回 `(f 的返回值, 新 revision)`，调用方据此热更新调度器 / 返回给 MCP；
+    /// - 这是所有配置写操作的唯一入口，避免 UI 与智能体并发丢更新。
+    pub fn update<R>(
+        &self,
+        f: impl FnOnce(&mut Config) -> std::result::Result<R, String>,
+    ) -> std::result::Result<(R, u64), String> {
+        let _guard = CONFIG_WRITE_LOCK
+            .lock()
+            .map_err(|_| "配置写锁已损坏，请重启应用".to_string())?;
+        let mut cfg = self.load().map_err(|e| e.to_string())?;
+        let value = f(&mut cfg)?;
+        cfg.revision = cfg.revision.saturating_add(1);
+        self.save(&cfg).map_err(|e| e.to_string())?;
+        Ok((value, cfg.revision))
     }
 }
 
@@ -333,4 +368,38 @@ mod tests {
         assert!(!store.dir.join("config.json.tmp").exists());
         assert!(store.config_path().exists());
     }
+    #[test]
+    fn update_bumps_revision_and_persists() {
+        let (_dir, store) = temp_store();
+        let ((), rev1) = store
+            .update(|cfg| {
+                cfg.hid_tap_eat = false;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(rev1, 1);
+        let ((), rev2) = store
+            .update(|cfg| {
+                cfg.long_press_ms = 600;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(rev2, 2);
+
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.revision, 2);
+        assert!(!loaded.hid_tap_eat);
+        assert_eq!(loaded.long_press_ms, 600);
+    }
+
+    #[test]
+    fn update_error_does_not_write_or_bump_revision() {
+        let (_dir, store) = temp_store();
+        let result: std::result::Result<((), u64), String> =
+            store.update(|_cfg| Err("校验失败".into()));
+        assert!(result.is_err());
+        assert!(!store.config_path().exists(), "失败时不应写盘");
+        assert_eq!(store.load().unwrap().revision, 0);
+    }
+
 }

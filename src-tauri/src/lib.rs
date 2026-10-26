@@ -3,6 +3,8 @@
 
 mod commands;
 
+mod services;
+
 mod support;
 
 pub(crate) use support::codec::{

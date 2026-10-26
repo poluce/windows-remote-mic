@@ -16,9 +16,10 @@ pub fn get_hid_tap_eat() -> bool {
 #[tauri::command]
 pub fn set_hid_tap_eat(enabled: bool) -> Result<bool, String> {
     let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
-    let mut cfg = store.load().unwrap_or_default();
-    cfg.hid_tap_eat = enabled;
-    store.save(&cfg).map_err(|e| e.to_string())?;
+    store.update(|cfg| {
+        cfg.hid_tap_eat = enabled;
+        Ok(())
+    })?;
     core_hid::tap::write_eat_mode_file(enabled);
     core_log::log_info(&format!(
         "[commands/connection] 吃掉模式已{}（系统{}响应遥控器按键）",
@@ -50,9 +51,10 @@ pub fn set_voice_target(target: String, state: State<AppState>) -> Result<String
     let parsed = core_mapping::VoiceTarget::parse(&target)
         .unwrap_or(core_mapping::VoiceTarget::WindowsVoice);
     let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
-    let mut cfg = store.load().unwrap_or_default();
-    cfg.voice_target = parsed;
-    store.save(&cfg).map_err(|e| e.to_string())?;
+    store.update(|cfg| {
+        cfg.voice_target = parsed;
+        Ok(())
+    })?;
     state.dispatcher.set_voice_target(parsed);
     core_log::log_info(&format!(
         "[commands/connection] 语音识别目标已设为 {:?}（'{}'）",
