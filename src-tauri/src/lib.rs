@@ -41,9 +41,14 @@ fn app_version(app: tauri::AppHandle) -> String {
 /// 安装更新前的收尾：updater 拉起 NSIS 安装器后会直接 `std::process::exit(0)`，
 /// 不会走 `RunEvent::Exit` 里那条兜底路径，所以提前释放按键，避免虚拟 HID
 /// 上残留「按住」状态（重启后的新实例不会知道旧实例按下过哪些键）。
+///
+/// 同时把 HOGP「吃掉」开关落盘为 0：注入在 WUDFHost 里的 Frida 脚本比本进程
+/// 活得更久，不关掉它的话，应用已经退出、遥控器返回/音量/TV 键却仍被清零，
+/// 系统原生动作也收不到（遥控器看起来像坏了）。
 #[tauri::command]
 fn prepare_for_update_exit(app: tauri::AppHandle) {
-    core_log::log_info("[app] 准备退出并安装更新，强制释放按键");
+    core_log::log_info("[app] 准备退出并安装更新，关闭 HOGP 吃掉模式并强制释放按键");
+    core_hid::tap::write_eat_mode_file(false);
     force_release_held_keys(&app, "安装更新");
 }
 
@@ -395,7 +400,13 @@ pub fn run() {
         .run(|app, event| {
             // 退出是最后一个还能执行代码的时机：此后没人能补发松开事件，
             // 虚拟 HID 上残留的按住状态会一直卡在系统里（物理键盘跟着失灵）。
+            //
+            // 注入在 WUDFHost 里的 Frida 脚本活得更久，所以退出前必须把
+            // HOGP「吃掉」开关落盘为 0：脚本 1 秒内轮询到后会放行原始报告，
+            // 让遥控器的返回/音量/TV 键回到系统原生行为。否则应用关了、
+            // 按键却仍被脚本清零，用户会以为遥控器坏了。
             if let tauri::RunEvent::Exit = event {
+                core_hid::tap::write_eat_mode_file(false);
                 force_release_held_keys(app, "应用退出");
             }
         });
