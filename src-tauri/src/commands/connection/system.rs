@@ -31,7 +31,10 @@ pub fn open_system_settings(setting: String) -> String {
 /// 命令体内部直接触发重启，旧进程随后退出。
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
-    core_log::log_info("[commands/connection] 收到重启请求，正在重启应用…");
+    core_log::log_info("[commands/connection] 收到重启请求，关闭 HOGP 吃掉模式并重启应用…");
+    // 旧进程退出后注入在 WUDFHost 的脚本仍在，新实例启动时才会把开关
+    // 写回配置值。这里先落盘 0，避免重启窗口期内遥控器按键被吃掉却无人处理。
+    core_hid::tap::write_eat_mode_file(false);
     app.restart();
 }
 

@@ -17,9 +17,9 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 > 容错改进轮次与状态一致性审计见 [docs/项目/容错能力评估.md](docs/项目/容错能力评估.md)；
 > 待办清单见 [docs/项目/任务清单.md](docs/项目/任务清单.md)；真机验收项见 [docs/项目/真机验收.md](docs/项目/真机验收.md)。
 
-## 当前状态（v0.7.4）
+## 当前状态（v0.7.5）
 
-- `main` 版本 **0.7.4**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`、`v0.7.0`、`v0.7.1`、`v0.7.2`、`v0.7.3`、`v0.7.4`。
+- `main` 版本 **0.7.5**；已发 tag：`v0.6.0`、`v0.6.1`、`v0.6.2`、`v0.7.0`、`v0.7.1`、`v0.7.2`、`v0.7.3`、`v0.7.4`、`v0.7.5`。
 - 发布产物：NSIS 安装包 `Remote.Mic_<ver>_x64-setup.exe`、免安装 `remote-mic.exe`、`SHA256SUMS.txt`，
   以及自动更新用的 `Remote.Mic_<ver>_x64-setup.exe.sig`、`latest.json`（见 [docs/项目/自动更新.md](docs/项目/自动更新.md)）。
 - **智能体接入（MCP）**：通用设置可开启/关闭本地 MCP 接口，sidecar `remote-mic-mcp.exe` 随安装包分发；默认关闭，仅本机可访问；详见 [docs/项目/智能体接入.md](docs/项目/智能体接入.md)。
@@ -118,7 +118,7 @@ npm run typecheck
 npm run build
 ```
 
-v0.7.4 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、app crate 测试 **5** 个。
+v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、app crate 测试 **5** 个。
 （原 `commands/audio.rs` 的 3 个测试已随监督状态机迁到 `core-voice/supervisor.rs`。）
 
 ### 从 WSL 调用（路径按本机实际情况替换）
