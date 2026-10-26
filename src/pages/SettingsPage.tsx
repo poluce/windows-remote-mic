@@ -232,7 +232,7 @@ export function SettingsPage() {
       <div className="page-head">
         <div>
           <h1>通用设置</h1>
-          <p>按键拦截、长按与双击判定，以及关于与更新。</p>
+          <p>按键拦截、长按与双击判定、智能体接入，以及关于与更新。</p>
         </div>
       </div>
 
@@ -386,10 +386,10 @@ export function SettingsPage() {
                   重新生成 token
                 </button>
               </div>
-              {agentMsg && <p className="hint">{agentMsg}</p>}
             </div>
           </div>
         )}
+        {agentMsg && <p className="hint">{agentMsg}</p>}
       </section>
 
       <div className="section-label">关于与更新</div>

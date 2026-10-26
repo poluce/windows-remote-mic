@@ -50,9 +50,15 @@ fn main() {
             }
         };
 
+        let has_id = request.get("id").is_some();
         let id = request.get("id").cloned().unwrap_or(Value::Null);
         let method = request.get("method").and_then(Value::as_str).unwrap_or("");
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+
+        // JSON-RPC notification 不要求响应；已知通知在下面处理，其余通知静默忽略。
+        if !has_id && method != "notifications/initialized" && method != "notifications/cancelled" {
+            continue;
+        }
 
         // legacy 握手
         if method == "initialize" {

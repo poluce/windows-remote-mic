@@ -113,16 +113,28 @@ pub fn clear_mapping(
     let (button, trigger) = parse_key(button, trigger)?;
     let store = store()?;
 
-    let ((mapping, removed), revision) = store.update(|cfg| {
+    let (change, revision) = store.update_opt(|cfg| {
         let removed = cfg.mapping.binding(button, trigger).map(entry_of);
+        if removed.is_none() {
+            // 旧命令的行为：本来就没有这条绑定就不写盘、不重载调度器。
+            return Ok(None);
+        }
         cfg.mapping
             .bindings
             .retain(|b| !(b.button == button && b.trigger == trigger));
-        Ok((cfg.mapping.clone(), removed))
+        Ok(Some((cfg.mapping.clone(), removed)))
     })?;
 
-    dispatcher.update_mapping(mapping);
-    Ok(MappingClear { removed, revision })
+    match change {
+        Some((mapping, removed)) => {
+            dispatcher.update_mapping(mapping);
+            Ok(MappingClear { removed, revision })
+        }
+        None => Ok(MappingClear {
+            removed: None,
+            revision,
+        }),
+    }
 }
 
 /// 切换启用状态；绑定不存在时报错。
@@ -131,11 +143,11 @@ pub fn set_mapping_enabled(
     trigger: &str,
     enabled: bool,
     dispatcher: &KeyDispatcher,
-) -> Result<(MappingEntry, u64), String> {
+) -> Result<(MappingEntry, u64, bool), String> {
     let (button, trigger) = parse_key(button, trigger)?;
     let store = store()?;
 
-    let ((mapping, new), revision) = store.update(|cfg| {
+    let (change, revision) = store.update_opt(|cfg| {
         let Some(binding) = cfg
             .mapping
             .bindings
@@ -144,13 +156,28 @@ pub fn set_mapping_enabled(
         else {
             return Err("这条绑定不存在".into());
         };
+        if binding.enabled == enabled {
+            // 旧命令的行为：已经是目标状态就不写盘、不重载调度器。
+            return Ok(None);
+        }
         binding.enabled = enabled;
         let new = entry_of(binding);
-        Ok((cfg.mapping.clone(), new))
+        Ok(Some((cfg.mapping.clone(), new)))
     })?;
 
-    dispatcher.update_mapping(mapping);
-    Ok((new, revision))
+    match change {
+        Some((mapping, new)) => {
+            dispatcher.update_mapping(mapping);
+            Ok((new, revision, true))
+        }
+        None => {
+            let entry = list_mappings()
+                .into_iter()
+                .find(|e| e.button == button_key(&button) && e.trigger == trigger_key(&trigger))
+                .ok_or("这条绑定不存在")?;
+            Ok((entry, revision, false))
+        }
+    }
 }
 
 /// 读长按阈值 / 双击窗口。
@@ -229,10 +256,18 @@ pub fn save_shortcut(name: String, keys: Vec<String>) -> Result<(Vec<NamedShortc
 pub fn delete_shortcut(keys: Vec<String>) -> Result<(Vec<NamedShortcut>, u64), String> {
     let keys = normalize_keys(&keys);
     let store = store()?;
-    store.update(|cfg| {
+    let (change, revision) = store.update_opt(|cfg| {
+        let before = cfg.shortcuts.len();
         cfg.shortcuts.retain(|s| s.keys != keys);
-        Ok(cfg.shortcuts.clone())
-    })
+        if cfg.shortcuts.len() == before {
+            return Ok(None);
+        }
+        Ok(Some(cfg.shortcuts.clone()))
+    })?;
+    match change {
+        Some(shortcuts) => Ok((shortcuts, revision)),
+        None => Ok((list_shortcuts(), revision)),
+    }
 }
 
 fn normalize_keys(keys: &[String]) -> Vec<String> {

@@ -75,14 +75,16 @@ pub fn set_mapping_binding_enabled(
     enabled: bool,
     state: State<AppState>,
 ) -> Result<(), String> {
-    let (entry, _revision) =
+    let (entry, _revision, changed) =
         services::mapping::set_mapping_enabled(&button, &trigger, enabled, &state.dispatcher)?;
-    core_log::log_info(&format!(
-        "[commands/mapping] 绑定已{}：{} · {}",
-        if enabled { "启用" } else { "禁用" },
-        entry.name,
-        entry.trigger
-    ));
+    if changed {
+        core_log::log_info(&format!(
+            "[commands/mapping] 绑定已{}：{} · {}",
+            if enabled { "启用" } else { "禁用" },
+            entry.name,
+            entry.trigger
+        ));
+    }
     Ok(())
 }
 

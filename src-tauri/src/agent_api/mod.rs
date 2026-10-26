@@ -142,10 +142,17 @@ pub fn start(
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown2 = shutdown.clone();
     let app2 = app.clone();
-    let join = std::thread::Builder::new()
+    let join = match std::thread::Builder::new()
         .name("agent-api".into())
         .spawn(move || server::run(listener, port, token, shutdown2, app2, dispatcher))
-        .map_err(|e| format!("启动智能体接口线程失败：{e}"))?;
+    {
+        Ok(join) => join,
+        Err(e) => {
+            // 线程没起来时端口已绑定、发现文件已写入，必须清理，避免留下失效 token。
+            remove_discovery();
+            return Err(format!("启动智能体接口线程失败：{e}"));
+        }
+    };
 
     let mut running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
     *running = Some(RunningAgent {
@@ -234,6 +241,13 @@ pub fn regenerate_agent_api_token(
     app: AppHandle,
     state: State<AppState>,
 ) -> Result<AgentApiStatus, String> {
+    let enabled = config_store()
+        .and_then(|s| s.load().ok())
+        .map(|cfg| cfg.agent_api_enabled)
+        .unwrap_or(false);
+    if !enabled {
+        return Err("智能体接口未启用".into());
+    }
     stop();
     start(app, state.dispatcher.clone())
 }

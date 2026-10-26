@@ -66,6 +66,18 @@ fn discovery_path() -> Option<PathBuf> {
                 .join("agent-api.json"),
         );
     }
+    // WSL interop / 精简环境下 USERPROFILE 可能缺失，再用 USERNAME 拼默认路径。
+    if let Ok(username) = std::env::var("USERNAME") {
+        return Some(
+            PathBuf::from(r"C:\Users")
+                .join(username)
+                .join("AppData")
+                .join("Local")
+                .join("RemoteMic")
+                .join("RC003")
+                .join("agent-api.json"),
+        );
+    }
     None
 }
 

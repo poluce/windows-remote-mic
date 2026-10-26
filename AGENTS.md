@@ -118,7 +118,7 @@ npm run typecheck
 npm run build
 ```
 
-v0.7.4 基线 + MCP：workspace 测试 **210** 个（含 mcp-bridge 3 个）、app crate 测试 **5** 个。
+v0.7.4 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、app crate 测试 **5** 个。
 （原 `commands/audio.rs` 的 3 个测试已随监督状态机迁到 `core-voice/supervisor.rs`。）
 
 ### 从 WSL 调用（路径按本机实际情况替换）

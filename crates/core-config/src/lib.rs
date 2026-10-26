@@ -236,14 +236,27 @@ impl ConfigStore {
         &self,
         f: impl FnOnce(&mut Config) -> std::result::Result<R, String>,
     ) -> std::result::Result<(R, u64), String> {
-        let _guard = CONFIG_WRITE_LOCK
-            .lock()
-            .map_err(|_| "配置写锁已损坏，请重启应用".to_string())?;
+        let (value, revision) = self.update_opt(|cfg| f(cfg).map(Some))?;
+        Ok((value.expect("update_opt 在 Some 分支必有值"), revision))
+    }
+
+    /// 与 `update` 相同，但允许闭包返回 `None` 表示「没有实际变化」。
+    ///
+    /// 无变化时不写盘、不递增 revision、不触碰 `.bak`——保持旧命令的
+    /// 「重复删除 / 重复设置同一状态」无副作用语义。
+    pub fn update_opt<R>(
+        &self,
+        f: impl FnOnce(&mut Config) -> std::result::Result<Option<R>, String>,
+    ) -> std::result::Result<(Option<R>, u64), String> {
+        // 闭包里可能 panic；锁中毒时继续用内部值，避免配置写永久锁死。
+        let _guard = CONFIG_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut cfg = self.load().map_err(|e| e.to_string())?;
-        let value = f(&mut cfg)?;
+        let Some(value) = f(&mut cfg)? else {
+            return Ok((None, cfg.revision));
+        };
         cfg.revision = cfg.revision.saturating_add(1);
         self.save(&cfg).map_err(|e| e.to_string())?;
-        Ok((value, cfg.revision))
+        Ok((Some(value), cfg.revision))
     }
 }
 
@@ -402,5 +415,34 @@ mod tests {
         assert!(result.is_err());
         assert!(!store.config_path().exists(), "失败时不应写盘");
         assert_eq!(store.load().unwrap().revision, 0);
+    }
+    #[test]
+    fn update_opt_none_does_not_write_or_bump_revision() {
+        let (_dir, store) = temp_store();
+        let (value, revision) = store
+            .update_opt(|cfg| {
+                cfg.hid_tap_eat = false;
+                Ok(None::<()>)
+            })
+            .unwrap();
+        assert!(value.is_none());
+        assert_eq!(revision, 0);
+        assert!(!store.config_path().exists(), "无变化时不应写盘");
+    }
+
+    #[test]
+    fn update_opt_some_writes_and_bumps_revision() {
+        let (_dir, store) = temp_store();
+        let (value, revision) = store
+            .update_opt(|cfg| {
+                cfg.hid_tap_eat = false;
+                Ok(Some("changed"))
+            })
+            .unwrap();
+        assert_eq!(value, Some("changed"));
+        assert_eq!(revision, 1);
+        let loaded = store.load().unwrap();
+        assert!(!loaded.hid_tap_eat);
+        assert_eq!(loaded.revision, 1);
     }
 }

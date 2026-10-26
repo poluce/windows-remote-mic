@@ -109,7 +109,9 @@ pub fn dispatch(
             let trigger = req_str(&params, "trigger")?;
             let change = services::mapping::clear_mapping(&button, &trigger, dispatcher)
                 .map_err(|e| RpcError::validation(e))?;
-            emit_changed(app, change.revision);
+            if change.removed.is_some() {
+                emit_changed(app, change.revision);
+            }
             Ok(json!({
                 "removed": change.removed,
                 "revision": change.revision,
@@ -121,10 +123,12 @@ pub fn dispatch(
             let button = req_str(&params, "button")?;
             let trigger = req_str(&params, "trigger")?;
             let enabled = req_bool(&params, "enabled")?;
-            let (entry, revision) =
+            let (entry, revision, changed) =
                 services::mapping::set_mapping_enabled(&button, &trigger, enabled, dispatcher)
                     .map_err(|e| RpcError::validation(e))?;
-            emit_changed(app, revision);
+            if changed {
+                emit_changed(app, revision);
+            }
             Ok(json!({ "binding": entry, "revision": revision }))
         }
         "timing.get" => {
