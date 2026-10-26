@@ -198,13 +198,13 @@ fn read_headers(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
             return Err("连接提前关闭".into());
         }
         buf.extend_from_slice(&chunk[..n]);
+        if buf.len() > MAX_HEADER {
+            return Err("请求头过大".into());
+        }
         if let Some(pos) = find_header_end(&buf) {
             let headers = String::from_utf8_lossy(&buf[..pos]).to_string();
             let rest = buf[pos + 4..].to_vec();
             return Ok((headers, rest));
-        }
-        if buf.len() > MAX_HEADER {
-            return Err("请求头过大".into());
         }
     }
 }

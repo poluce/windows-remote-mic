@@ -121,7 +121,9 @@ export function useMappingEditor() {
       void refreshProfiles().catch((err) => {
         setSaveMsg(`智能体修改后刷新应用配置失败: ${err}`);
       });
-      loadShortcuts().then(setShortcuts);
+      loadShortcuts().then((next) => {
+        if (!disposed) setShortcuts(next);
+      });
     })
       .then((fn) => {
         if (disposed) {
