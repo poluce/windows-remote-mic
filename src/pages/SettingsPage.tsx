@@ -10,6 +10,14 @@ import {
 } from "../store/updateStatus";
 import "./SettingsPage.css";
 
+type AgentApiStatus = {
+  enabled: boolean;
+  running: boolean;
+  port: number | null;
+  discovery_path: string;
+  sidecar_path: string;
+};
+
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: "system", label: "跟随系统" },
   { value: "light", label: "浅色" },
@@ -43,6 +51,10 @@ export function SettingsPage() {
   const [longPressMs, setLongPressMs] = useState(550);
   const [doubleClickMs, setDoubleClickMs] = useState(250);
   const [msg, setMsg] = useState("");
+  const [agentStatus, setAgentStatus] = useState<AgentApiStatus | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentConfig, setAgentConfig] = useState("");
+  const [agentMsg, setAgentMsg] = useState("");
   const { tapStatus } = useRuntimeStatus();
   const themePref = useThemePref();
   const resolvedTheme = useResolvedTheme();
@@ -62,6 +74,12 @@ export function SettingsPage() {
         setLongPressMs(t.long_press_ms);
         setDoubleClickMs(t.double_click_ms);
       })
+      .catch(() => {});
+    invoke<AgentApiStatus>("get_agent_api_status")
+      .then(setAgentStatus)
+      .catch(() => setAgentStatus(null));
+    invoke<{ mcp_config: unknown }>("get_agent_api_config")
+      .then((cfg) => setAgentConfig(JSON.stringify(cfg.mcp_config, null, 2)))
       .catch(() => {});
   }, []);
 
@@ -104,6 +122,49 @@ export function SettingsPage() {
   // 开关的状态由开关本身表达，不复读一遍。只有「开关说开着、驱动却没就绪」
   // 这种自相矛盾才值得补一句话——那正是按键会失效的情形。
   const tapNotReady = eatEnabled === true && tapStatus !== "attached";
+
+  async function toggleAgentApi() {
+    if (!isTauri() || agentBusy || !agentStatus) return;
+    setAgentBusy(true);
+    setAgentMsg("");
+    try {
+      const status = await invoke<AgentApiStatus>("set_agent_api_enabled", {
+        enabled: !agentStatus.enabled,
+      });
+      setAgentStatus(status);
+      const cfg = await invoke<{ mcp_config: unknown }>("get_agent_api_config");
+      setAgentConfig(JSON.stringify(cfg.mcp_config, null, 2));
+    } catch (err) {
+      setAgentMsg(`切换失败：${err}`);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  async function regenerateAgentToken() {
+    if (!isTauri() || agentBusy) return;
+    setAgentBusy(true);
+    setAgentMsg("");
+    try {
+      const status = await invoke<AgentApiStatus>("regenerate_agent_api_token");
+      setAgentStatus(status);
+      setAgentMsg("已重新生成 token；MCP 配置无需修改。");
+    } catch (err) {
+      setAgentMsg(`重新生成失败：${err}`);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  async function copyAgentConfig() {
+    if (!agentConfig) return;
+    try {
+      await navigator.clipboard.writeText(agentConfig);
+      setAgentMsg("MCP 配置已复制到剪贴板。");
+    } catch (err) {
+      setAgentMsg(`复制失败：${err}`);
+    }
+  }
 
   // ---- 关于与更新 ----
   const updatePercent =
@@ -267,6 +328,68 @@ export function SettingsPage() {
             <option value={500}>0.5 秒</option>
           </select>
         </div>
+      </section>
+
+      <div className="section-label">智能体接入</div>
+      <section className="card form-card">
+        <div className="form-row">
+          <div className="form-text">
+            <div className="form-label">允许智能体配置（MCP）</div>
+            <p className="hint">
+              仅本机可访问。开启后智能体可通过 MCP 修改按键映射与触发时间，修改立即生效；
+              关闭后接口立即失效。默认关闭。
+            </p>
+            {agentStatus && (
+              <p className="hint">
+                状态：{agentStatus.running ? `运行中（127.0.0.1:${agentStatus.port}）` : "已停止"}
+                {agentStatus.running ? "" : "；开启后生成 token"}
+              </p>
+            )}
+            {agentStatus?.running && (
+              <p className="hint">
+                MCP sidecar：<code>{agentStatus.sidecar_path}</code>
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={agentStatus?.enabled === true}
+            aria-label="允许智能体配置（MCP）"
+            className={`switch${agentStatus?.enabled ? " on" : ""}`}
+            onClick={toggleAgentApi}
+            disabled={!isTauri() || agentBusy || !agentStatus}
+          >
+            <span className="switch-thumb" />
+          </button>
+        </div>
+
+        {agentStatus?.enabled && (
+          <div className="form-row agent-config-row">
+            <div className="form-text">
+              <div className="form-label">MCP 配置</div>
+              <p className="hint">
+                把下面这段加入智能体的 MCP 配置（Claude Code / Codex / DSH 等）。
+                应用重启后 token 会轮换，sidecar 会自动读取新的发现文件。
+              </p>
+              <pre className="agent-config-code">{agentConfig}</pre>
+              <div className="actions">
+                <button type="button" className="btn small" onClick={copyAgentConfig}>
+                  复制配置
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={regenerateAgentToken}
+                  disabled={agentBusy}
+                >
+                  重新生成 token
+                </button>
+              </div>
+              {agentMsg && <p className="hint">{agentMsg}</p>}
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="section-label">关于与更新</div>

@@ -2425,6 +2425,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcp-bridge"
+version = "0.7.4"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

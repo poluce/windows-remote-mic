@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { FALLBACK_CATALOG } from "./constants";
 import { cellKey, toCellMap } from "./cells";
@@ -104,6 +105,22 @@ export function useMappingEditor() {
     const list = await invoke<MappingEntry[]>("get_mappings");
     setMapping(list);
   }, []);
+
+  // 智能体（MCP）改完配置后，后端会 emit config-changed；这里把唯一事实来源重读一遍。
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    listen("config-changed", () => {
+      void refreshMappings();
+      void refreshProfiles();
+      loadShortcuts().then(setShortcuts);
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {});
+    return () => unlisten?.();
+  }, [refreshMappings, refreshProfiles]);
 
   useEffect(() => {
     if (!isTauri()) {

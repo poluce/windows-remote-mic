@@ -199,6 +199,11 @@ pub fn catalog() -> MappingCatalog {
     }
 }
 
+/// 供内部 agent API 使用：不写 INFO 日志，避免智能体频繁调用刷日志。
+pub(crate) fn catalog_for_agent() -> MappingCatalog {
+    catalog()
+}
+
 /// 返回映射编辑器所需的全部目录数据（按键 / 触发方式 / 动作分类 / 默认绑定）。
 #[tauri::command]
 pub fn get_mapping_catalog() -> MappingCatalog {
