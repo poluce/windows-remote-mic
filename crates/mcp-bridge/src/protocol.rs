@@ -67,12 +67,7 @@ pub fn modern_error(code: i32, message: impl Into<String>) -> Value {
     json!({ "code": code, "message": message.into() })
 }
 
-pub fn tool_ok_result(
-    era: Era,
-    message: &str,
-    data: Value,
-    revision: Option<u64>,
-) -> Value {
+pub fn tool_ok_result(era: Era, message: &str, data: Value, revision: Option<u64>) -> Value {
     let mut structured = json!({
         "ok": true,
         "message": message,
@@ -93,12 +88,7 @@ pub fn tool_ok_result(
     result
 }
 
-pub fn tool_error_result(
-    era: Era,
-    code: &str,
-    message: &str,
-    hint: Option<&str>,
-) -> Value {
+pub fn tool_error_result(era: Era, code: &str, message: &str, hint: Option<&str>) -> Value {
     let mut structured = json!({
         "ok": false,
         "error": { "code": code, "message": message },

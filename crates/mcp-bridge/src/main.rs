@@ -80,14 +80,26 @@ fn main() {
             match protocol::check_protocol_version(&params) {
                 Ok(()) => protocol::Era::Modern,
                 Err(err) => {
-                    write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "error": err }));
+                    write_message(
+                        &mut stdout,
+                        &json!({ "jsonrpc": "2.0", "id": id, "error": err }),
+                    );
                     continue;
                 }
             }
-        } else {
+        } else if legacy_mode {
             protocol::Era::Legacy
+        } else {
+            write_message(
+                &mut stdout,
+                &json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": modern_error(-32602, "modern 请求缺少 params._meta；legacy 客户端请先 initialize")
+                }),
+            );
+            continue;
         };
-        let _ = legacy_mode;
 
         match method {
             "server/discover" => {
@@ -101,15 +113,24 @@ fn main() {
                     result["ttlMs"] = json!(300_000);
                     result["cacheScope"] = json!("private");
                 }
-                write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+                write_message(
+                    &mut stdout,
+                    &json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+                );
             }
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-                let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                let arguments = params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
                 match call_tool(name, arguments) {
                     Ok((message, data, revision)) => {
                         let result = tool_ok_result(era, &message, data, revision);
-                        write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+                        write_message(
+                            &mut stdout,
+                            &json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+                        );
                     }
                     Err(ToolCallError::UnknownTool) => {
                         write_message(
@@ -121,18 +142,31 @@ fn main() {
                             }),
                         );
                     }
-                    Err(ToolCallError::Execution { code, message, hint }) => {
+                    Err(ToolCallError::Execution {
+                        code,
+                        message,
+                        hint,
+                    }) => {
                         let result = tool_error_result(era, &code, &message, hint.as_deref());
-                        write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+                        write_message(
+                            &mut stdout,
+                            &json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+                        );
                     }
                 }
             }
             "ping" => {
                 // legacy 兼容；modern 2026-07-28 已移除 ping。
                 if era == protocol::Era::Modern {
-                    write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "error": modern_error(-32601, "modern 协议已移除 ping") }));
+                    write_message(
+                        &mut stdout,
+                        &json!({ "jsonrpc": "2.0", "id": id, "error": modern_error(-32601, "modern 协议已移除 ping") }),
+                    );
                 } else {
-                    write_message(&mut stdout, &json!({ "jsonrpc": "2.0", "id": id, "result": {} }));
+                    write_message(
+                        &mut stdout,
+                        &json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+                    );
                 }
             }
             _ => {

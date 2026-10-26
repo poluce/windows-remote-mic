@@ -59,6 +59,8 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  ; Best-effort cleanup of the local agent API token file for the current user.
+  Delete "$LOCALAPPDATA\RemoteMic\RC003\agent-api.json"
   ; Use labels rather than relative jumps: the macro above expands to several
   ; instructions, so "+2" would land inside it.
   IfFileExists "${VHID_DST}\uninstall-winuhid.ps1" 0 RemoteMicVhidSkipUninstall

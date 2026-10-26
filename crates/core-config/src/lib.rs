@@ -302,6 +302,8 @@ mod tests {
         assert_eq!(cfg.voice_target, VoiceTarget::WindowsVoice);
         // 「上次成功检查更新」是后加的字段：旧配置读成 0（从未检查）。
         assert_eq!(cfg.last_update_check_at, 0);
+        assert_eq!(cfg.revision, 0);
+        assert!(!cfg.agent_api_enabled);
     }
 
     #[test]
@@ -401,5 +403,4 @@ mod tests {
         assert!(!store.config_path().exists(), "失败时不应写盘");
         assert_eq!(store.load().unwrap().revision, 0);
     }
-
 }

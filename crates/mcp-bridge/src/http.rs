@@ -160,7 +160,12 @@ pub fn call_rpc(method: &str, params: Value) -> Result<Value, RpcCallError> {
             )
             .with_hint("重启 MCP 客户端，或重新复制 MCP 配置"))
         }
-        "429" => return Err(RpcCallError::new("rate_limited", "请求过于频繁，请稍后重试")),
+        "429" => {
+            return Err(RpcCallError::new(
+                "rate_limited",
+                "请求过于频繁，请稍后重试",
+            ))
+        }
         other => {
             return Err(RpcCallError::new(
                 "internal_error",
@@ -172,10 +177,7 @@ pub fn call_rpc(method: &str, params: Value) -> Result<Value, RpcCallError> {
     let value: Value = serde_json::from_str(body)
         .map_err(|e| RpcCallError::new("internal_error", format!("响应 JSON 解析失败：{e}")))?;
     if let Some(error) = value.get("error") {
-        let code = error
-            .get("code")
-            .and_then(Value::as_i64)
-            .unwrap_or(-32007);
+        let code = error.get("code").and_then(Value::as_i64).unwrap_or(-32007);
         let message = error
             .get("message")
             .and_then(Value::as_str)

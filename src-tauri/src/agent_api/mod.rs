@@ -118,7 +118,10 @@ fn status_inner() -> AgentApiStatus {
 }
 
 /// 启动本地 RPC（幂等；已在运行时直接返回状态）。
-pub fn start(app: AppHandle, dispatcher: Arc<core_dispatch::KeyDispatcher>) -> Result<AgentApiStatus, String> {
+pub fn start(
+    app: AppHandle,
+    dispatcher: Arc<core_dispatch::KeyDispatcher>,
+) -> Result<AgentApiStatus, String> {
     {
         let running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
         if running.is_some() {
@@ -150,6 +153,7 @@ pub fn start(app: AppHandle, dispatcher: Arc<core_dispatch::KeyDispatcher>) -> R
         shutdown,
         join: Some(join),
     });
+    drop(running);
     core_log::log_info(&format!(
         "[agent-api] 智能体接口已启动：127.0.0.1:{port}（仅本机）"
     ));
@@ -158,11 +162,7 @@ pub fn start(app: AppHandle, dispatcher: Arc<core_dispatch::KeyDispatcher>) -> R
 
 /// 停止本地 RPC 并删除发现文件。
 pub fn stop() {
-    let Some(mut running) = RUNNING
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take()
-    else {
+    let Some(mut running) = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         remove_discovery();
         return;
     };

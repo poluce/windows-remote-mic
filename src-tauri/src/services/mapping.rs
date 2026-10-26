@@ -65,7 +65,10 @@ pub fn revision() -> u64 {
 }
 
 /// 保存一条映射：存在则改动作并启用，不存在则新增；保存即启用。
-pub fn save_mapping(edit: &MappingEdit, dispatcher: &KeyDispatcher) -> Result<MappingChange, String> {
+pub fn save_mapping(
+    edit: &MappingEdit,
+    dispatcher: &KeyDispatcher,
+) -> Result<MappingChange, String> {
     let (button, trigger) = parse_key(&edit.button, &edit.trigger)?;
     let action = parse_action(&edit.action).ok_or("未知动作")?;
     let enabled = edit.enabled.unwrap_or(true);
@@ -98,11 +101,7 @@ pub fn save_mapping(edit: &MappingEdit, dispatcher: &KeyDispatcher) -> Result<Ma
     })?;
 
     dispatcher.update_mapping(mapping);
-    Ok(MappingChange {
-        old,
-        new,
-        revision,
-    })
+    Ok(MappingChange { old, new, revision })
 }
 
 /// 取消关联（删除一条绑定）。

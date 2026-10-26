@@ -85,10 +85,7 @@ fn handle(
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
     let (headers, body_start) = read_headers(&mut stream)?;
-    let request_line = headers
-        .lines()
-        .next()
-        .ok_or_else(|| "空请求".to_string())?;
+    let request_line = headers.lines().next().ok_or_else(|| "空请求".to_string())?;
     let mut parts = request_line.split_whitespace();
     let method = parts.next().unwrap_or("");
     let path = parts.next().unwrap_or("");
@@ -108,7 +105,10 @@ fn handle(
         return respond_error(&mut stream, 403, "forbidden", "不允许浏览器来源");
     }
 
-    let auth = header_map.get("authorization").map(String::as_str).unwrap_or("");
+    let auth = header_map
+        .get("authorization")
+        .map(String::as_str)
+        .unwrap_or("");
     let expected = format!("Bearer {token}");
     if !secure_eq(auth.as_bytes(), expected.as_bytes()) {
         return respond_error(&mut stream, 401, "unauthorized", "token 无效");
@@ -212,7 +212,12 @@ fn secure_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn respond_error(stream: &mut TcpStream, status: u16, code: &str, message: &str) -> Result<(), String> {
+fn respond_error(
+    stream: &mut TcpStream,
+    status: u16,
+    code: &str,
+    message: &str,
+) -> Result<(), String> {
     let body = json!({ "ok": false, "error": { "code": code, "message": message } });
     respond_json(stream, status, &body)
 }
@@ -233,7 +238,9 @@ fn respond_json(stream: &mut TcpStream, status: u16, body: &Value) -> Result<(),
         "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         payload.len()
     );
-    stream.write_all(head.as_bytes()).map_err(|e| e.to_string())?;
+    stream
+        .write_all(head.as_bytes())
+        .map_err(|e| e.to_string())?;
     stream.write_all(&payload).map_err(|e| e.to_string())?;
     let _ = stream.flush();
     Ok(())

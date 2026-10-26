@@ -80,7 +80,8 @@ pub fn set_mapping_binding_enabled(
     core_log::log_info(&format!(
         "[commands/mapping] 绑定已{}：{} · {}",
         if enabled { "启用" } else { "禁用" },
-        entry.name, entry.trigger
+        entry.name,
+        entry.trigger
     ));
     Ok(())
 }

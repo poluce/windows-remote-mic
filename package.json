@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:installer": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-installer-extras.ps1",
+    "build:installer": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-installer-extras.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mcp-sidecar.ps1",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build --config src-tauri/tauri.bundle.conf.json"
   },
   "dependencies": {
     "react": "^19.1.0",

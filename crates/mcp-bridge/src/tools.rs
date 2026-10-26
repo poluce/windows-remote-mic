@@ -25,10 +25,7 @@ fn revision_of(value: &Value) -> Option<u64> {
     value.get("revision").and_then(Value::as_u64)
 }
 
-pub fn call_tool(
-    name: &str,
-    args: Value,
-) -> Result<(String, Value, Option<u64>), ToolCallError> {
+pub fn call_tool(name: &str, args: Value) -> Result<(String, Value, Option<u64>), ToolCallError> {
     match name {
         "remote_mic_get_status" => {
             let health = rpc("agent.health", json!({}))?;
@@ -57,11 +54,7 @@ pub fn call_tool(
                 .and_then(|v| v.get("action"))
                 .and_then(Value::as_str)
                 .unwrap_or("新动作");
-            Ok((
-                format!("已保存映射：{new_action}"),
-                data,
-                revision,
-            ))
+            Ok((format!("已保存映射：{new_action}"), data, revision))
         }
         "remote_mic_clear_mapping" => {
             let data = rpc("mapping.clear", args)?;
@@ -162,8 +155,8 @@ fn no_input() -> Value {
     json!({ "type": "object", "additionalProperties": false, "properties": {} })
 }
 
-fn binding_input(extra_enabled: bool) -> Value {
-    let mut properties = json!({
+fn binding_input() -> Value {
+    let properties = json!({
         "button": { "type": "string", "description": "Button key from the catalog, e.g. volume_up, ok, mic" },
         "trigger": {
             "type": "string",
@@ -174,16 +167,11 @@ fn binding_input(extra_enabled: bool) -> Value {
         "scope": { "type": "string", "description": "global (default). App profile ids are not supported in this MVP." },
         "if_revision": { "type": "integer", "minimum": 0, "description": "Optional optimistic concurrency guard" }
     });
-    let mut required = vec!["button", "trigger", "action"];
-    if extra_enabled {
-        properties["enabled"] = json!({ "type": "boolean", "description": "true = enabled, false = disabled" });
-        required.push("enabled");
-    }
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": properties,
-        "required": required
+        "required": ["button", "trigger", "action"]
     })
 }
 
@@ -220,7 +208,7 @@ pub fn tool_definitions() -> Vec<Value> {
             "remote_mic_set_mapping",
             "设置按键映射",
             "Create or update one key binding in the global mapping. The change is hot-reloaded immediately. Saving also enables the binding. Prefer action_key values from the catalog.",
-            binding_input(false),
+            binding_input(),
             annotations(false, false, true),
         ),
         tool(
@@ -244,7 +232,18 @@ pub fn tool_definitions() -> Vec<Value> {
             "remote_mic_set_mapping_enabled",
             "禁用或启用绑定",
             "Toggle one existing global binding between enabled and disabled. Disabled bindings keep their action and record but do not trigger and do not participate in gesture timing.",
-            binding_input(true),
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "button": { "type": "string" },
+                    "trigger": { "type": "string", "enum": ["single_click", "double_click", "long_press", "press", "release"] },
+                    "enabled": { "type": "boolean", "description": "true = enabled, false = disabled" },
+                    "scope": { "type": "string", "description": "global (default)" },
+                    "if_revision": { "type": "integer", "minimum": 0 }
+                },
+                "required": ["button", "trigger", "enabled"]
+            }),
             annotations(false, false, true),
         ),
         tool(
@@ -299,4 +298,67 @@ pub fn tool_definitions() -> Vec<Value> {
             annotations(true, false, true),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{tool_error_result, tool_ok_result, Era};
+    use std::collections::HashSet;
+
+    #[test]
+    fn tool_definitions_are_complete_and_unique() {
+        let tools = tool_definitions();
+        assert_eq!(tools.len(), 12);
+        let mut names = HashSet::new();
+        for tool in &tools {
+            let name = tool["name"].as_str().expect("name");
+            assert!(
+                name.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')),
+                "非法工具名：{name}"
+            );
+            assert!(name.len() <= 128);
+            assert!(names.insert(name.to_string()), "重复工具名：{name}");
+            assert!(!tool["title"].as_str().unwrap_or("").is_empty());
+            assert!(!tool["description"].as_str().unwrap_or("").is_empty());
+            assert_eq!(tool["inputSchema"]["type"], "object");
+            assert_eq!(tool["outputSchema"]["type"], "object");
+            assert_eq!(tool["annotations"]["openWorldHint"], false);
+            assert!(tool["annotations"]["readOnlyHint"].is_boolean());
+            assert!(tool["annotations"]["destructiveHint"].is_boolean());
+            assert!(tool["annotations"]["idempotentHint"].is_boolean());
+        }
+    }
+
+    #[test]
+    fn modern_and_legacy_tool_result_shapes() {
+        let ok = tool_ok_result(Era::Modern, "ok", json!({}), Some(7));
+        assert_eq!(ok["resultType"], "complete");
+        assert_eq!(ok["isError"], false);
+        assert_eq!(ok["structuredContent"]["revision"], 7);
+
+        let legacy = tool_ok_result(Era::Legacy, "ok", json!({}), None);
+        assert!(legacy.get("resultType").is_none());
+        assert_eq!(legacy["isError"], false);
+
+        let err = tool_error_result(Era::Modern, "validation_error", "bad", Some("hint"));
+        assert_eq!(err["isError"], true);
+        assert_eq!(err["structuredContent"]["ok"], false);
+        assert_eq!(
+            err["structuredContent"]["error"]["code"],
+            "validation_error"
+        );
+        assert_eq!(err["structuredContent"]["hint"], "hint");
+    }
+
+    #[test]
+    fn unsupported_protocol_version_is_rejected() {
+        let params = json!({
+            "_meta": { "io.modelcontextprotocol/protocolVersion": "1999-01-01" }
+        });
+        let err = crate::protocol::check_protocol_version(&params).unwrap_err();
+        assert_eq!(err["code"], -32022);
+        assert_eq!(err["data"]["supported"][0], crate::protocol::MODERN_VERSION);
+    }
 }
