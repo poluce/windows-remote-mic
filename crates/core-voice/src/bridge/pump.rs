@@ -7,8 +7,49 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use super::diag::BridgeDiag;
+use super::ControlSignal;
 use crate::ports::{AudioSink, VoiceTransport};
 use crate::sink::open_sink;
+
+/// ATVV `MIC_OPEN` 握手实验模式（环境变量 `REMOTE_MIC_ATVV_MIC_OPEN`）。
+///
+/// 这是**实验开关**，默认 [`MicOpenMode::Off`]，不影响正常使用：
+/// - `caps`：收到 CAPS 后立刻发一次 `MIC_OPEN`；
+/// - `audio`：设备开始推流（AUDIO_START）后发一次 `MIC_OPEN`；
+/// - `idle`：把 20s 空闲保活从能力查询换成 `MIC_OPEN`（验证是否续期）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MicOpenMode {
+    Off,
+    AfterCaps,
+    AfterAudioStart,
+    IdleKeepalive,
+}
+
+impl MicOpenMode {
+    pub(crate) fn from_env() -> Self {
+        match std::env::var("REMOTE_MIC_ATVV_MIC_OPEN")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "caps" => Self::AfterCaps,
+            "audio" => Self::AfterAudioStart,
+            "idle" => Self::IdleKeepalive,
+            _ => Self::Off,
+        }
+    }
+}
+
+/// 发送一条 `MIC_OPEN`（实验路径，只打 INFO 日志便于对照）。
+fn send_mic_open(transport: &dyn VoiceTransport, version: u16) {
+    let cmd = core_atvv::protocol::mic_open_command(version);
+    core_log::log_info(&format!(
+        "[bridge][试验] 发送 MIC_OPEN 载荷={cmd:02X?}（版本=0x{version:04X}）"
+    ));
+    if let Err(e) = transport.write_tx(&cmd) {
+        core_log::log_warn(&format!("[bridge][试验] 发送 MIC_OPEN 失败（忽略）: {e}"));
+    }
+}
 
 /// 空闲轮询节拍。取值要短：每一拍都要顺手把会话线程的 COM 套间消息队列泵一次，
 /// 否则一旦线程被第三方库初始化成 STA，WinRT 的 GATT 通知会一直压在队列里派发
@@ -34,14 +75,52 @@ pub(crate) fn run_output_pump(
     transport: &dyn VoiceTransport,
     disconnected: &AtomicBool,
     diag: &BridgeDiag,
+    signals: &mpsc::Receiver<ControlSignal>,
+    mic_open_mode: MicOpenMode,
 ) -> &'static str {
     // 空闲毫秒数：每 IDLE_TICK 累加一次；满 HEALTH_EVERY_MS 做健康检查 + 心跳。
     let mut idle_ms: u64 = 0;
     let mut audio_stream_warned = false;
     let mut last_sink_recover: Option<Instant> = None;
     let mut pumped_messages: u64 = 0;
+    // 协商到的 ATVV 版本（MIC_OPEN 载荷随版本不同）与会话 id（MIC_CLOSE 用）。
+    let mut atvv_version: u16 = 0x0100;
+    let mut session_id: u8 = 0;
 
     loop {
+        // 控制通道信号：CAPS 版本 / 推流开始 / 推流结束。
+        for signal in signals.try_iter() {
+            match signal {
+                ControlSignal::Caps(version) => {
+                    atvv_version = version;
+                    if mic_open_mode == MicOpenMode::AfterCaps {
+                        send_mic_open(transport, atvv_version);
+                    }
+                }
+                ControlSignal::AudioStarted { session_id: sid } => {
+                    if let Some(sid) = sid {
+                        session_id = sid;
+                    }
+                    if mic_open_mode == MicOpenMode::AfterAudioStart {
+                        send_mic_open(transport, atvv_version);
+                    }
+                }
+                ControlSignal::AudioStopped => {
+                    if mic_open_mode != MicOpenMode::Off {
+                        let cmd = core_atvv::protocol::mic_close_command(atvv_version, session_id);
+                        core_log::log_info(&format!(
+                            "[bridge][试验] AUDIO_STOP 后发送 MIC_CLOSE 载荷={cmd:02X?}"
+                        ));
+                        if let Err(e) = transport.write_tx(&cmd) {
+                            core_log::log_warn(&format!(
+                                "[bridge][试验] 发送 MIC_CLOSE 失败（忽略）: {e}"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
         if crate::bridge_stop_requested() {
             core_log::log_info("[bridge] 用户断开连接，停止语音桥");
             core_log::log_info(&diag.summary("user_disconnect"));

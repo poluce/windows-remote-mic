@@ -74,6 +74,7 @@ pub(crate) fn register_control_handler(
     diag: Arc<BridgeDiag>,
     is_active: Arc<Mutex<bool>>,
     key_sink: Arc<dyn KeySink>,
+    signals: mpsc::Sender<crate::bridge::ControlSignal>,
 ) -> Result<i64, String> {
     // 诊断：本轮会话第一条控制通知落在哪个线程（MTA 下应是线程池线程）。
     let first_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -112,6 +113,7 @@ pub(crate) fn register_control_handler(
                     // 不同固件的音频帧长可能是 120/126/134/160 字节：
                     // 按 CAPS 协商结果适配，避免错位切帧产生噪音。
                     eng.set_frame_bytes(caps.frame_size);
+                    let _ = signals.send(crate::bridge::ControlSignal::Caps(caps.version));
                 }
                 RawControlEvent::MicButtonPressed => {
                     // 语音 toggle 已由 HID 兜底键（usage 0x3E -> 调度器 Voice 动作）
@@ -121,8 +123,9 @@ pub(crate) fn register_control_handler(
                         "[bridge] 控制通道麦克风事件（语音 toggle 由 HID 兜底处理，忽略）",
                     );
                 }
-                RawControlEvent::AudioStarted { .. } => {
+                RawControlEvent::AudioStarted { session_id } => {
                     let _ = eng.on_control(ControlEvent::StreamStart);
+                    let _ = signals.send(crate::bridge::ControlSignal::AudioStarted { session_id });
                     // 遥控器开始推音频：同步诊断状态（心跳里的「语音输入中」）。
                     if let Ok(mut active) = is_active.lock() {
                         *active = true;
@@ -145,9 +148,13 @@ pub(crate) fn register_control_handler(
                     // 联动释放麦克风按键：遥控器已停止推流（硬件已松手）。
                     // 若真实 HID 松开报告因无线丢包丢失，AudioStopped 兜底补发释放。
                     key_sink.release_mic_on_audio_stop();
+                    let _ = signals.send(crate::bridge::ControlSignal::AudioStopped);
                 }
                 RawControlEvent::AudioSynced { .. } => {
                     // TODO: 将 predictor/step_index 提供给解码器以重新同步。
+                }
+                RawControlEvent::MicOpenFailed => {
+                    core_log::log_warn("[bridge] 遥控器回报 MIC_OPEN 失败（0x0C）");
                 }
                 RawControlEvent::Unknown(_) => {}
             }

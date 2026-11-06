@@ -26,6 +26,8 @@ pub const OPCODE_AUDIO_START: u8 = 0x04;
 pub const OPCODE_MIC_BUTTON: u8 = 0x08;
 pub const OPCODE_AUDIO_SYNC: u8 = 0x0A;
 pub const OPCODE_CAPS: u8 = 0x0B;
+/// 设备 -> 主机：MIC_OPEN 失败回报（与主机方向的 MIC_OPEN=0x0C 同号不同向）。
+pub const OPCODE_MIC_OPEN_ERROR: u8 = 0x0C;
 
 /// 主机 -> 设备能力请求（v1.0）。
 pub const GET_CAPABILITIES_V10: [u8; 6] = [0x0A, 0x01, 0x00, 0x00, 0x03, 0x03];
@@ -119,9 +121,16 @@ pub enum ControlEvent {
 pub enum RawControlEvent {
     Caps(AtvvCapabilities),
     MicButtonPressed,
-    AudioStarted { session_id: Option<u8> },
+    AudioStarted {
+        session_id: Option<u8>,
+    },
     AudioStopped,
-    AudioSynced { predictor: i16, step_index: u8 },
+    AudioSynced {
+        predictor: i16,
+        step_index: u8,
+    },
+    /// 设备回报 MIC_OPEN 失败（0x0C，与主机方向同号不同向）。
+    MicOpenFailed,
     Unknown(u8),
 }
 
@@ -142,6 +151,7 @@ pub fn parse_control(payload: &[u8]) -> Option<RawControlEvent> {
                 step_index: payload[6],
             }
         }
+        OPCODE_MIC_OPEN_ERROR => RawControlEvent::MicOpenFailed,
         other => RawControlEvent::Unknown(other),
     })
 }

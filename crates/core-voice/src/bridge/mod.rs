@@ -29,6 +29,20 @@ use crate::VoiceEngine;
 use diag::BridgeDiag;
 pub use report::{last_session_report, SessionReport};
 
+/// 控制通道 → 输出泵的会话信号（供 ATVV `MIC_OPEN` 握手实验使用）。
+///
+/// 实验由环境变量 `REMOTE_MIC_ATVV_MIC_OPEN` 控制，取值见
+/// [`pump::MicOpenMode::from_env`]；默认关闭，不影响正常使用。
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ControlSignal {
+    /// 遥控器回报的能力协商结果（含协议版本号）。
+    Caps(u16),
+    /// 遥控器开始推流（按键被按下）。
+    AudioStarted { session_id: Option<u8> },
+    /// 遥控器停止推流（按键被松开）。
+    AudioStopped,
+}
+
 /// 标记会话已建立，并通知外部（UI）。
 ///
 /// # 顺序很重要
@@ -124,6 +138,8 @@ where
     let is_active = Arc::new(Mutex::new(false));
 
     let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
+    // 控制回调 → 输出泵的会话信号（MIC_OPEN 实验用；默认模式下仅用于日志统计）。
+    let (signal_tx, signal_rx) = mpsc::channel::<ControlSignal>();
     // 回调注册会消费 key_sink，但后面还要用它启动返回/音量旁路，先留一份。
     let key_sink_for_start = key_sink.clone();
     let _audio_cookie = handlers::register_audio_handler(
@@ -143,6 +159,7 @@ where
         diag.clone(),
         is_active,
         key_sink,
+        signal_tx,
     )?;
     core_log::log_info("[bridge] 控制回调已注册");
 
@@ -178,6 +195,13 @@ where
         sink.format_label()
     ));
 
+    let mic_open_mode = pump::MicOpenMode::from_env();
+    if mic_open_mode != pump::MicOpenMode::Off {
+        core_log::log_warn(&format!(
+            "[bridge][试验] ATVV MIC_OPEN 握手实验已开启：{mic_open_mode:?}（环境变量 REMOTE_MIC_ATVV_MIC_OPEN）"
+        ));
+    }
+
     let exit_reason = pump::run_output_pump(
         &frame_rx,
         &mut sink,
@@ -185,7 +209,20 @@ where
         &*transport,
         &disconnected,
         &diag,
+        &signal_rx,
+        mic_open_mode,
     );
+
+    // 实验路径：会话收尾时补一条 MIC_CLOSE，观察遥控器状态机是否因此归位。
+    if mic_open_mode != pump::MicOpenMode::Off {
+        let cmd = core_atvv::protocol::mic_close_command(0x0100, 0);
+        core_log::log_info(&format!(
+            "[bridge][试验] 会话结束，发送 MIC_CLOSE 载荷={cmd:02X?}"
+        ));
+        if let Err(e) = transport.write_tx(&cmd) {
+            core_log::log_warn(&format!("[bridge][试验] 发送 MIC_CLOSE 失败（忽略）: {e}"));
+        }
+    }
 
     // 语音桥会话结束，标记链路不再活动（由外层自动重连再次置 true）。
     core_log::log_info(&format!(
