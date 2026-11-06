@@ -25,8 +25,18 @@ pub(crate) fn register_audio_handler(
     // 逻辑时钟：VoiceEngine 的时间语义（STOP_TAIL_DROP 等）依赖它。
     // 之前从不推进，导致所有基于时间的门控实际失效。
     let feed_clock = Arc::new(Mutex::new(Instant::now()));
+    // 诊断：本轮会话第一条音频通知落在哪个线程。MTA 下应是线程池线程，
+    // 若和会话线程是同一个 ID，说明事件被投递回会话线程的套间队列（会延迟）。
+    let first_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let first_seen_cb = first_seen.clone();
     transport
         .register_audio_handler(Box::new(move |bytes| {
+            if !first_seen_cb.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                core_log::log_info(&format!(
+                    "[bridge] 首条音频通知到达，回调线程={:?}",
+                    std::thread::current().id()
+                ));
+            }
             diag.touch_audio();
             key_sink.touch_mic_activity();
             capture.record("audio", &bytes);
@@ -65,8 +75,16 @@ pub(crate) fn register_control_handler(
     is_active: Arc<Mutex<bool>>,
     key_sink: Arc<dyn KeySink>,
 ) -> Result<i64, String> {
+    // 诊断：本轮会话第一条控制通知落在哪个线程（MTA 下应是线程池线程）。
+    let first_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
     transport
         .register_control_handler(Box::new(move |bytes| {
+            if !first_seen.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                core_log::log_info(&format!(
+                    "[bridge] 首条控制通知到达，回调线程={:?}",
+                    std::thread::current().id()
+                ));
+            }
             diag.touch_control();
             capture.record("control", &bytes);
             core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));

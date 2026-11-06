@@ -17,6 +17,10 @@ windows = { version = "0.62", features = [
   "Devices_Bluetooth_GenericAttributeProfile",
   "Devices_Enumeration",
   "Storage_Streams",
+  # COM 套间（会话线程显式初始化 MTA）与兜底消息泵，见 src/com.rs。
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 windows-future = "0.3"
 

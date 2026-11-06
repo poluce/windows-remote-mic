@@ -54,8 +54,19 @@ pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Resu
 where
     F: Fn(bool) + Send + 'static,
 {
+    // COM 套间必须在**任何** WinRT 调用之前定死。会话线程原本没有任何 COM
+    // 初始化，直到 open_sink() 打开 WASAPI 时才被 cpal 隐式初始化为 STA，
+    // 而 STA 的 WinRT 事件需要泵消息才会派发——输出泵从不泵消息，导致整场
+    // 会话的 ATVV 通知被压在套间队列里，直到会话结束才被一次性冲出。
+    // 详见 core_ble::com 模块文档。
+    let apartment = core_ble::ensure_com_mta();
+
     core_log::log_info(&format!(
         "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
+    ));
+    core_log::log_info(&format!(
+        "[bridge] 会话线程 COM 套间={apartment}，线程={:?}",
+        std::thread::current().id()
     ));
     if crate::bridge_session_active() {
         core_log::log_warn(
@@ -100,6 +111,41 @@ where
         .map_err(|e| e.to_string())?;
     core_log::log_info("[bridge] BLE 连接状态监听已注册");
 
+    // ---- 回调必须早于订阅 ----
+    //
+    // 这里是「先挂处理器、再写 CCCD / 发能力查询」。反过来做（先订阅再注册）
+    // 存在一个真实丢包窗口：遥控器回 CAPS 很快（实测 10~30ms），首包完全可能
+    // 落在「订阅已生效、回调还没挂」的空档里被直接丢掉。
+    let capture_dir = std::env::var("LOCALAPPDATA")
+        .map(|base| std::path::Path::new(&base).join("RemoteMic/RC003/captures"))
+        .unwrap_or_default();
+    let capture = CaptureRecorder::new(capture_dir);
+    let engine = Arc::new(Mutex::new(VoiceEngine::new()));
+    let is_active = Arc::new(Mutex::new(false));
+
+    let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
+    // 回调注册会消费 key_sink，但后面还要用它启动返回/音量旁路，先留一份。
+    let key_sink_for_start = key_sink.clone();
+    let _audio_cookie = handlers::register_audio_handler(
+        &*transport,
+        engine.clone(),
+        capture.clone(),
+        diag.clone(),
+        key_sink.clone(),
+        frame_tx,
+    )?;
+    core_log::log_info("[bridge] 音频回调已注册");
+
+    let _control_cookie = handlers::register_control_handler(
+        &*transport,
+        engine,
+        capture,
+        diag.clone(),
+        is_active,
+        key_sink,
+    )?;
+    core_log::log_info("[bridge] 控制回调已注册");
+
     transport.enable_audio_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] 启用音频通知失败: {e}"));
         e
@@ -122,8 +168,7 @@ where
 
     // ATVV 通知已生效。仅在此时启动可选的 Back/Volume 轻触注入，
     // 以免 HOGP 注入在特征设置期间抢占 GATT 会话。
-    key_sink.start_after_atvv();
-
+    key_sink_for_start.start_after_atvv();
     let mut sink: Box<dyn AudioSink> = open_sink(output_device).map_err(|e| {
         core_log::log_error(&format!("[bridge] 初始化音频输出（AudioSink）失败: {e}"));
         e
@@ -132,34 +177,6 @@ where
         "[bridge] 音频输出（AudioSink）已初始化：{output_device}（{}）",
         sink.format_label()
     ));
-
-    let capture_dir = std::env::var("LOCALAPPDATA")
-        .map(|base| std::path::Path::new(&base).join("RemoteMic/RC003/captures"))
-        .unwrap_or_default();
-    let capture = CaptureRecorder::new(capture_dir);
-    let engine = Arc::new(Mutex::new(VoiceEngine::new()));
-    let is_active = Arc::new(Mutex::new(false));
-
-    let (frame_tx, frame_rx) = mpsc::channel::<Vec<f32>>();
-    let _audio_cookie = handlers::register_audio_handler(
-        &*transport,
-        engine.clone(),
-        capture.clone(),
-        diag.clone(),
-        key_sink.clone(),
-        frame_tx,
-    )?;
-    core_log::log_info("[bridge] 音频回调已注册");
-
-    let _control_cookie = handlers::register_control_handler(
-        &*transport,
-        engine,
-        capture,
-        diag.clone(),
-        is_active,
-        key_sink,
-    )?;
-    core_log::log_info("[bridge] 控制回调已注册");
 
     let exit_reason = pump::run_output_pump(
         &frame_rx,

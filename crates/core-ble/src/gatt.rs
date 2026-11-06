@@ -6,7 +6,7 @@ use std::time::Duration;
 use windows::core::{IInspectable, GUID, HSTRING};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristic, GattClientCharacteristicConfigurationDescriptorValue,
-    GattCommunicationStatus, GattDeviceService, GattOpenStatus, GattSharingMode,
+    GattCommunicationStatus, GattDeviceService, GattOpenStatus, GattSession, GattSharingMode,
     GattValueChangedEventArgs,
 };
 use windows::Devices::Bluetooth::{
@@ -48,6 +48,9 @@ impl AtvvEndpoints {
 /// 一个保持 TX/Audio/Control 特征存活的 ATVV 连接。
 pub struct AtvvLink {
     _device: BluetoothLEDevice,
+    /// GATT 会话：`MaintainConnection=true` 时系统不会因为空闲而回收会话。
+    /// 实测未设置时链路会在约 45s 空闲后被拆掉、再重连，形成无谓的会话抖动。
+    session: GattSession,
     _service: GattDeviceService,
     _tx: GattCharacteristic,
     audio: GattCharacteristic,
@@ -88,6 +91,23 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     core_log::log_info(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
+    // 维持 GATT 会话：否则系统在空闲约 45s 后回收会话并拆链（实测每场会话
+    // 都是精确 45.0s 后断开，随后重连，形成无意义的会话抖动）。
+    let session = service
+        .Session()
+        .map_err(|e| BleError::Windows(format!("获取 GATT 会话失败: {e}")))?;
+    match session.CanMaintainConnection() {
+        Ok(true) => match session.SetMaintainConnection(true) {
+            Ok(()) => {
+                core_log::log_info("[ble/gatt] 已开启 GATT 会话维持（MaintainConnection=true）")
+            }
+            Err(e) => core_log::log_warn(&format!("[ble/gatt] 开启 GATT 会话维持失败: {e}")),
+        },
+        Ok(false) => {
+            core_log::log_warn("[ble/gatt] 设备不支持维持 GATT 会话（CanMaintainConnection=false）")
+        }
+        Err(e) => core_log::log_warn(&format!("[ble/gatt] 读取 CanMaintainConnection 失败: {e}")),
+    }
     let device = open_ble_device(device_id)?;
     match device.ConnectionStatus() {
         Ok(status) => core_log::log_info(&format!(
@@ -99,6 +119,7 @@ pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     }
     Ok(AtvvLink {
         _device: device,
+        session,
         _service: service,
         _tx: tx,
         audio,
@@ -582,6 +603,12 @@ impl Drop for AtvvLink {
         core_log::log_info(&format!(
             "[ble/gatt] AtvvLink Drop：释放 GATT 句柄，此刻 ConnectionStatus={status}"
         ));
+        // 显式解除会话维持并关闭句柄：WinRT 的 GattDeviceService / GattSession
+        // 都实现了 IClosable，不 Close 会留下共享句柄，影响下一轮会话的通知订阅。
+        let _ = self.session.SetMaintainConnection(false);
+        let _ = self.session.Close();
+        let _ = self._service.Close();
+        core_log::log_info("[ble/gatt] GATT 会话与服务句柄已显式关闭");
     }
 }
 

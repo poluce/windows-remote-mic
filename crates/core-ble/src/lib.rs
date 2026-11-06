@@ -1,11 +1,13 @@
 //! core-ble — RC003 的 WinRT 低功耗蓝牙（BLE）连接。
 
 pub mod capture;
+pub mod com;
 pub mod error;
 pub mod profile;
 
 use serde::{Deserialize, Serialize};
 
+pub use com::{ensure_com_mta, pump_thread_messages};
 pub use error::{BleError, Result};
 pub use profile::{matches_rc003, RC003_BLUETOOTH_NAMES};
 
