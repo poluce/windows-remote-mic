@@ -40,6 +40,12 @@ impl MicOpenMode {
     }
 }
 
+/// 输出泵里的 ATVV 握手实验上下文（默认关闭时 mode 为 Off）。
+pub(crate) struct PumpExperiment {
+    pub signals: mpsc::Receiver<ControlSignal>,
+    pub mode: MicOpenMode,
+}
+
 /// 发送一条 `MIC_OPEN`（实验路径，只打 INFO 日志便于对照）。
 fn send_mic_open(transport: &dyn VoiceTransport, version: u16) {
     let cmd = core_atvv::protocol::mic_open_command(version);
@@ -75,9 +81,12 @@ pub(crate) fn run_output_pump(
     transport: &dyn VoiceTransport,
     disconnected: &AtomicBool,
     diag: &BridgeDiag,
-    signals: &mpsc::Receiver<ControlSignal>,
-    mic_open_mode: MicOpenMode,
+    experiment: PumpExperiment,
 ) -> &'static str {
+    let PumpExperiment {
+        signals,
+        mode: mic_open_mode,
+    } = experiment;
     // 空闲毫秒数：每 IDLE_TICK 累加一次；满 HEALTH_EVERY_MS 做健康检查 + 心跳。
     let mut idle_ms: u64 = 0;
     let mut audio_stream_warned = false;
@@ -86,6 +95,9 @@ pub(crate) fn run_output_pump(
     // 协商到的 ATVV 版本（MIC_OPEN 载荷随版本不同）与会话 id（MIC_CLOSE 用）。
     let mut atvv_version: u16 = 0x0100;
     let mut session_id: u8 = 0;
+    // 是否处于「遥控器正在推流」状态：MIC_CLOSE 只在 推流→停止 的边沿发一次，
+    // 绝不对每一个控制包都发（实测会把遥控器状态机打崩、表现为麦克风键失灵）。
+    let mut streaming = false;
 
     loop {
         // 控制通道信号：CAPS 版本 / 推流开始 / 推流结束。
@@ -101,15 +113,18 @@ pub(crate) fn run_output_pump(
                     if let Some(sid) = sid {
                         session_id = sid;
                     }
+                    streaming = true;
                     if mic_open_mode == MicOpenMode::AfterAudioStart {
                         send_mic_open(transport, atvv_version);
                     }
                 }
                 ControlSignal::AudioStopped => {
-                    if mic_open_mode != MicOpenMode::Off {
+                    // 只在「推流 → 停止」的边沿发一次 MIC_CLOSE。
+                    if streaming && mic_open_mode != MicOpenMode::Off {
+                        streaming = false;
                         let cmd = core_atvv::protocol::mic_close_command(atvv_version, session_id);
                         core_log::log_info(&format!(
-                            "[bridge][试验] AUDIO_STOP 后发送 MIC_CLOSE 载荷={cmd:02X?}"
+                            "[bridge][试验] 推流结束，发送 MIC_CLOSE 载荷={cmd:02X?}"
                         ));
                         if let Err(e) = transport.write_tx(&cmd) {
                             core_log::log_warn(&format!(
@@ -178,11 +193,16 @@ pub(crate) fn run_output_pump(
                 }
                 if idle_ms.is_multiple_of(KEEPALIVE_EVERY_MS) {
                     // 链路保活：遥控器空闲约 45s 会主动断链，这里每 20s 发一次
-                    // 无副作用的能力查询把会话留住。失败只告警，不终止会话。
-                    match transport.write_tx(&core_atvv::protocol::GET_CAPABILITIES_V10) {
-                        Ok(()) => core_log::log_debug("[bridge] 空闲保活：已发送能力查询"),
-                        Err(e) => {
-                            core_log::log_warn(&format!("[bridge] 空闲保活发送失败（忽略）: {e}"))
+                    // 无副作用的命令把会话留住。实验模式下改发 MIC_OPEN，
+                    // 用来验证它是否是设备侧「音频会话超时」的续期命令。
+                    if mic_open_mode == MicOpenMode::IdleKeepalive && !streaming {
+                        send_mic_open(transport, atvv_version);
+                    } else if mic_open_mode != MicOpenMode::IdleKeepalive {
+                        match transport.write_tx(&core_atvv::protocol::GET_CAPABILITIES_V10) {
+                            Ok(()) => core_log::log_debug("[bridge] 空闲保活：已发送能力查询"),
+                            Err(e) => core_log::log_warn(&format!(
+                                "[bridge] 空闲保活发送失败（忽略）: {e}"
+                            )),
                         }
                     }
                 }

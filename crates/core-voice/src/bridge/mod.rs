@@ -209,8 +209,10 @@ where
         &*transport,
         &disconnected,
         &diag,
-        &signal_rx,
-        mic_open_mode,
+        pump::PumpExperiment {
+            signals: signal_rx,
+            mode: mic_open_mode,
+        },
     );
 
     // 实验路径：会话收尾时补一条 MIC_CLOSE，观察遥控器状态机是否因此归位。

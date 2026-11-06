@@ -143,7 +143,11 @@ pub fn parse_control(payload: &[u8]) -> Option<RawControlEvent> {
         OPCODE_AUDIO_START => RawControlEvent::AudioStarted {
             session_id: payload.get(3).copied(),
         },
-        OPCODE_AUDIO_STOP => RawControlEvent::AudioStopped,
+        // AUDIO_STOP 正常只有 1 字节（opcode）；实测遥控器在推流期间还会以
+        // 约 40Hz 发两字节的 `00 00` 标记包，那不是「停止推流」，不能当成
+        // AudioStopped 处理（否则会反复触发 stop 逻辑）。
+        OPCODE_AUDIO_STOP if payload.len() <= 1 => RawControlEvent::AudioStopped,
+        OPCODE_AUDIO_STOP => RawControlEvent::Unknown(opcode),
         OPCODE_AUDIO_SYNC if payload.len() >= 7 => {
             let predictor = i16::from_be_bytes([payload[4], payload[5]]);
             RawControlEvent::AudioSynced {
