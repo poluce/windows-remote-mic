@@ -186,8 +186,22 @@ pub fn run() {
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
                 dispatcher.spawn_runtime(stats_dir);
+                
+                let reloader = if let Some(store) = config_store() {
+                    let r = crate::services::hot_reload::HotReloader::new(dispatcher.clone(), app.handle().clone(), store);
+                    if let Err(e) = r.start() {
+                        core_log::log_error(&format!("[app] 启动配置热重载监听失败: {e}"));
+                    }
+                    r
+                } else {
+                    core_log::log_warn("[app] 无法创建配置存储，热重载功能不可用");
+                    // 构造一个空的 dummy HotReloader 保证 AppState 能初始化
+                    crate::services::hot_reload::HotReloader::new(dispatcher.clone(), app.handle().clone(), core_config::ConfigStore::new(".").unwrap())
+                };
+
                 app.manage(AppState {
                     dispatcher: dispatcher.clone(),
+                    hot_reloader: reloader,
                 });
                 crate::agent_api::start_if_enabled(app.handle().clone(), dispatcher.clone());
                 dispatcher

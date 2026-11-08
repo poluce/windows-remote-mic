@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use core_dispatch::KeyDispatcher;
+use crate::services::hot_reload::HotReloader;
 
 /// 共享给 Tauri 命令的运行时状态：按键调度器。
 pub struct AppState {
     pub dispatcher: Arc<KeyDispatcher>,
+    pub hot_reloader: HotReloader,
 }

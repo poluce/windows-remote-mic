@@ -4,3 +4,4 @@
 //! 写盘成功后再热更新调度器，避免 UI 与智能体并发时互相覆盖。
 
 pub mod mapping;
+pub mod hot_reload;
