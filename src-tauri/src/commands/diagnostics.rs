@@ -1,6 +1,42 @@
 use serde::Serialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use core_mapping::trigger::TriggerDetector;
+
+#[tauri::command]
+pub fn generate_diagnostic_report() -> String {
+    let mut report = String::new();
+    report.push_str("# Remote Mic 诊断报告\n\n");
+    
+    // 1. 系统与硬件环境
+    report.push_str("## 系统与硬件环境\n");
+    report.push_str(&format!("- OS: Windows\n"));
+    report.push_str("- 架构: x64\n\n");
+    
+    // 2. 诊断自检快照
+    report.push_str("## 诊断自检快照\n");
+    let tests = run_self_test();
+    for test in tests {
+        report.push_str(&format!("- [ ] {}: {} - {}\n", test.name, test.status, test.detail));
+    }
+    report.push('\n');
+    
+    // 3. 最近异常日志
+    report.push_str("## 最近异常日志切片\n");
+    if let Ok(file) = File::open(core_log::log_dir().join("remote-mic.log")) {
+        let reader = BufReader::new(file);
+        let lines: Vec<String> = reader.lines().filter_map(Result::ok).collect();
+        let last_lines = lines.iter().rev().take(30).rev();
+        for line in last_lines {
+            if line.contains("WARN") || line.contains("ERROR") {
+                report.push_str(&format!("> {}\n", line));
+            }
+        }
+    }
+    
+    report
+}
 
 /// 一个自检项，结论为 PASS / FAIL / SKIP。
 #[derive(Serialize)]

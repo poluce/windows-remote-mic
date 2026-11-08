@@ -388,6 +388,7 @@ pub fn run() {
             commands::audio_tools::play_test_tone_loop,
             commands::audio_tools::trigger_voice_typing,
             commands::diagnostics::run_self_test,
+            commands::diagnostics::generate_diagnostic_report,
             commands::app_profile::menu::app_profile_status,
             commands::app_profile::editor::app_profile_catalog,
             commands::app_profile::menu::app_menu_apps,

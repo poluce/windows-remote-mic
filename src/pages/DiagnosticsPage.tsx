@@ -139,6 +139,20 @@ export function DiagnosticsPage() {
     }
   }
 
+  async function generateReport() {
+    if (!isTauri()) {
+      return;
+    }
+    try {
+      const report = await invoke<string>("generate_diagnostic_report");
+      // 这里暂时直接打印到控制台，后续实现弹窗预览
+      console.log(report);
+      alert("报告已生成，已打印到控制台（后续实现弹窗）");
+    } catch (err) {
+      alert(`生成失败: ${err}`);
+    }
+  }
+
   async function loopTone() {
     if (!isTauri()) {
       setStatus("测试音循环仅在桌面应用内可用");
@@ -206,6 +220,9 @@ export function DiagnosticsPage() {
         <button className="btn primary" onClick={runSelfTest}>
           <IconSearch size={14} />
           运行系统全自检
+        </button>
+        <button className="btn primary" onClick={generateReport}>
+          生成诊断报告
         </button>
         <button className="btn" onClick={loopTone} disabled={looping}>
           {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
