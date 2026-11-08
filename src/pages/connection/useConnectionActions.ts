@@ -30,6 +30,8 @@ type Rc003Connection = {
   endpoints: AtvvEndpoints;
   /** 真实 BLE 链路状态（GATT 缓存发现成功 ≠ 链路已连接）。 */
   link_connected: boolean;
+  /** 遥控器电池电量百分比（0~100）。 */
+  battery_level?: number | null;
 };
 
 /**
@@ -76,7 +78,7 @@ export function useConnectionActions() {
     try {
       const result = await invoke<Rc003Connection>("connect_rc003");
       const endpointsReady = Boolean(result.endpoints.audio && result.endpoints.control);
-      markConnected(endpointsReady, result.link_connected);
+      markConnected(endpointsReady, result.link_connected, result.battery_level);
       setFeedback("");
       try {
         await invoke("save_selected_device", { deviceId: result.device.id });

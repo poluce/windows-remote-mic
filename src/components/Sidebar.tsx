@@ -43,7 +43,7 @@ export function Sidebar({
   page: PageId;
   onChange: (page: PageId) => void;
 }) {
-  const { bridgeState, tapStatus, tapMessage } = useRuntimeStatus();
+  const { bridgeState, tapStatus, tapMessage, batteryLevel } = useRuntimeStatus();
   const { phase: updatePhase } = useUpdateStatus();
   // 派生视图：等待遥控器上线时绝不能显示「遥控器已连接」。
   const connected = useEffectiveConnected();
@@ -56,6 +56,19 @@ export function Sidebar({
       label: connected ? "遥控器已连接" : "遥控器未连接",
       tone: connected ? "ok" : "off",
     },
+    ...(connected && batteryLevel !== null
+      ? [
+          {
+            key: "battery",
+            label: `遥控器电量 ${batteryLevel}%`,
+            tone: batteryLevel < 10 ? "missing" : batteryLevel < 20 ? "warn" : "ok",
+            title:
+              batteryLevel < 20
+                ? `遥控器电量较低（${batteryLevel}%），建议更换电池`
+                : `遥控器当前电量：${batteryLevel}%`,
+          },
+        ]
+      : []),
     {
       key: "bridge",
       label: bridgeRunning

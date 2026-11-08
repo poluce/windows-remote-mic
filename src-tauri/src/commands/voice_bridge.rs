@@ -38,6 +38,10 @@ impl sup::SupervisorHost for TauriSupervisorHost {
     fn release_held_keys(&self, reason: &str) {
         crate::force_release_held_keys(&self.app, reason);
     }
+
+    fn emit_battery_level(&self, level: Option<u8>) {
+        let _ = self.app.emit("rc003-battery-level", level);
+    }
 }
 
 /// 恢复遥控器按键接管（连接语音桥时调用）。
@@ -167,6 +171,9 @@ pub fn stop_voice_bridge(app: tauri::AppHandle) -> BridgeStopResult {
         // 断开 = 停止语音桥 + 暂停按键接管：
         // 否则遥控器麦克风键仍会经 HOGP 旁路 + 映射注入唤起豆包等输入法。
         pause_key_passthrough(&app);
+        core_voice::clear_transport();
+        core_voice::set_battery_level(None);
+        let _ = app.emit("rc003-battery-level", Option::<u8>::None);
         sup::publish(
             &host,
             sup::BridgeStatus::new("stopped", 0, 0, 0, String::new()),

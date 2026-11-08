@@ -350,6 +350,7 @@ pub fn run() {
             commands::connection::device::scan_for_rc003,
             commands::connection::device::connect_rc003,
             commands::connection::status::get_runtime_status,
+            commands::connection::status::get_battery_level,
             commands::connection::device::get_saved_device_id,
             commands::connection::device::save_selected_device,
             commands::connection::prefs::get_hid_tap_eat,

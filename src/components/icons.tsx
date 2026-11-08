@@ -107,3 +107,33 @@ export function IconSliders(props: IconProps) {
     </Svg>
   );
 }
+
+/** 遥控器电池电量图标：线框 + 动态内填充。 */
+export function IconBattery({
+  level,
+  size = 18,
+  className,
+}: IconProps & { level?: number | null }) {
+  const fillWidth =
+    level !== undefined && level !== null && level > 0
+      ? Math.max(1.5, Math.min(10.5, (level / 100) * 10.5))
+      : 0;
+
+  return (
+    <Svg size={size} className={className}>
+      <rect x="2" y="6" width="16" height="12" rx="2.5" />
+      <path d="M21 10v4" />
+      {fillWidth > 0 && (
+        <rect
+          x="4.5"
+          y="8.5"
+          width={fillWidth}
+          height="7"
+          rx="1"
+          fill="currentColor"
+          stroke="none"
+        />
+      )}
+    </Svg>
+  );
+}

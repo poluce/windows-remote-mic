@@ -77,6 +77,8 @@ pub trait SupervisorHost: Send + Sync + 'static {
     fn emit_connection(&self, connected: bool);
     /// 会话结束兜底释放按键：链路已断时物理松开事件永远到不了。
     fn release_held_keys(&self, reason: &str);
+    /// 推送遥控器电池电量（前端 `rc003-battery-level` 事件）。
+    fn emit_battery_level(&self, _level: Option<u8>) {}
 }
 
 /// 监督线程是否正在运行（互斥：同一时刻只允许一条监督线程，防止双桥争用 GATT）。
@@ -278,6 +280,7 @@ pub fn run_supervisor(
         ));
 
         let host_cb = host.clone();
+        let host_battery_cb = host.clone();
         let attempt_cb = attempt;
         let failures_cb = failures;
         let on_status = move |connected: bool| {
@@ -289,10 +292,13 @@ pub fn run_supervisor(
                 );
             }
         };
+        let on_battery = move |level: Option<u8>| {
+            host_battery_cb.emit_battery_level(level);
+        };
 
         // 单次会话 panic 不能带走监督线程。
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::run_bridge(device_id, output_device, on_status)
+            crate::run_bridge(device_id, output_device, on_status, on_battery)
         }));
         if crate::bridge_stop_requested() {
             break;
@@ -341,6 +347,9 @@ pub fn run_supervisor(
         if !watcher.is_connected() {
             failures = 0;
             last_error.clear();
+            crate::clear_transport();
+            crate::set_battery_level(None);
+            host.emit_battery_level(None);
             publish(
                 host.as_ref(),
                 BridgeStatus::new("waiting", attempt, 0, 0, String::new()),

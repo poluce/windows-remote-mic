@@ -69,6 +69,36 @@ pub fn set_atvv_endpoints_ready(ready: bool) {
         .unwrap_or_else(|e| e.into_inner()) = ready;
 }
 
+static CURRENT_TRANSPORT: Mutex<Option<Box<dyn crate::ports::VoiceTransport + Send + Sync>>> = Mutex::new(None);
+static BATTERY_LEVEL: Mutex<Option<u8>> = Mutex::new(None);
+
+pub fn set_transport(transport: Box<dyn crate::ports::VoiceTransport + Send + Sync>) {
+    *CURRENT_TRANSPORT.lock().unwrap() = Some(transport);
+}
+
+pub fn clear_transport() {
+    *CURRENT_TRANSPORT.lock().unwrap() = None;
+}
+
+pub fn set_battery_level(level: Option<u8>) {
+    *BATTERY_LEVEL.lock().unwrap_or_else(|e| e.into_inner()) = level;
+}
+
+pub fn get_battery_level() -> Option<u8> {
+    if let Some(transport) = CURRENT_TRANSPORT.lock().unwrap().as_ref() {
+        if let Some(lvl) = transport.get_battery_level() {
+            return Some(lvl);
+        }
+    }
+    *BATTERY_LEVEL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub fn register_battery_handler(callback: Box<dyn Fn(u8) + Send + Sync + 'static>) {
+    if let Some(transport) = CURRENT_TRANSPORT.lock().unwrap().as_ref() {
+        transport.register_battery_handler(callback);
+    }
+}
+
 /// 向引擎喂入一批原始 BLE 字节后的结果。
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct VoiceChunk {

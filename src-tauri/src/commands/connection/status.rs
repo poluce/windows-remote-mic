@@ -12,6 +12,8 @@ pub struct RuntimeStatus {
     pub endpoints_ready: bool,
     /// 最近一次语音桥状态（连接页恢复「重连中/失败」展示用）。
     pub bridge_status: Option<BridgeStatus>,
+    /// 电池电量百分比（0~100，None 表示未知或未连接）。
+    pub battery_level: Option<u8>,
 }
 
 #[tauri::command]
@@ -21,5 +23,12 @@ pub fn get_runtime_status() -> RuntimeStatus {
         tap_status: core_hid::tap::last_status(),
         endpoints_ready: core_voice::atvv_endpoints_ready(),
         bridge_status: current_status(),
+        battery_level: core_voice::get_battery_level(),
     }
+}
+
+/// 查询当前遥控器电池电量百分比（0~100）。
+#[tauri::command]
+pub fn get_battery_level() -> Option<u8> {
+    core_voice::get_battery_level()
 }

@@ -14,6 +14,8 @@ pub struct Rc003Connection {
     /// `scan_and_connect` 可能命中 WinRT 的 GATT 缓存，即使链路断开也能发现端点；
     /// 前端不能用「发现成功」推断「已连接」，必须以该字段为准。
     pub link_connected: bool,
+    /// 遥控器电池电量百分比（0~100）。
+    pub battery_level: Option<u8>,
 }
 
 #[tauri::command]
@@ -37,9 +39,10 @@ pub async fn scan_for_rc003() -> Result<core_ble::BleDevice, String> {
 }
 
 #[tauri::command]
-pub async fn connect_rc003() -> Result<Rc003Connection, String> {
+pub async fn connect_rc003(app: tauri::AppHandle) -> Result<Rc003Connection, String> {
     core_log::log_info("[commands/connection] 前端请求连接 RC003");
-    tauri::async_runtime::spawn_blocking(|| {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
         match core_ble::scan_and_connect() {
             Ok((device, endpoints)) => {
                 core_log::log_info(&format!(
@@ -53,10 +56,17 @@ pub async fn connect_rc003() -> Result<Rc003Connection, String> {
                 core_log::log_info(&format!(
                     "[commands/connection] 连接结果：link_connected={link_connected}"
                 ));
+                let battery_level = core_ble::read_battery_level(&device.id);
+                core_voice::set_battery_level(battery_level);
+                if let Some(level) = battery_level {
+                    use tauri::Emitter;
+                    let _ = app_handle.emit("rc003-battery-level", Some(level));
+                }
                 Ok(Rc003Connection {
                     device,
                     endpoints,
                     link_connected,
+                    battery_level,
                 })
             }
             Err(e) => {

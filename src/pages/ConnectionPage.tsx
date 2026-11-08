@@ -2,13 +2,14 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useState } from "react";
 
 import {
+  batteryTone,
   bridgeStateLabel,
   tapStatusLabel,
   useEffectiveConnected,
   useRuntimeStatus,
 } from "../store/runtimeStatus";
 
-import { IconBluetooth, IconMic } from "../components/icons";
+import { IconBattery, IconBluetooth, IconMic } from "../components/icons";
 import { DRIVER_OPTIONS, useVbCableDriver } from "./connection/useVbCableDriver";
 import { useConnectionActions } from "./connection/useConnectionActions";
 
@@ -94,7 +95,13 @@ export function ConnectionPage() {
       bridgeState === "waiting") &&
     !silentSessionHint;
 
-  const briefs: { key: string; label: string; tone: string; title?: string }[] = [
+  const briefs: {
+    key: string;
+    label: string;
+    tone: string;
+    title?: string;
+    icon?: React.ReactNode;
+  }[] = [
     {
       key: "bridge",
       label: bridgeLabel,
@@ -115,6 +122,19 @@ export function ConnectionPage() {
       tone: endpointsReady || bridgeState === "running" ? "ok" : "warn",
     },
   ];
+
+  if (effectiveConnected && runtime.batteryLevel !== null) {
+    briefs.unshift({
+      key: "battery",
+      label: `电量 ${runtime.batteryLevel}%`,
+      tone: batteryTone(runtime.batteryLevel),
+      title:
+        runtime.batteryLevel < 20
+          ? `遥控器电量较低（${runtime.batteryLevel}%），建议更换电池`
+          : `遥控器当前电量：${runtime.batteryLevel}%`,
+      icon: <IconBattery level={runtime.batteryLevel} size={14} />,
+    });
+  }
 
   return (
     <div className="page">
@@ -144,6 +164,15 @@ export function ConnectionPage() {
             >
               {effectiveConnected ? "已连接" : "未连接"}
             </span>
+            {effectiveConnected && runtime.batteryLevel !== null && (
+              <span
+                className={`pill ${batteryTone(runtime.batteryLevel)}`}
+                title={`遥控器当前电量：${runtime.batteryLevel}%`}
+              >
+                <IconBattery level={runtime.batteryLevel} size={14} />
+                <span>{runtime.batteryLevel}%</span>
+              </span>
+            )}
             <div className="actions">
               <button
                 className="btn"
@@ -184,7 +213,7 @@ export function ConnectionPage() {
               className={`pill ${b.tone}`}
               title={b.title}
             >
-              <span className="pill-dot" />
+              {b.icon ? b.icon : <span className="pill-dot" />}
               {b.label}
             </span>
           ))}

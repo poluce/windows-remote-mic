@@ -12,7 +12,7 @@
 /// 语音传输：ATVV GATT 会话（真实遥控器）或其替代实现。
 ///
 /// 方法返回 `Result<_, String>`，避免把 `core-ble` 的错误类型泄漏到编排层。
-pub trait VoiceTransport {
+pub trait VoiceTransport: Send + Sync {
     /// 注册链路连接状态回调；链路连上/断开时以 `true`/`false` 调用。
     fn register_connection_handler(
         &self,
@@ -36,6 +36,10 @@ pub trait VoiceTransport {
     ) -> Result<i64, String>;
     /// 当前链路是否仍处于已连接状态。
     fn is_connected(&self) -> bool;
+    /// 获取当前电池电量。
+    fn get_battery_level(&self) -> Option<u8>;
+    /// 注册电池电量更新回调。
+    fn register_battery_handler(&self, callback: Box<dyn Fn(u8) + Send + Sync + 'static>);
 }
 
 /// 音频输出：把 48kHz 立体声 f32 帧送到目标播放设备（通常是 `CABLE Input`）。
