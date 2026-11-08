@@ -303,25 +303,25 @@ pub fn run_supervisor(
             "语音桥会话结束（loop_id={loop_id}, attempt={attempt}）"
         ));
 
-        let session_err = match result {
-            Ok(Ok(())) => None,
+        let (session_err, exit_reason) = match result {
+            Ok(Ok(reason)) => (None, reason),
             Ok(Err(e)) => {
                 core_log::log_error(&format!(
                     "[voice/supervisor] 语音桥会话出错（attempt={attempt}）：{e}"
                 ));
-                Some(e)
+                (Some(e), None)
             }
             Err(payload) => {
                 let detail = core_hid::panic_payload_text(payload.as_ref());
                 core_log::log_error(&format!(
                     "[voice/supervisor] 语音桥会话 panic 已隔离（attempt={attempt}）：{detail}"
                 ));
-                Some(format!("语音桥异常：{detail}"))
+                (Some(format!("语音桥异常：{detail}")), None)
             }
         };
 
         // 会话健康检查（仅正常结束判断「链路通但零数据」）。
-        if session_err.is_none() {
+        if let Some(reason) = exit_reason {
             if let Some(report) = crate::last_session_report() {
                 if is_silent_session(report.duration_secs, report.control_pkts) {
                     silent_sessions = silent_sessions.saturating_add(1);
@@ -355,6 +355,17 @@ pub fn run_supervisor(
         if let Some(e) = session_err {
             last_error = e;
         }
+        
+        // --- Fast-Restart Logic ---
+        if let Some(reason) = exit_reason {
+            if reason != "user_disconnect" && reason != "ble_disconnected_flag" {
+                 core_log::log_info(&format!("[voice/supervisor] 发生局部故障（{reason}），检测到链路仍在，尝试立即 Fast-Restart"));
+                 failures = 0; // Reset failures for fast restart? Or keep it?
+                 continue;
+            }
+        }
+        // -------------------------
+
         failures = failures.saturating_add(1);
 
         // 「链路通但零数据」连续 3 次：不再空转，提示用户重启遥控器，
