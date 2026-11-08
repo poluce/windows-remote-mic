@@ -321,7 +321,7 @@ pub fn run_supervisor(
         };
 
         // 会话健康检查（仅正常结束判断「链路通但零数据」）。
-        if let Some(reason) = exit_reason {
+        if let Some(_reason) = exit_reason {
             if let Some(report) = crate::last_session_report() {
                 if is_silent_session(report.duration_secs, report.control_pkts) {
                     silent_sessions = silent_sessions.saturating_add(1);
