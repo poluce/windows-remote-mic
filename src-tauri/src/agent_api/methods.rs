@@ -94,7 +94,7 @@ pub fn dispatch(
                 enabled: Some(true),
             };
             let change = services::mapping::save_mapping(&edit, dispatcher)
-                .map_err(|e| RpcError::validation(e))?;
+                .map_err(RpcError::validation)?;
             emit_changed(app, change.revision);
             Ok(json!({
                 "old": change.old,
@@ -108,7 +108,7 @@ pub fn dispatch(
             let button = req_str(&params, "button")?;
             let trigger = req_str(&params, "trigger")?;
             let change = services::mapping::clear_mapping(&button, &trigger, dispatcher)
-                .map_err(|e| RpcError::validation(e))?;
+                .map_err(RpcError::validation)?;
             if change.removed.is_some() {
                 emit_changed(app, change.revision);
             }
@@ -125,7 +125,7 @@ pub fn dispatch(
             let enabled = req_bool(&params, "enabled")?;
             let (entry, revision, changed) =
                 services::mapping::set_mapping_enabled(&button, &trigger, enabled, dispatcher)
-                    .map_err(|e| RpcError::validation(e))?;
+                    .map_err(RpcError::validation)?;
             if changed {
                 emit_changed(app, revision);
             }
@@ -145,7 +145,7 @@ pub fn dispatch(
             let double_click_ms = req_u64(&params, "double_click_ms")?;
             let (long_press_ms, double_click_ms, revision) =
                 services::mapping::set_trigger_timing(long_press_ms, double_click_ms, dispatcher)
-                    .map_err(|e| RpcError::validation(e))?;
+                    .map_err(RpcError::validation)?;
             emit_changed(app, revision);
             Ok(json!({
                 "long_press_ms": long_press_ms,

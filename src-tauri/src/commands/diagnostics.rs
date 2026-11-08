@@ -11,7 +11,7 @@ pub fn generate_diagnostic_report() -> String {
     
     // 1. 系统与硬件环境
     report.push_str("## 系统与硬件环境\n");
-    report.push_str(&format!("- OS: Windows\n"));
+    report.push_str("- OS: Windows\n");
     report.push_str("- 架构: x64\n\n");
     
     // 2. 诊断自检快照
@@ -26,7 +26,7 @@ pub fn generate_diagnostic_report() -> String {
     report.push_str("## 最近异常日志切片\n");
     if let Ok(file) = File::open(core_log::log_dir().join("remote-mic.log")) {
         let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().filter_map(Result::ok).collect();
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
         let last_lines = lines.iter().rev().take(30).rev();
         for line in last_lines {
             if line.contains("WARN") || line.contains("ERROR") {

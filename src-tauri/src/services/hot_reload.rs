@@ -44,10 +44,8 @@ impl HotReloader {
                     let is_config = event.paths.iter().any(|p| p.file_name().and_then(|n| n.to_str()) == Some("config.json"));
                     let is_profile = event.paths.iter().any(|p| p.components().any(|c| c.as_os_str() == "app-profiles"));
                     
-                    if is_config || is_profile {
-                        if event.kind.is_modify() || event.kind.is_create() {
-                            Self::reload_config(&config_store, &dispatcher, &app_handle, &last_revision);
-                        }
+                    if (is_config || is_profile) && (event.kind.is_modify() || event.kind.is_create()) {
+                        Self::reload_config(&config_store, &dispatcher, &app_handle, &last_revision);
                     }
                 }
                 Err(e) => core_log::log_error(&format!("[hot_reload] 监听错误: {e}")),
