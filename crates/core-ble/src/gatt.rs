@@ -828,9 +828,7 @@ fn read_battery_level_from_char(characteristic: &GattCharacteristic) -> Option<u
     None
 }
 
-fn try_open_battery(
-    device: &BluetoothLEDevice,
-) -> Result<(GattDeviceService, GattCharacteristic)> {
+fn try_open_battery(device: &BluetoothLEDevice) -> Result<(GattDeviceService, GattCharacteristic)> {
     for mode in [BluetoothCacheMode::Cached, BluetoothCacheMode::Uncached] {
         if let Ok(service) = find_battery_service(device, mode) {
             if open_battery_service(&service).is_ok() {
@@ -870,9 +868,7 @@ fn try_enable_battery_notifications(characteristic: &GattCharacteristic) -> bool
 }
 
 #[allow(clippy::type_complexity)]
-fn setup_battery_service(
-    device: &BluetoothLEDevice,
-) -> Result<BatteryServiceSetup> {
+fn setup_battery_service(device: &BluetoothLEDevice) -> Result<BatteryServiceSetup> {
     let (service, ch) = try_open_battery(device)?;
     let initial_level = read_battery_level_from_char(&ch);
     if let Some(lvl) = initial_level {

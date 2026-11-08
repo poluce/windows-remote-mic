@@ -186,7 +186,7 @@ pub fn run() {
                     .map(|base| std::path::PathBuf::from(base).join("RemoteMic/RC003"))
                     .unwrap_or_else(|_| std::path::PathBuf::from("."));
                 dispatcher.spawn_runtime(stats_dir);
-                
+
                 let reloader = if let Some(store) = config_store() {
                     let r = crate::services::hot_reload::HotReloader::new(dispatcher.clone(), app.handle().clone(), store);
                     if let Err(e) = r.start() {
@@ -348,7 +348,7 @@ pub fn run() {
                     let cfg = config_store()
                         .map(|s| s.load_or_default())
                         .unwrap_or_default();
-                    
+
                     if cfg.close_to_tray {
                         api.prevent_close();
                         let _ = window.hide();

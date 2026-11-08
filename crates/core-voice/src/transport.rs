@@ -3,9 +3,9 @@
 //! 把 `core-ble::gatt::AtvvLink` 包成端口 trait；桥接层不再直接依赖
 //! `core-ble` 的具体类型。
 
+use core_ble::gatt::AtvvLink;
 use std::sync::Arc;
 use std::time::Duration;
-use core_ble::gatt::AtvvLink;
 
 use crate::ports::VoiceTransport;
 

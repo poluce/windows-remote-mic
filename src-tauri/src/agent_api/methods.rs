@@ -93,8 +93,8 @@ pub fn dispatch(
                 action,
                 enabled: Some(true),
             };
-            let change = services::mapping::save_mapping(&edit, dispatcher)
-                .map_err(RpcError::validation)?;
+            let change =
+                services::mapping::save_mapping(&edit, dispatcher).map_err(RpcError::validation)?;
             emit_changed(app, change.revision);
             Ok(json!({
                 "old": change.old,

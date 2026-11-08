@@ -155,7 +155,8 @@ pub(crate) fn run_output_pump(
                     if sink.is_failed() {
                         if !audio_stream_warned {
                             audio_stream_warned = true;
-                            let detail = sink.last_error().unwrap_or_else(|| "未知原因".to_string());
+                            let detail =
+                                sink.last_error().unwrap_or_else(|| "未知原因".to_string());
                             core_log::log_error(&format!(
                                 "[bridge] 音频输出流已报错（{detail}）；正在尝试重建输出流"
                             ));
@@ -163,22 +164,22 @@ pub(crate) fn run_output_pump(
                         sink_reconstructing = Some(Instant::now());
                     }
                 } else {
-                     // 处于重建中，平滑丢弃音频帧
+                    // 处于重建中，平滑丢弃音频帧
                 }
-                
+
                 if let Some(last_try) = sink_reconstructing {
-                     if last_try.elapsed() >= Duration::from_secs(5) {
+                    if last_try.elapsed() >= Duration::from_secs(5) {
                         sink_reconstructing = Some(Instant::now());
                         match open_sink(output_device) {
                             Ok(new_sink) => {
                                 *sink = new_sink;
                                 audio_stream_warned = false;
                                 sink_reconstructing = None;
-                                
+
                                 // 发送 10ms 静音帧消除爆音
                                 let silence = vec![0.0f32; 480 * 2];
                                 sink.push(&silence);
-                                
+
                                 core_log::log_warn("[bridge] 音频输出流已重建成功（设备恢复）");
                             }
                             Err(e) => {

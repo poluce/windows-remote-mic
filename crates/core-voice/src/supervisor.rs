@@ -364,13 +364,13 @@ pub fn run_supervisor(
         if let Some(e) = session_err {
             last_error = e;
         }
-        
+
         // --- Fast-Restart Logic ---
         if let Some(reason) = exit_reason {
             if reason != "user_disconnect" && reason != "ble_disconnected_flag" {
-                 core_log::log_info(&format!("[voice/supervisor] 发生局部故障（{reason}），检测到链路仍在，尝试立即 Fast-Restart"));
-                 failures = 0; // Reset failures for fast restart? Or keep it?
-                 continue;
+                core_log::log_info(&format!("[voice/supervisor] 发生局部故障（{reason}），检测到链路仍在，尝试立即 Fast-Restart"));
+                failures = 0; // Reset failures for fast restart? Or keep it?
+                continue;
             }
         }
         // -------------------------

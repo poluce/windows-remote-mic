@@ -8,20 +8,23 @@ use core_mapping::trigger::TriggerDetector;
 pub fn generate_diagnostic_report() -> String {
     let mut report = String::new();
     report.push_str("# Remote Mic 诊断报告\n\n");
-    
+
     // 1. 系统与硬件环境
     report.push_str("## 系统与硬件环境\n");
     report.push_str("- OS: Windows\n");
     report.push_str("- 架构: x64\n\n");
-    
+
     // 2. 诊断自检快照
     report.push_str("## 诊断自检快照\n");
     let tests = run_self_test();
     for test in tests {
-        report.push_str(&format!("- [ ] {}: {} - {}\n", test.name, test.status, test.detail));
+        report.push_str(&format!(
+            "- [ ] {}: {} - {}\n",
+            test.name, test.status, test.detail
+        ));
     }
     report.push('\n');
-    
+
     // 3. 最近异常日志
     report.push_str("## 最近异常日志切片\n");
     if let Ok(file) = File::open(core_log::log_dir().join("remote-mic.log")) {
@@ -34,7 +37,7 @@ pub fn generate_diagnostic_report() -> String {
             }
         }
     }
-    
+
     report
 }
 

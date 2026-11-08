@@ -69,7 +69,8 @@ pub fn set_atvv_endpoints_ready(ready: bool) {
         .unwrap_or_else(|e| e.into_inner()) = ready;
 }
 
-static CURRENT_TRANSPORT: Mutex<Option<Box<dyn crate::ports::VoiceTransport + Send + Sync>>> = Mutex::new(None);
+static CURRENT_TRANSPORT: Mutex<Option<Box<dyn crate::ports::VoiceTransport + Send + Sync>>> =
+    Mutex::new(None);
 static BATTERY_LEVEL: Mutex<Option<u8>> = Mutex::new(None);
 
 pub fn set_transport(transport: Box<dyn crate::ports::VoiceTransport + Send + Sync>) {
