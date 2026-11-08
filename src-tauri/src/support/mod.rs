@@ -8,3 +8,4 @@ pub(crate) mod keys;
 pub(crate) mod panic;
 pub(crate) mod paths;
 pub(crate) mod state;
+pub(crate) mod tray;

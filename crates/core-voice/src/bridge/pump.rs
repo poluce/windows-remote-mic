@@ -90,7 +90,7 @@ pub(crate) fn run_output_pump(
     // 空闲毫秒数：每 IDLE_TICK 累加一次；满 HEALTH_EVERY_MS 做健康检查 + 心跳。
     let mut idle_ms: u64 = 0;
     let mut audio_stream_warned = false;
-    let mut last_sink_recover: Option<Instant> = None;
+    let mut sink_reconstructing: Option<Instant> = None;
     let mut pumped_messages: u64 = 0;
     // 协商到的 ATVV 版本（MIC_OPEN 载荷随版本不同）与会话 id（MIC_CLOSE 用）。
     let mut atvv_version: u16 = 0x0100;
@@ -150,26 +150,35 @@ pub(crate) fn run_output_pump(
         match frame_rx.recv_timeout(IDLE_TICK) {
             Ok(frames) => {
                 idle_ms = 0;
-                sink.push(&frames);
-                // 输出流报错（CABLE Input 被禁用/拔出等）时提示，并尝试重建流。
-                if sink.is_failed() {
-                    if !audio_stream_warned {
-                        audio_stream_warned = true;
-                        let detail = sink.last_error().unwrap_or_else(|| "未知原因".to_string());
-                        core_log::log_error(&format!(
-                            "[bridge] 音频输出流已报错（{detail}）；正在尝试重建输出流"
-                        ));
+                if sink_reconstructing.is_none() {
+                    sink.push(&frames);
+                    if sink.is_failed() {
+                        if !audio_stream_warned {
+                            audio_stream_warned = true;
+                            let detail = sink.last_error().unwrap_or_else(|| "未知原因".to_string());
+                            core_log::log_error(&format!(
+                                "[bridge] 音频输出流已报错（{detail}）；正在尝试重建输出流"
+                            ));
+                        }
+                        sink_reconstructing = Some(Instant::now());
                     }
-                    // 每 5 秒最多重建一次，避免设备持续异常时刷屏/抖动。
-                    let due = last_sink_recover
-                        .map(|t| t.elapsed() >= Duration::from_secs(5))
-                        .unwrap_or(true);
-                    if due {
-                        last_sink_recover = Some(Instant::now());
+                } else {
+                     // 处于重建中，平滑丢弃音频帧
+                }
+                
+                if let Some(last_try) = sink_reconstructing {
+                     if last_try.elapsed() >= Duration::from_secs(5) {
+                        sink_reconstructing = Some(Instant::now());
                         match open_sink(output_device) {
                             Ok(new_sink) => {
                                 *sink = new_sink;
                                 audio_stream_warned = false;
+                                sink_reconstructing = None;
+                                
+                                // 发送 10ms 静音帧消除爆音
+                                let silence = vec![0.0f32; 480 * 2];
+                                sink.push(&silence);
+                                
                                 core_log::log_warn("[bridge] 音频输出流已重建成功（设备恢复）");
                             }
                             Err(e) => {

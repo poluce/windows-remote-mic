@@ -43,7 +43,19 @@ impl VoiceTransport for AtvvTransport {
     }
 
     fn write_tx(&self, bytes: &[u8]) -> Result<(), String> {
-        self.link.write_tx(bytes).map_err(|e| e.to_string())
+        match self.link.write_tx(bytes) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("busy") || err_str.contains("繁忙") {
+                    core_log::log_warn(&format!("[bridge] TX 写入繁忙，重试: {err_str}"));
+                    std::thread::sleep(Duration::from_millis(50));
+                    self.link.write_tx(bytes).map_err(|e| e.to_string())
+                } else {
+                    Err(err_str)
+                }
+            }
+        }
     }
 
     fn register_audio_handler(

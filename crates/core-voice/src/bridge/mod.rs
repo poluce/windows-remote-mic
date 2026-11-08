@@ -64,7 +64,7 @@ fn mark_session_started<F: Fn(bool)>(on_status: &F) {
 /// 使用真实的 ATVV 控制事件运行语音桥接。
 ///
 /// BLE 连接建立时以 `true` 调用 `on_status`，断开时以 `false` 调用。
-pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Result<(), String>
+pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Result<Option<&'static str>, String>
 where
     F: Fn(bool) + Send + 'static,
 {
@@ -242,7 +242,7 @@ where
         exit_reason,
     });
 
-    Ok(())
+    Ok(Some(exit_reason))
 }
 
 #[cfg(test)]

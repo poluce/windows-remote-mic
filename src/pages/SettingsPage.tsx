@@ -50,6 +50,8 @@ export function SettingsPage() {
   const [eatBusy, setEatBusy] = useState(false);
   const [longPressMs, setLongPressMs] = useState(550);
   const [doubleClickMs, setDoubleClickMs] = useState(250);
+  const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
+  const [closeToTrayBusy, setCloseToTrayBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [agentStatus, setAgentStatus] = useState<AgentApiStatus | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
@@ -69,6 +71,9 @@ export function SettingsPage() {
     invoke<boolean>("get_hid_tap_eat")
       .then(setEatEnabled)
       .catch(() => setEatEnabled(null));
+    invoke<boolean>("get_close_to_tray")
+      .then(setCloseToTray)
+      .catch(() => setCloseToTray(null));
     invoke<{ long_press_ms: number; double_click_ms: number }>("get_trigger_timing")
       .then((t) => {
         setLongPressMs(t.long_press_ms);
@@ -97,6 +102,20 @@ export function SettingsPage() {
       setMsg(`切换失败：${err}`);
     } finally {
       setEatBusy(false);
+    }
+  }
+
+  async function toggleCloseToTray() {
+    if (!isTauri() || closeToTray === null || closeToTrayBusy) return;
+    setCloseToTrayBusy(true);
+    try {
+      const next = await invoke<boolean>("set_close_to_tray", { enabled: !closeToTray });
+      setCloseToTray(next);
+      setMsg("");
+    } catch (err) {
+      setMsg(`切换失败：${err}`);
+    } finally {
+      setCloseToTrayBusy(false);
     }
   }
 
@@ -269,13 +288,30 @@ export function SettingsPage() {
       <section className="card form-card">
         <div className="form-row">
           <div className="form-text">
+            <div className="form-label">关闭窗口时最小化到系统托盘</div>
+            <p className="hint">
+              开启后点击窗口右上角 × 时仅隐藏，不退出应用。
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={closeToTray === true}
+            aria-label="关闭窗口时最小化到系统托盘"
+            className={`switch${closeToTray ? " on" : ""}`}
+            onClick={toggleCloseToTray}
+            disabled={closeToTray === null || closeToTrayBusy || !isTauri()}
+          >
+            <span className="switch-thumb" />
+          </button>
+        </div>
+
+        <div className="form-row">
+          <div className="form-text">
             <div className="form-label">拦截 HID 按键信号</div>
             <p className="hint">
               开启后按键由本应用独占，系统不再响应；关闭则两边同时响应。
             </p>
-            {tapNotReady && (
-              <p className="hint warn">驱动注入尚未就绪，此时按键可能仍会被系统响应。</p>
-            )}
           </div>
           <button
             type="button"
@@ -289,6 +325,12 @@ export function SettingsPage() {
             <span className="switch-thumb" />
           </button>
         </div>
+        
+        {tapNotReady && (
+          <div className="form-row">
+             <p className="hint warn">驱动注入尚未就绪，此时按键可能仍会被系统响应。</p>
+          </div>
+        )}
       </section>
 
       <div className="section-label">按键判定</div>
