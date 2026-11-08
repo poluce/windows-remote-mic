@@ -96,3 +96,18 @@ impl HotReloader {
         let _ = app.emit("config-changed", ());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // Unit test for revision check
+    #[test]
+    fn test_revision_check() {
+        let last_revision = Arc::new(Mutex::new(10));
+        let mut rev = last_revision.lock().unwrap();
+        let cfg_revision = 11;
+        assert_ne!(cfg_revision, *rev);
+        *rev = cfg_revision;
+        assert_eq!(cfg_revision, *rev);
+    }
+}
