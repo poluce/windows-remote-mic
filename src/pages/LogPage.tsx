@@ -45,12 +45,22 @@ export function LogPage() {
   const logContentRef = useRef("");
   const logViewerRef = useRef<HTMLDivElement | null>(null);
   const [liveLogCount, setLiveLogCount] = useState(0);
+  const [showDebug, setShowDebug] = useState(false);
 
   // 日志最多保留 1000 行，按行拆一次即可；着色在渲染时按行匹配。
   const logLines = useMemo(
     () => (logContent ? logContent.split("\n") : ["（暂无日志内容）"]),
     [logContent],
   );
+  const hiddenDebugCount = useMemo(() => {
+    if (showDebug) return 0;
+    return logLines.filter((line) => parseLogLine(line)?.level === "DEBUG").length;
+  }, [logLines, showDebug]);
+  const visibleLines = useMemo(() => {
+    if (showDebug) return logLines;
+    const kept = logLines.filter((line) => parseLogLine(line)?.level !== "DEBUG");
+    return kept.length > 0 ? kept : ["（当前尾部都是 DEBUG，已隐藏。点「显示 DEBUG」查看）"];
+  }, [logLines, showDebug]);
 
   async function refreshLogInfo() {
     if (!isTauri()) return;
@@ -191,6 +201,9 @@ export function LogPage() {
           <button className="btn" onClick={toggleDebugLogging} disabled={!isTauri()}>
             {logInfo?.debug_enabled ? "关闭 DEBUG" : "开启 DEBUG"}
           </button>
+          <button className="btn" onClick={() => setShowDebug((on) => !on)}>
+            {showDebug ? "隐藏 DEBUG" : "显示 DEBUG"}
+          </button>
           <button
             className="log-refresh-btn log-refresh-right"
             onClick={refreshLogFromFile}
@@ -219,11 +232,14 @@ export function LogPage() {
             当前日志：{logInfo.path}（{formatSize(logInfo.file_size)}）
             {logInfo.files.length > 1 && `，已保留 ${logInfo.files.length - 1} 个轮转文件`}
             <span className="hint"> ｜ 实时推送已接收 {liveLogCount} 行</span>
+            {!showDebug && hiddenDebugCount > 0 && (
+              <span className="hint"> ｜ 已隐藏 {hiddenDebugCount} 条 DEBUG</span>
+            )}
           </p>
         )}
         {logMsg && <p className="hint">{logMsg}</p>}
         <div className="log-preview" ref={logViewerRef}>
-          {logLines.map((line, i) => {
+          {visibleLines.map((line, i) => {
             const parts = parseLogLine(line);
             if (!parts) {
               return (

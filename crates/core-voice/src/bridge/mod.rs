@@ -78,7 +78,7 @@ where
     core_log::log_info(&format!(
         "[bridge] starting voice bridge for device_id='{device_id}', output='{output_device}'"
     ));
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[bridge] 会话线程 COM 套间={apartment}，线程={:?}",
         std::thread::current().id()
     ));
@@ -123,7 +123,7 @@ where
             on_status(connected);
         }))
         .map_err(|e| e.to_string())?;
-    core_log::log_info("[bridge] BLE 连接状态监听已注册");
+    core_log::log_debug("[bridge] BLE 连接状态监听已注册");
 
     // ---- 回调必须早于订阅 ----
     //
@@ -150,7 +150,7 @@ where
         key_sink.clone(),
         frame_tx,
     )?;
-    core_log::log_info("[bridge] 音频回调已注册");
+    core_log::log_debug("[bridge] 音频回调已注册");
 
     let _control_cookie = handlers::register_control_handler(
         &*transport,
@@ -161,19 +161,19 @@ where
         key_sink,
         signal_tx,
     )?;
-    core_log::log_info("[bridge] 控制回调已注册");
+    core_log::log_debug("[bridge] 控制回调已注册");
 
     transport.enable_audio_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] 启用音频通知失败: {e}"));
         e
     })?;
-    core_log::log_info("[bridge] 音频通知已启用");
+    core_log::log_debug("[bridge] 音频通知已启用");
 
     transport.enable_control_notifications().map_err(|e| {
         core_log::log_error(&format!("[bridge] 启用控制通知失败: {e}"));
         e
     })?;
-    core_log::log_info("[bridge] 控制通知已启用");
+    core_log::log_debug("[bridge] 控制通知已启用");
 
     transport.write_tx(&GET_CAPABILITIES_V10).map_err(|e| {
         core_log::log_error(&format!(
@@ -181,7 +181,7 @@ where
         ));
         e
     })?;
-    core_log::log_info("[bridge] 已向遥控器发送能力查询（GET_CAPABILITIES_V10）");
+    core_log::log_debug("[bridge] 已向遥控器发送能力查询（GET_CAPABILITIES_V10）");
 
     // ATVV 通知已生效。仅在此时启动可选的 Back/Volume 轻触注入，
     // 以免 HOGP 注入在特征设置期间抢占 GATT 会话。

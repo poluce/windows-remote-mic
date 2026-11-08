@@ -16,7 +16,7 @@ use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// 连续失败多少次后把状态标为 `failed`（仍会按 30s 上限继续重试，用户可手动断开）。
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -239,9 +239,10 @@ pub fn run_supervisor(
 
         // 1) 等链路连接：Windows 负责 HOGP 自动重连，这里只等事件/每 500ms 查一次停止标志。
         if !watcher.is_connected() {
-            core_log::log_line(
-                "[voice/supervisor] 遥控器当前不在本机链路上，等待系统连接（期间不会抢占设备）",
-            );
+            // 45s 断链后系统往往立刻重连。先等一会儿再报「不在本机」，
+            // 避免每次抖动都刷一条随即被「链路已连接」打脸的假等待。
+            let wait_started = Instant::now();
+            let mut announced = false;
             loop {
                 if crate::bridge_stop_requested() {
                     break 'supervisor;
@@ -250,6 +251,12 @@ pub fn run_supervisor(
                 // 变化事件可能不送达，这里每 500ms 主动查一次。
                 if watcher.is_connected() {
                     break;
+                }
+                if !announced && wait_started.elapsed() >= Duration::from_secs(1) {
+                    core_log::log_line(
+                        "[voice/supervisor] 遥控器当前不在本机链路上，等待系统连接（期间不会抢占设备）",
+                    );
+                    announced = true;
                 }
                 if watcher.wait_change(Duration::from_millis(500)) == Some(true) {
                     break;

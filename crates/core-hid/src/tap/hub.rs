@@ -45,11 +45,11 @@ fn log_eaten_report(message: &str) {
     let suppressed = EATEN_LOG_SUPPRESSED.swap(0, Ordering::Relaxed);
     *last = Some(now);
     if suppressed > 0 {
-        core_log::log_info(&format!(
+        core_log::log_debug(&format!(
             "[hid-tap] 吃掉报告：{message}（期间另有 {suppressed} 条同类日志被限流合并）"
         ));
     } else {
-        core_log::log_info(&format!("[hid-tap] 吃掉报告：{message}"));
+        core_log::log_debug(&format!("[hid-tap] 吃掉报告：{message}"));
     }
 }
 #[derive(Deserialize)]
@@ -260,7 +260,7 @@ fn serve_client(stream: std::net::TcpStream) {
                         .map(|p| !hogp_payload_usages(p).is_empty())
                         .unwrap_or(false);
                     if msg.eaten && has_usage {
-                        core_log::log_info("[hid-tap] 已吃掉按键（系统不可见）");
+                        core_log::log_debug("[hid-tap] 已吃掉按键（系统不可见）");
                     }
                     on_ioctl_bytes(&bytes, msg.eaten);
                 }

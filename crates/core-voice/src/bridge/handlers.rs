@@ -3,8 +3,9 @@
 //! 回调在这里构造并注册，主循环只消费解码后的音频帧（见 [`super::pump`]），
 //! 避免把「解析 / 解码 / 录制 / 诊断」混进会话编排。
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use core_atvv::protocol::{parse_control, ControlEvent, RawControlEvent};
 use core_ble::capture::CaptureRecorder;
@@ -25,6 +26,9 @@ pub(crate) fn register_audio_handler(
     // 逻辑时钟：VoiceEngine 的时间语义（STOP_TAIL_DROP 等）依赖它。
     // 之前从不推进，导致所有基于时间的门控实际失效。
     let feed_clock = Arc::new(Mutex::new(Instant::now()));
+    // 逐块解码大约 60 行/秒，开着 DEBUG 时会把日志页和文件都刷满。
+    // 只按秒汇总；「有没有音频」看首条通知和会话结束时的音频包计数。
+    let audio_log = Arc::new(Mutex::new(AudioLogWindow::default()));
     // 诊断：本轮会话第一条音频通知落在哪个线程。MTA 下应是线程池线程，
     // 若和会话线程是同一个 ID，说明事件被投递回会话线程的套间队列（会延迟）。
     let first_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -53,10 +57,18 @@ pub(crate) fn register_audio_handler(
             }
             let chunk = eng.feed(&bytes);
             if !chunk.output.is_empty() {
-                core_log::log_debug(&format!(
-                    "[bridge] 音频块解码完成：{} 采样 -> 输出 {} 采样",
-                    chunk.pcm_samples, chunk.output_samples
-                ));
+                if let Ok(mut window) = audio_log.lock() {
+                    window.chunks = window.chunks.saturating_add(1);
+                    window.in_samples = window.in_samples.saturating_add(chunk.pcm_samples);
+                    window.out_samples = window.out_samples.saturating_add(chunk.output_samples);
+                    if window.started.elapsed() >= Duration::from_secs(1) {
+                        core_log::log_debug(&format!(
+                            "[bridge] 音频解码中：近 1s {} 块，{} 采样 -> {} 采样",
+                            window.chunks, window.in_samples, window.out_samples
+                        ));
+                        *window = AudioLogWindow::default();
+                    }
+                }
                 let _ = frame_tx.send(chunk.output);
             }
         }))
@@ -78,6 +90,9 @@ pub(crate) fn register_control_handler(
 ) -> Result<i64, String> {
     // 诊断：本轮会话第一条控制通知落在哪个线程（MTA 下应是线程池线程）。
     let first_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // 推流中的 2 字节 [00, xx] 是流标记，不是停止。逐包记录会在说话时刷屏。
+    let stream_markers = Arc::new(AtomicU64::new(0));
+    let stream_marker_logged = Arc::new(Mutex::new(Instant::now()));
     transport
         .register_control_handler(Box::new(move |bytes| {
             if !first_seen.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -88,7 +103,20 @@ pub(crate) fn register_control_handler(
             }
             diag.touch_control();
             capture.record("control", &bytes);
-            core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
+            let streaming_marker = bytes.first() == Some(&0x00) && bytes.len() > 1;
+            if streaming_marker {
+                let n = stream_markers.fetch_add(1, Ordering::Relaxed) + 1;
+                if let Ok(mut at) = stream_marker_logged.lock() {
+                    if at.elapsed() >= Duration::from_secs(5) {
+                        core_log::log_debug(&format!(
+                            "[bridge] 推流标记已省略逐包记录，累计 {n} 个"
+                        ));
+                        *at = Instant::now();
+                    }
+                }
+            } else {
+                core_log::log_debug(&format!("[bridge] 收到控制通知: {:02X?}", bytes));
+            }
             let mut eng = match engine.lock() {
                 Ok(g) => g,
                 Err(_) => return,
@@ -97,7 +125,9 @@ pub(crate) fn register_control_handler(
                 core_log::log_warn(&format!("[bridge] 无法识别的控制包: {:02X?}", bytes));
                 return;
             };
-            core_log::log_debug(&format!("[bridge] 已解析控制事件: {:?}", event));
+            if !streaming_marker {
+                core_log::log_debug(&format!("[bridge] 已解析控制事件: {:?}", event));
+            }
             match event {
                 RawControlEvent::Caps(caps) => {
                     core_log::log_info(&format!(
@@ -124,6 +154,9 @@ pub(crate) fn register_control_handler(
                     );
                 }
                 RawControlEvent::AudioStarted { session_id } => {
+                    core_log::log_info(&format!(
+                        "[bridge] 遥控器开始推流 AudioStarted session={session_id:?}"
+                    ));
                     let _ = eng.on_control(ControlEvent::StreamStart);
                     let _ = signals.send(crate::bridge::ControlSignal::AudioStarted { session_id });
                     // 遥控器开始推音频：同步诊断状态（心跳里的「语音输入中」）。
@@ -160,4 +193,23 @@ pub(crate) fn register_control_handler(
             }
         }))
         .map_err(|e| e.to_string())
+}
+
+/// 音频热路径的 1 秒汇总窗口。不逐块写日志。
+struct AudioLogWindow {
+    started: Instant,
+    chunks: u32,
+    in_samples: usize,
+    out_samples: usize,
+}
+
+impl Default for AudioLogWindow {
+    fn default() -> Self {
+        Self {
+            started: Instant::now(),
+            chunks: 0,
+            in_samples: 0,
+            out_samples: 0,
+        }
+    }
 }

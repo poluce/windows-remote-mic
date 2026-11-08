@@ -89,7 +89,7 @@ pub fn discover_atvv(device_id: &str) -> Result<AtvvEndpoints> {
 
 /// 连接并打开 ATVV 传输（保持特征存活）。
 pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
-    core_log::log_info(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
+    core_log::log_debug(&format!("[ble/gatt] 开始连接 ATVV，设备 ID='{device_id}'"));
     let (tx, audio, control, service) = open_atvv_chars_with_service(device_id)?;
     // 维持 GATT 会话：否则系统在空闲约 45s 后回收会话并拆链（实测每场会话
     // 都是精确 45.0s 后断开，随后重连，形成无意义的会话抖动）。
@@ -99,7 +99,7 @@ pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     match session.CanMaintainConnection() {
         Ok(true) => match session.SetMaintainConnection(true) {
             Ok(()) => {
-                core_log::log_info("[ble/gatt] 已开启 GATT 会话维持（MaintainConnection=true）")
+                core_log::log_debug("[ble/gatt] 已开启 GATT 会话维持（MaintainConnection=true）")
             }
             Err(e) => core_log::log_warn(&format!("[ble/gatt] 开启 GATT 会话维持失败: {e}")),
         },
@@ -110,11 +110,11 @@ pub fn connect_atvv(device_id: &str) -> Result<AtvvLink> {
     }
     let device = open_ble_device(device_id)?;
     match device.ConnectionStatus() {
-        Ok(status) => core_log::log_info(&format!(
+        Ok(status) => core_log::log_debug(&format!(
             "[ble/gatt] ATVV 链路连接成功，当前 ConnectionStatus={status:?}"
         )),
-        Err(e) => core_log::log_info(&format!(
-            "[ble/gatt] ATVV 链路连接成功，但读取 ConnectionStatus 失败: {e}"
+        Err(e) => core_log::log_warn(&format!(
+            "[ble/gatt] ATVV 链路已打开，但读取 ConnectionStatus 失败: {e}"
         )),
     }
     Ok(AtvvLink {
@@ -175,17 +175,17 @@ fn open_atvv_chars_and_service(device_id: &str) -> Result<(FoundChars, GattDevic
 }
 
 pub(crate) fn open_ble_device(device_id: &str) -> Result<BluetoothLEDevice> {
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[ble/gatt] 正在从设备 ID 打开蓝牙设备: '{device_id}'"
     ));
     let hstr = HSTRING::from(device_id);
     let op = BluetoothLEDevice::FromIdAsync(&hstr).map_err(|e| BleError::Windows(e.to_string()))?;
     let device = wait_op(&op, CONNECT_TIMEOUT, "打开蓝牙设备")?;
-    core_log::log_info("[ble/gatt] 已获取蓝牙设备实例");
+    core_log::log_debug("[ble/gatt] 已获取蓝牙设备实例");
 
     if let Ok(op) = device.RequestAccessAsync() {
         match wait_op(&op, LIGHT_TIMEOUT, "请求蓝牙访问权限") {
-            Ok(status) => core_log::log_info(&format!("[ble/gatt] 蓝牙访问请求状态={status:?}")),
+            Ok(status) => core_log::log_debug(&format!("[ble/gatt] 蓝牙访问请求状态={status:?}")),
             Err(e) => core_log::log_warn(&format!("[ble/gatt] 蓝牙访问请求失败: {e}")),
         }
     }
@@ -197,7 +197,7 @@ fn try_open_atvv(
     device_id: &str,
     mode: BluetoothCacheMode,
 ) -> Result<(FoundChars, GattDeviceService)> {
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[ble/gatt] 正在从设备 ID 打开 ATVV 服务: '{device_id}' 模式={mode:?}"
     ));
     let device = open_ble_device(device_id)?;
@@ -209,7 +209,7 @@ fn try_open_atvv(
     let svc_status = services_result
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[ble/gatt] 获取 GATT 服务（{mode:?}）状态={svc_status:?}"
     ));
     if svc_status != GattCommunicationStatus::Success {
@@ -220,7 +220,7 @@ fn try_open_atvv(
     let services = services_result
         .Services()
         .map_err(|e| BleError::Windows(e.to_string()))?;
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[ble/gatt] 在设备上发现 {} 个 GATT 服务",
         services.Size().unwrap_or(0)
     ));
@@ -232,7 +232,7 @@ fn try_open_atvv(
         if uuid != ATVV_SERVICE_GUID {
             continue;
         }
-        core_log::log_info("[ble/gatt] 找到 ATVV 服务，正在以共享模式打开…");
+        core_log::log_debug("[ble/gatt] 找到 ATVV 服务，正在以共享模式打开…");
         open_atvv_service(&service)?;
         let found = read_atvv_characteristics(&service, mode)?;
         return Ok((found, service.clone()));
@@ -258,7 +258,7 @@ fn open_atvv_service(service: &GattDeviceService) -> Result<()> {
         };
         match wait_op(&op, LIGHT_TIMEOUT, "打开 ATVV 服务") {
             Ok(s) if s == GattOpenStatus::Success || s == GattOpenStatus::AlreadyOpened => {
-                core_log::log_info(&format!("[ble/gatt] ATVV 打开（{mode:?}）-> {s:?}"));
+                core_log::log_debug(&format!("[ble/gatt] ATVV 打开（{mode:?}）-> {s:?}"));
                 return Ok(());
             }
             Ok(s) => {
@@ -286,14 +286,14 @@ fn read_atvv_characteristics(
     let char_status = char_result
         .Status()
         .map_err(|e| BleError::Windows(e.to_string()))?;
-    core_log::log_info(&format!(
+    core_log::log_debug(&format!(
         "[ble/gatt] 获取特征（{mode:?}）状态={char_status:?}"
     ));
     if char_status == GattCommunicationStatus::Success {
         let chars = char_result
             .Characteristics()
             .map_err(|e| BleError::Windows(e.to_string()))?;
-        core_log::log_info(&format!(
+        core_log::log_debug(&format!(
             "[ble/gatt] 在 ATVV 服务中发现 {} 个特征",
             chars.Size().unwrap_or(0)
         ));
@@ -315,13 +315,13 @@ fn read_atvv_characteristics(
 
 fn push_atvv_char(found: &mut FoundChars, cuuid: GUID, characteristic: GattCharacteristic) {
     if cuuid == ATVV_TX_GUID {
-        core_log::log_info("[ble/gatt] 找到 ATVV TX 特征");
+        core_log::log_debug("[ble/gatt] 找到 ATVV TX 特征");
         found.push((cuuid, characteristic));
     } else if cuuid == ATVV_AUDIO_GUID {
-        core_log::log_info("[ble/gatt] 找到 ATVV AUDIO 特征");
+        core_log::log_debug("[ble/gatt] 找到 ATVV AUDIO 特征");
         found.push((cuuid, characteristic));
     } else if cuuid == ATVV_CONTROL_GUID {
-        core_log::log_info("[ble/gatt] 找到 ATVV CONTROL 特征");
+        core_log::log_debug("[ble/gatt] 找到 ATVV CONTROL 特征");
         found.push((cuuid, characteristic));
     }
 }
@@ -343,7 +343,7 @@ fn read_atvv_characteristics_by_uuid(
         let status = char_result
             .Status()
             .map_err(|e| BleError::Windows(e.to_string()))?;
-        core_log::log_info(&format!(
+        core_log::log_debug(&format!(
             "[ble/gatt] 按 UUID 获取特征（{uuid:?}）状态={status:?}"
         ));
         if status != GattCommunicationStatus::Success {
@@ -387,17 +387,17 @@ impl AtvvLink {
 
     /// 启用 Audio 特征的通知，使语音数据可以流动。
     pub fn enable_audio_notifications(&self) -> Result<()> {
-        core_log::log_info("[ble/gatt] 正在启用音频通知（CCCD Notify）…");
+        core_log::log_debug("[ble/gatt] 正在启用音频通知（CCCD Notify）…");
         self.enable_notifications(&self.audio)?;
-        core_log::log_info("[ble/gatt] 音频通知启用成功");
+        core_log::log_debug("[ble/gatt] 音频通知启用成功");
         Ok(())
     }
 
     /// 启用 Control 特征的通知（设备事件）。
     pub fn enable_control_notifications(&self) -> Result<()> {
-        core_log::log_info("[ble/gatt] 正在启用控制通知（CCCD Notify）…");
+        core_log::log_debug("[ble/gatt] 正在启用控制通知（CCCD Notify）…");
         self.enable_notifications(&self.control)?;
-        core_log::log_info("[ble/gatt] 控制通知启用成功");
+        core_log::log_debug("[ble/gatt] 控制通知启用成功");
         Ok(())
     }
 
@@ -427,7 +427,7 @@ impl AtvvLink {
 
     /// 主机 -> 设备的命令字节写入 TX 特征。
     pub fn write_tx(&self, bytes: &[u8]) -> Result<()> {
-        core_log::log_info(&format!(
+        core_log::log_debug(&format!(
             "[ble/gatt] 正在向 TX 写入 {} 字节: {:02X?}",
             bytes.len(),
             bytes
@@ -449,7 +449,7 @@ impl AtvvLink {
             core_log::log_error(&format!("[ble/gatt] TX 写入失败，状态: {status:?}"));
             return Err(BleError::Windows(format!("TX 写入失败: {status:?}")));
         }
-        core_log::log_info(&format!("[ble/gatt] TX 写入完成，状态: {status:?}"));
+        core_log::log_debug(&format!("[ble/gatt] TX 写入完成，状态: {status:?}"));
         Ok(())
     }
 
@@ -608,7 +608,7 @@ impl Drop for AtvvLink {
         let _ = self.session.SetMaintainConnection(false);
         let _ = self.session.Close();
         let _ = self._service.Close();
-        core_log::log_info("[ble/gatt] GATT 会话与服务句柄已显式关闭");
+        core_log::log_debug("[ble/gatt] GATT 会话与服务句柄已显式关闭");
     }
 }
 
