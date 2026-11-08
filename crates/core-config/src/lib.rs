@@ -59,6 +59,9 @@ pub struct Config {
     /// 默认 WindowsVoice（Win+H），向后兼容；第三方输入法待真机验证。
     #[serde(default)]
     pub voice_target: VoiceTarget,
+    /// 关闭窗口时是否最小化到系统托盘。默认开启。
+    #[serde(default = "default_true")]
+    pub close_to_tray: bool,
     /// 用户命名的自定义快捷键库。旧的 config.json 没有这一项，`serde(default)`
     /// 让它读成空列表，不会因为加字段而丢掉整个配置。
     #[serde(default)]
@@ -90,6 +93,10 @@ fn default_double_click_ms() -> u64 {
     250
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -100,6 +107,7 @@ impl Default for Config {
             long_press_ms: 550,
             double_click_ms: 250,
             voice_target: VoiceTarget::default(),
+            close_to_tray: true,
             shortcuts: Vec::new(),
             last_update_check_at: 0,
             revision: 0,

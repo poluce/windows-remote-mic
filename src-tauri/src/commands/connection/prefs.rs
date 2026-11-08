@@ -63,3 +63,24 @@ pub fn set_voice_target(target: String, state: State<AppState>) -> Result<String
     ));
     Ok(parsed.key().to_string())
 }
+
+#[tauri::command]
+pub fn get_close_to_tray() -> bool {
+    config_store()
+        .map(|s| s.load_or_default().close_to_tray)
+        .unwrap_or(true)
+}
+
+#[tauri::command]
+pub fn set_close_to_tray(enabled: bool) -> Result<bool, String> {
+    let store = config_store().ok_or_else(|| "无法创建配置目录".to_string())?;
+    store.update(|cfg| {
+        cfg.close_to_tray = enabled;
+        Ok(())
+    })?;
+    core_log::log_info(&format!(
+        "[commands/connection] 关闭到托盘已{}",
+        if enabled { "开启" } else { "关闭" }
+    ));
+    Ok(enabled)
+}

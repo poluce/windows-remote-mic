@@ -190,6 +190,7 @@ pub fn run() {
                     dispatcher: dispatcher.clone(),
                 });
                 crate::agent_api::start_if_enabled(app.handle().clone(), dispatcher.clone());
+                crate::support::tray::setup_tray(app.handle())?;
                 dispatcher
             };
 
@@ -326,18 +327,22 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // 主窗口是应用唯一的入口：关闭它就应该退出应用。
-            //
-            // 应用启动时还会创建一个**隐藏**的 `quick-menu` 窗口（见 setup）。
-            // 如果只关闭主窗口，Tauri 认为还有窗口没关，事件循环不会退出，
-            // 进程就驻留在后台：没有托盘图标，任务栏也看不到入口，用户
-            // 只能去任务管理器结束进程（实测踩过）。这里在主窗口关闭请求
-            // 时显式退出；退出路径仍会走 `RunEvent::Exit`，由那里兜底
-            // 释放虚拟 HID 上可能残留的按住状态。
+            // 主窗口是应用唯一的入口。
             if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    core_log::log_info("[app] 主窗口关闭，退出应用");
-                    window.app_handle().exit(0);
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let app = window.app_handle();
+                    let cfg = config_store()
+                        .map(|s| s.load_or_default())
+                        .unwrap_or_default();
+                    
+                    if cfg.close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        core_log::log_info("[app] 主窗口关闭，隐藏到托盘");
+                    } else {
+                        core_log::log_info("[app] 主窗口关闭，退出应用");
+                        app.exit(0);
+                    }
                 }
             }
         })
@@ -354,6 +359,8 @@ pub fn run() {
             commands::connection::device::save_selected_device,
             commands::connection::prefs::get_hid_tap_eat,
             commands::connection::prefs::set_hid_tap_eat,
+            commands::connection::prefs::get_close_to_tray,
+            commands::connection::prefs::set_close_to_tray,
             commands::connection::system::open_system_settings,
             commands::connection::prefs::get_voice_target,
             commands::connection::prefs::set_voice_target,
