@@ -64,9 +64,15 @@ fn mark_session_started<F: Fn(bool)>(on_status: &F) {
 /// 使用真实的 ATVV 控制事件运行语音桥接。
 ///
 /// BLE 连接建立时以 `true` 调用 `on_status`，断开时以 `false` 调用。
-pub fn run_bridge<F>(device_id: &str, output_device: &str, on_status: F) -> Result<Option<&'static str>, String>
+pub fn run_bridge<F, B>(
+    device_id: &str,
+    output_device: &str,
+    on_status: F,
+    on_battery: B,
+) -> Result<Option<&'static str>, String>
 where
     F: Fn(bool) + Send + 'static,
+    B: Fn(Option<u8>) + Send + Sync + 'static,
 {
     // COM 套间必须在**任何** WinRT 调用之前定死。会话线程原本没有任何 COM
     // 初始化，直到 open_sink() 打开 WASAPI 时才被 cpal 隐式初始化为 STA，
@@ -89,11 +95,25 @@ where
     }
 
     // 传输 / 按键 / 音频输出都通过端口 trait 使用真实实现。
-    let transport: Box<dyn VoiceTransport> =
-        Box::new(AtvvTransport::connect(device_id).map_err(|e| {
-            core_log::log_error(&format!("[bridge] 连接 ATVV 链路失败: {e}"));
-            e
-        })?);
+    let transport_raw = AtvvTransport::connect(device_id).map_err(|e| {
+        core_log::log_error(&format!("[bridge] 连接 ATVV 链路失败: {e}"));
+        e
+    })?;
+    crate::set_transport(Box::new(transport_raw.clone()));
+    let initial_battery = transport_raw.get_battery_level();
+    crate::set_battery_level(initial_battery);
+    on_battery(initial_battery);
+
+    let on_battery_arc = Arc::new(on_battery);
+    let on_battery_handler = on_battery_arc.clone();
+    transport_raw.register_battery_handler(Box::new(move |lvl| {
+        core_log::log_info(&format!("[bridge] 收到遥控器电池电量更新: {lvl}%"));
+        crate::set_battery_level(Some(lvl));
+        on_battery_handler(Some(lvl));
+    }));
+
+    let transport: Box<dyn VoiceTransport + Send + Sync> = Box::new(transport_raw);
+
     let key_sink: Arc<dyn KeySink> = Arc::from(system_key_sink());
     core_log::log_info("[bridge] ATVV 链路已连接");
     mark_session_started(&on_status);
@@ -103,6 +123,7 @@ where
     let disconnected_cb = disconnected.clone();
     let diag_cb = diag.clone();
     let key_sink_conn = key_sink.clone();
+    let on_battery_conn = on_battery_arc.clone();
     transport
         .register_connection_handler(Box::new(move |connected| {
             let msg = if connected {
@@ -119,6 +140,9 @@ where
                 // 蓝牙断链瞬间立即清空驱动层活跃按键并重置虚拟 HID，防止修饰键残留
                 key_sink_conn.clear_active_usages();
                 key_sink_conn.release_all_keys();
+                crate::clear_transport();
+                crate::set_battery_level(None);
+                on_battery_conn(None);
             }
             on_status(connected);
         }))
@@ -230,6 +254,9 @@ where
     core_log::log_info(&format!(
         "[bridge] 会话结束: exit_reason={exit_reason}, 即将 Drop AtvvLink（若随后看到 ble/gatt Drop 日志可对照时序）"
     ));
+    crate::clear_transport();
+    crate::set_battery_level(None);
+    on_battery_arc(None);
     crate::set_connection_active(false);
     crate::set_bridge_session_active(false);
 

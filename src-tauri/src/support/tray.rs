@@ -19,7 +19,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         &quit,
     ])?;
 
-    let tray = TrayIconBuilder::new()
+    TrayIconBuilder::new()
         .menu(&menu)
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
@@ -35,16 +35,10 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                     }
                 }
                 "toggle_key" => {
-                    // Access AppState to toggle key dispatcher
                     if let Some(app_state) = app.try_state::<crate::support::state::AppState>() {
                         let dispatcher = &app_state.dispatcher;
                         let is_enabled = dispatcher.is_enabled();
                         dispatcher.set_enabled(!is_enabled);
-                        
-                        // Update menu item text
-                        if let Some(menu) = app.tray_by_id("main") {
-                             // This is complex, will need a better way to update menu item state if needed
-                        }
                     }
                 }
                 "quit" => {

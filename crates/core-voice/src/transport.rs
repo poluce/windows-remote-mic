@@ -3,21 +3,25 @@
 //! 把 `core-ble::gatt::AtvvLink` 包成端口 trait；桥接层不再直接依赖
 //! `core-ble` 的具体类型。
 
+use std::sync::Arc;
 use std::time::Duration;
 use core_ble::gatt::AtvvLink;
 
 use crate::ports::VoiceTransport;
 
 /// 真实设备传输：连接 RC003 的 ATVV 服务。
+#[derive(Clone)]
 pub struct AtvvTransport {
-    link: AtvvLink,
+    link: Arc<AtvvLink>,
 }
 
 impl AtvvTransport {
     /// 连接设备的 ATVV 服务（失败把 `BleError` 转成字符串）。
     pub fn connect(device_id: &str) -> Result<Self, String> {
         let link = AtvvLink::connect(device_id).map_err(|e| e.to_string())?;
-        Ok(Self { link })
+        Ok(Self {
+            link: Arc::new(link),
+        })
     }
 }
 
@@ -79,5 +83,13 @@ impl VoiceTransport for AtvvTransport {
 
     fn is_connected(&self) -> bool {
         self.link.is_connected()
+    }
+
+    fn get_battery_level(&self) -> Option<u8> {
+        self.link.battery_level()
+    }
+
+    fn register_battery_handler(&self, callback: Box<dyn Fn(u8) + Send + Sync + 'static>) {
+        self.link.register_battery_handler(callback)
     }
 }

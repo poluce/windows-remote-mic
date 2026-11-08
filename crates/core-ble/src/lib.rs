@@ -50,6 +50,16 @@ pub fn scan_for_rc003() -> Result<BleDevice> {
     ))
 }
 
+#[cfg(not(target_os = "windows"))]
+pub fn read_battery_level(_device_id: &str) -> Option<u8> {
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn parse_battery_level(bytes: &[u8]) -> Option<u8> {
+    bytes.first().copied().map(|b| b.min(100))
+}
+
 #[cfg(target_os = "windows")]
 mod async_wait;
 
@@ -60,7 +70,10 @@ pub mod gatt;
 pub mod watcher;
 
 #[cfg(target_os = "windows")]
-pub use gatt::{discover_atvv, AtvvEndpoints};
+pub use gatt::{
+    discover_atvv, parse_battery_level, read_battery_level, AtvvEndpoints, BATTERY_LEVEL_GUID,
+    BATTERY_SERVICE_GUID,
+};
 #[cfg(target_os = "windows")]
 pub use watcher::{is_link_connected, LinkWatcher};
 #[cfg(target_os = "windows")]

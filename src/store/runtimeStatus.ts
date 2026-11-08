@@ -30,6 +30,8 @@ export type RuntimeStatusState = {
   tapStatus: TapStatus;
   tapMessage: string;
   endpointsReady: boolean;
+  /** 遥控器电池电量百分比（0~100，未连接或尚未读取时为 null）。 */
+  batteryLevel: number | null;
   /** 语音桥重连进度（来自后端 bridge-status 事件）。 */
   bridgeState: BridgeState;
   bridgeAttempt: number;
@@ -48,6 +50,7 @@ const initial: RuntimeStatusState = {
   tapStatus: "idle",
   tapMessage: "",
   endpointsReady: false,
+  batteryLevel: null,
   bridgeState: "idle",
   bridgeAttempt: 0,
   bridgeFailures: 0,
@@ -152,10 +155,12 @@ export async function initRuntimeStatus() {
       tap_status: TapStatusEvent | null;
       endpoints_ready: boolean;
       bridge_status: BridgeStatusSnapshot | null;
+      battery_level?: number | null;
     }>("get_runtime_status");
     setState({
       connected: snap.connected,
       endpointsReady: snap.endpoints_ready,
+      batteryLevel: snap.battery_level ?? null,
     });
     applyTapEvent(snap.tap_status);
     applyBridgeSnapshot(snap.bridge_status);
@@ -164,7 +169,14 @@ export async function initRuntimeStatus() {
   }
 
   await listen<boolean>("ble-connection-status", (event) => {
-    setState({ connected: event.payload });
+    setState({
+      connected: event.payload,
+      ...(!event.payload ? { batteryLevel: null } : {}),
+    });
+  });
+
+  await listen<number | null>("rc003-battery-level", (event) => {
+    setState({ batteryLevel: event.payload ?? null });
   });
 
   await listen<TapStatusEvent>("hid-tap-status", (event) => {
@@ -181,18 +193,26 @@ export async function initRuntimeStatus() {
 // 注意：`connect_rc003` 可能命中 GATT 缓存，即使链路未连接也能发现端点。
 // 因此 connected 必须以「真实链路状态」linkConnected 为准，否则会出现
 // 「已连接 + 等待遥控器上线」这类自相矛盾的 UI。
-export function markConnected(endpointsReady: boolean, linkConnected: boolean) {
+export function markConnected(
+  endpointsReady: boolean,
+  linkConnected: boolean,
+  batteryLevel?: number | null,
+) {
   setState({
     connected: linkConnected,
     // 端点是否就绪以后端 bridge-status 快照为准；连接成功时先写入本机发现结果，
     // 后续快照会用后端事实覆盖。
     endpointsReady: linkConnected ? endpointsReady : false,
+    ...(batteryLevel !== undefined
+      ? { batteryLevel: linkConnected ? batteryLevel : null }
+      : {}),
   });
 }
 
 export function markDisconnected() {
   setState({
     connected: false,
+    batteryLevel: null,
     endpointsReady: false,
     bridgeState: "stopped",
     bridgeAttempt: 0,
@@ -220,6 +240,14 @@ export function bridgeStateLabel(state: BridgeState, attempt: number): string {
     default:
       return "ATVV 语音桥";
   }
+}
+
+/** 电池电量状态色系：正常 ok（绿色），低于 20% warn（黄色），低于 10% err（红色）。 */
+export function batteryTone(level: number | null): "ok" | "warn" | "err" | "off" {
+  if (level === null) return "off";
+  if (level < 10) return "err";
+  if (level < 20) return "warn";
+  return "ok";
 }
 
 export { tapStatusLabel };
