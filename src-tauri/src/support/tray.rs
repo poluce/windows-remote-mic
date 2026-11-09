@@ -29,8 +29,12 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
 
-    TrayIconBuilder::new()
-        .menu(&menu)
+    let mut builder = TrayIconBuilder::new().menu(&menu);
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    builder
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "show" => {
                 if let Some(win) = app.get_webview_window("main") {
