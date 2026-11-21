@@ -52,6 +52,8 @@ export function NewProfileDialog({
   const [palette, setPalette] = useState<string[]>([]);
   /** 「按窗口标题匹配」默认收起：只有网页应用 / WSL 服务才用得上。 */
   const [titleOpen, setTitleOpen] = useState(false);
+  /** 左上角圆圈点开的颜色浮层。 */
+  const [colorOpen, setColorOpen] = useState(false);
 
   // 每次打开都重置：上一次的草稿不该出现在新的一份配置里。
   useEffect(() => {
@@ -61,6 +63,7 @@ export function NewProfileDialog({
     setTitle("");
     setIconColor(null);
     setTitleOpen(false);
+    setColorOpen(false);
     void loadIconPalette().then(setPalette);
     if (!isTauri()) {
       setCandidates([{ process: "ZCode.exe", title: "ZCode" }]);
@@ -74,11 +77,17 @@ export function NewProfileDialog({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onCancel();
+      if (e.key !== "Escape") return;
+      // Esc 先收颜色浮层，再收对话框：别让一次 Esc 把整张表单也关掉。
+      if (colorOpen) {
+        setColorOpen(false);
+        return;
+      }
+      onCancel();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+  }, [open, onCancel, colorOpen]);
 
   if (!open) return null;
 
@@ -102,21 +111,71 @@ export function NewProfileDialog({
         <div className="field">
           <label htmlFor="np-name">展示名</label>
           <div className="field-avatar">
-            <span
-              className={`icon-preview${
-                !label && !iconColor ? " empty" : iconColor ? "" : " auto"
+            <button
+              type="button"
+              className={`icon-preview${iconColor ? "" : " auto"}${
+                label ? "" : " empty"
               }`}
               style={iconColor ? { background: iconColor } : undefined}
-              aria-hidden
+              title="设置快捷菜单内环颜色"
+              aria-label="设置快捷菜单内环颜色"
+              aria-expanded={colorOpen}
+              onClick={() => setColorOpen((open) => !open)}
             >
-              {label}
-            </span>
+              {label || "+"}
+            </button>
             <input
               id="np-name"
               value={name}
               placeholder="例如：ZCode"
               onChange={(e) => setName(e.target.value)}
             />
+
+            {colorOpen && (
+              <>
+                {/* 点浮层外面关掉；透明背板只吃掉这一次点击 */}
+                <div
+                  className="color-pop-backdrop"
+                  onClick={() => setColorOpen(false)}
+                />
+                <div className="color-pop" role="dialog" aria-label="内环颜色">
+                  <div className="color-pop-title">快捷菜单内环颜色</div>
+                  <div className="icon-color-row">
+                    <button
+                      type="button"
+                      className={`icon-swatch auto${
+                        iconColor === null ? " active" : ""
+                      }`}
+                      title="按配置自动分配，同一个应用每次都一样"
+                      onClick={() => {
+                        setIconColor(null);
+                        setColorOpen(false);
+                      }}
+                    >
+                      自动
+                    </button>
+                    {palette.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`icon-swatch${
+                          iconColor?.toLowerCase() === color.toLowerCase()
+                            ? " active"
+                            : ""
+                        }`}
+                        style={{ background: color }}
+                        title={color}
+                        aria-label={`选择颜色 ${color}`}
+                        onClick={() => {
+                          setIconColor(color);
+                          setColorOpen(false);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -155,37 +214,6 @@ export function NewProfileDialog({
               先切到目标应用、再回来新建，这里会列出最近用过的进程名。
             </div>
           )}
-        </div>
-
-        <div className="dialog-divider" />
-
-        <div className="field">
-          <label>快捷菜单内环颜色</label>
-          <div className="icon-color-row">
-            <button
-              type="button"
-              className={`icon-swatch auto${iconColor === null ? " active" : ""}`}
-              title="按配置自动分配，同一个应用每次都一样"
-              onClick={() => setIconColor(null)}
-            >
-              自动
-            </button>
-            {palette.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className={`icon-swatch${
-                  iconColor?.toLowerCase() === color.toLowerCase()
-                    ? " active"
-                    : ""
-                }`}
-                style={{ background: color }}
-                title={color}
-                aria-label={`选择颜色 ${color}`}
-                onClick={() => setIconColor(color)}
-              />
-            ))}
-          </div>
         </div>
 
         {titleOpen ? (
