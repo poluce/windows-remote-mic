@@ -26,6 +26,15 @@ pub fn app_profile_foreground_candidates() -> Vec<core_app_profile::ForegroundAp
     core_app_profile::foreground_candidates()
 }
 
+/// 简标颜色调色板（`#rrggbb` 列表）。
+///
+/// 前端不硬编码第二份色卡：内环自动色、颜色选择器、作用范围圆点都从这一处取，
+/// 保证「用户挑的颜色」和「内环画出来的颜色」是同一组。
+#[tauri::command]
+pub fn app_icon_palette() -> Vec<&'static str> {
+    core_app_profile::icon_palette().to_vec()
+}
+
 /// 快捷菜单内圈要显示的应用图标（只含配了 `icon` 的配置）。
 ///
 /// 声明成 `async` 是纵深防御：它会遍历本机所有顶层窗口，虽然实测每次只要

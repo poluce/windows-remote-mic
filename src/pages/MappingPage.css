@@ -353,6 +353,23 @@
   outline-offset: 1px;
 }
 
+/* 选中应用配置时多出来的「内环颜色」行：贴在作用范围胶囊下面，同一张轻卡里 */
+.scope-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--rm-line);
+}
+
+.scope-color-label {
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-2);
+  margin-right: 2px;
+}
+
 /* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
 .matrix-hint {
   margin: 0 0 8px;

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+import { loadIconPalette } from "../pages/mapping/profile";
+import { previewLabel } from "../pages/mapping/iconColor";
+
 /** `app_profile_foreground_candidates` 返回的一项：一个最近出现过的前台应用。 */
 type ForegroundCandidate = {
   process: string;
@@ -12,12 +15,14 @@ function processStem(process: string): string {
   return process.replace(/\.exe$/i, "");
 }
 
+
 /**
  * 新建一份应用配置。
  *
- * 只问三件事：展示名、进程名、可选的窗口标题关键字。第二个是这份配置能不能
- * 生效的关键，所以旁边直接给出**最近前台应用**并允许一键填入——让人去任务
- * 管理器里抄，抄错一个字母这份配置就永远不会命中，而且不会有任何报错。
+ * 只问三件事：展示名、进程名、可选的窗口标题关键字；另一个可选的是**内环颜色**。
+ * 第二个是这份配置能不能生效的关键，所以旁边直接给出**最近前台应用**并允许一键
+ * 填入——让人去任务管理器里抄，抄错一个字母这份配置就永远不会命中，而且不会有
+ * 任何报错。
  *
  * # 为什么不提供「当前前台」
  *
@@ -33,16 +38,25 @@ export function NewProfileDialog({
 }: {
   open: boolean;
   onCancel: () => void;
-  onCreate: (name: string, process: string, titleContains: string) => void;
+  /** `iconColor` 为 null 表示内环简标颜色交给自动规则。 */
+  onCreate: (
+    name: string,
+    process: string,
+    titleContains: string,
+    iconColor: string | null,
+  ) => void;
 }) {
   const [name, setName] = useState("");
   const [process, setProcess] = useState("");
   const [title, setTitle] = useState("");
+  const [iconColor, setIconColor] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ForegroundCandidate[]>([]);
+  const [palette, setPalette] = useState<string[]>([]);
 
   // 每次打开都重新读一次：对话框可能开着的时候用户又切过别的应用。
   useEffect(() => {
     if (!open) return;
+    void loadIconPalette().then(setPalette);
     if (!isTauri()) {
       setCandidates([{ process: "ZCode.exe", title: "ZCode" }]);
       return;
@@ -127,6 +141,44 @@ export function NewProfileDialog({
         </div>
 
         <div className="field">
+          <label>快捷菜单内环颜色</label>
+          <div className="icon-color-row">
+            <span
+              className={`icon-preview${iconColor ? "" : " auto"}`}
+              style={iconColor ? { background: iconColor } : undefined}
+              aria-hidden
+            >
+              {previewLabel(name)}
+            </span>
+            <button
+              type="button"
+              className={`icon-swatch auto${iconColor === null ? " active" : ""}`}
+              title="自动（按配置 id 分配）"
+              aria-label="自动颜色"
+              onClick={() => setIconColor(null)}
+            >
+              自动
+            </button>
+            {palette.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`icon-swatch${
+                  iconColor?.toLowerCase() === color.toLowerCase() ? " active" : ""
+                }`}
+                style={{ background: color }}
+                title={color}
+                aria-label={`选择颜色 ${color}`}
+                onClick={() => setIconColor(color)}
+              />
+            ))}
+          </div>
+          <div className="tip">
+            快捷菜单内环里这个应用用哪种颜色。不选就是自动（同一个应用每次一样）。
+          </div>
+        </div>
+
+        <div className="field">
           <label htmlFor="np-title">
             窗口标题关键字 <span className="stage2">可选</span>
           </label>
@@ -150,7 +202,7 @@ export function NewProfileDialog({
             type="button"
             className="btn primary"
             disabled={!canCreate}
-            onClick={() => onCreate(name, process, title)}
+            onClick={() => onCreate(name, process, title, iconColor)}
           >
             创建
           </button>

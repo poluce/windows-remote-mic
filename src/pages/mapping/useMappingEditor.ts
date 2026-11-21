@@ -15,8 +15,10 @@ import {
   clearProfileBinding,
   createProfile as createProfileRequest,
   deleteProfile,
+  loadIconPalette,
   loadProfiles,
   saveProfileBinding,
+  setProfileIconColor,
 } from "./profile";
 import {
   comboLabel,
@@ -44,6 +46,8 @@ export function useMappingEditor() {
     FALLBACK_CATALOG.default_bindings,
   );
   const [profiles, setProfiles] = useState<AppProfileView[]>([]);
+  /** 内环简标的可选颜色（后端 `app_icon_palette`，不在前端再存一份真值）。 */
+  const [iconPalette, setIconPalette] = useState<string[]>([]);
   const [shortcuts, setShortcuts] = useState<NamedShortcut[]>([]);
   const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
   const [selected, setSelected] = useState("ok");
@@ -164,6 +168,7 @@ export function useMappingEditor() {
     })();
     refreshProfiles();
     loadShortcuts().then(setShortcuts);
+    void loadIconPalette().then(setIconPalette);
   }, [refreshProfiles, refreshMappings]);
 
   // ---- 目录派生值（唯一事实来源：catalog） ----
@@ -392,15 +397,38 @@ export function useMappingEditor() {
     }
   }
 
-  async function handleCreate(name: string, process: string, title: string) {
+  async function handleCreate(
+    name: string,
+    process: string,
+    title: string,
+    iconColor: string | null,
+  ) {
     setNewOpen(false);
     try {
-      const id = await createProfileRequest(name, process, title);
+      const id = await createProfileRequest(name, process, title, iconColor);
       await refreshProfiles();
       setScope(id);
       setSaveMsg("已新建这份配置，改过的按键会自动覆盖全局");
     } catch (err) {
       setSaveMsg(`新建失败: ${err}`);
+    }
+  }
+
+  /**
+   * 改当前应用配置在内环里的简标颜色；`null` = 恢复自动色。
+   *
+   * 和保存绑定一样走「后端写文件 → 重载调度器 → 读回快照」，前端不自己拼颜色。
+   */
+  async function handleSetIconColor(color: string | null) {
+    if (isGlobalScope) return;
+    try {
+      await setProfileIconColor(scope, color);
+      await refreshProfiles();
+      setSaveMsg(
+        color ? `已把内环颜色改为 ${color}` : "内环颜色已改回自动",
+      );
+    } catch (err) {
+      setSaveMsg(`改颜色失败: ${err}`);
     }
   }
 
@@ -506,5 +534,7 @@ export function useMappingEditor() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
+    iconPalette,
+    handleSetIconColor,
   };
 }

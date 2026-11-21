@@ -1096,6 +1096,75 @@ button {
   margin: 2px 0;
 }
 
+/* ---------- 内环简标颜色选择器（新建应用 / 作用范围共用） ---------- */
+.icon-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 预览：画成快捷菜单内环里那个「实心圆 + 白字」的样子 */
+.icon-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: #fff;
+  font-size: var(--rm-fs-11);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  background: var(--rm-text-3);
+  border: 1.5px solid var(--rm-solid);
+  box-shadow: 0 0 0 1px var(--rm-line);
+}
+
+/* 自动色还没定下来：降饱和一点，暗示「由系统分配」 */
+.icon-preview.auto {
+  filter: saturate(0.35);
+  border-style: dashed;
+}
+
+.icon-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--rm-line-strong);
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  background: var(--rm-chip);
+  transition: transform 120ms var(--rm-ease), box-shadow var(--rm-dur) var(--rm-ease);
+}
+
+.icon-swatch:hover {
+  transform: scale(1.08);
+}
+
+.icon-swatch.active {
+  box-shadow: 0 0 0 2px var(--rm-solid), 0 0 0 4px var(--accent);
+}
+
+/* 「自动」不是一种颜色，长成文字胶囊，和色点区分开 */
+.icon-swatch.auto {
+  width: auto;
+  height: 22px;
+  border-radius: var(--rm-r-full);
+  padding: 0 10px;
+  font-size: var(--rm-fs-11);
+  color: var(--rm-text-2);
+  font-family: inherit;
+}
+
+.icon-swatch.auto.active {
+  color: var(--rm-accent-strong);
+  background: var(--rm-accent-soft);
+  border-color: var(--rm-accent-line);
+}
+
 .stage2 {
   display: inline-block;
   margin-left: 6px;

@@ -23,6 +23,10 @@ pub struct AppProfileView {
     /// 作用范围胶囊上的小圆点用它，和快捷菜单内圈保持一致；没写 `icon` 的配置
     /// 拿到的也是自动简标的颜色，所以这份配置一定会在内环里有入口。
     pub icon_color: Option<String>,
+    /// 这个颜色是不是用户手挑的（false = 由配置 id 自动生成）。
+    ///
+    /// 颜色选择器用它决定「自动」这一档要不要显示为选中状态。
+    pub icon_color_custom: bool,
     pub note: String,
     /// 这份配置覆盖了哪些 (按键, 触发)。没列出的格子沿用全局。
     pub bindings: Vec<crate::MappingEntry>,
@@ -36,6 +40,10 @@ impl AppProfileView {
             process: p.process.display(),
             title_contains: p.window_title_contains.clone(),
             icon_color: Some(p.menu_icon().color),
+            icon_color_custom: p
+                .icon
+                .as_ref()
+                .is_some_and(|icon| !icon.color.trim().is_empty()),
             note: p.note.clone(),
             bindings: p.bindings.iter().map(binding_entry).collect(),
         }
@@ -69,11 +77,15 @@ pub fn app_profile_catalog(state: State<AppState>) -> Vec<AppProfileView> {
 ///
 /// 进程名与窗口标题关键字**至少要填一个**：两个都空的配置永远不会命中，
 /// 建出来就是个死配置，不如直接拒绝。
+///
+/// `icon_color` 是快捷菜单内环的简标颜色（可选）：给了就写进 `icon.color`，
+/// 简标文字留空表示「按展示名自动」；不给则整份配置留空，内环用自动色。
 #[tauri::command]
 pub fn create_app_profile(
     name: String,
     process: String,
     window_title_contains: String,
+    icon_color: Option<String>,
     state: State<AppState>,
 ) -> Result<String, String> {
     let dir = config_dir()?;
@@ -82,6 +94,17 @@ pub fn create_app_profile(
     if processes.is_empty() && titles.is_empty() {
         return Err("进程名和窗口标题关键字至少要填一个，否则这份配置永远不会生效".into());
     }
+    let icon = match icon_color
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        Some(color) => {
+            let color = core_app_profile::IconSpec::parse_color(color)?;
+            Some(core_app_profile::IconSpec::with_color(&color))
+        }
+        None => None,
+    };
 
     let id = core_app_profile::new_profile_id(&dir, &process);
     let profile = core_app_profile::AppProfile {
@@ -93,6 +116,7 @@ pub fn create_app_profile(
         },
         name: name.trim().to_string(),
         window_title_contains: titles,
+        icon,
         ..Default::default()
     };
 
@@ -103,6 +127,43 @@ pub fn create_app_profile(
         profile.display_name()
     ));
     Ok(id)
+}
+
+/// 设置某份配置在快捷菜单内环的简标颜色；`color` 为空字符串 / None 表示恢复自动色。
+///
+/// 只动 `icon.color`，简标文字保持原样（留空则继续按展示名自动取）——
+/// 用户改颜色不该顺带把「CC」「DS」这种手写简标改掉。
+#[tauri::command]
+pub fn set_profile_icon_color(
+    id: String,
+    color: Option<String>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let dir = config_dir()?;
+    let mut profile = find_profile(&state, &id)?;
+
+    match color.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        Some(color) => {
+            let color = core_app_profile::IconSpec::parse_color(color)?;
+            let label = profile
+                .icon
+                .as_ref()
+                .map(|icon| icon.label.clone())
+                .unwrap_or_default();
+            profile.icon = Some(core_app_profile::IconSpec { label, color });
+        }
+        None => {
+            // 恢复自动色：只清颜色，保留手写简标文字。
+            match profile.icon.as_mut() {
+                Some(icon) if !icon.label.trim().is_empty() => icon.color.clear(),
+                _ => profile.icon = None,
+            }
+        }
+    }
+
+    core_app_profile::save_profile(&dir, &profile).map_err(|e| format!("写入配置失败：{e}"))?;
+    reload_profiles(&state);
+    Ok(())
 }
 
 /// 把某个 (按键, 触发) 写进这份配置（已存在则改掉）。

@@ -222,6 +222,10 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
     **最近前台历史**（tick 线程每次刷新前台快照时记录，最多 5 条、按进程名去重、排除本应用），
     对话框点一下即可填入；历史为空才提示用户先切到目标应用。
   - 写命令均为「读文件 → 改一处 → 原子写回 → 重载调度器」，前端不需要再补 reload；
+  - **内环简标颜色可选**：`IconSpec` 的 `label` / `color` 都可省略（空值各自回退到自动规则），
+    「新建应用」对话框与作用范围条（选中某份配置后）都能挑颜色，可选项来自后端
+    `app_icon_palette`（唯一色卡，别在前端硬编码第二份）；改颜色走 `set_profile_icon_color`，
+    传 `null` 恢复自动色，且不会动用户手写的简标文字。
   - 设计说明见 [docs/design/app-profile-mapping.html](docs/design/app-profile-mapping.html)。
 - **自定义快捷键（NamedShortcut）**：名字只是显示层，绑定里存的是 `combo:lctrl+k` 原始写法；
   改 / 删名字不影响已有绑定（显示时回退原始按键）。

@@ -53,8 +53,10 @@ export type AppProfileView = {
   /** 展示用的进程名写法；纯标题配置为空串。 */
   process: string;
   title_contains: string[];
-  /** 快捷菜单内圈用的品牌色；没配图标时为 null。 */
+  /** 快捷菜单内圈用的品牌色（没手挑时是按配置 id 自动生成的色）。 */
   icon_color: string | null;
+  /** 这个颜色是不是用户手挑的（false = 自动生成）。 */
+  icon_color_custom: boolean;
   note: string;
   /** 这份配置覆盖了哪些 (按键, 触发)；没列出的格子沿用全局。 */
   bindings: MappingEntry[];

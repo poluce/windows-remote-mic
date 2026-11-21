@@ -65,11 +65,17 @@ fn normalize(name: &str) -> String {
 }
 
 /// 快捷菜单里用的矢量简标（首字母 + 品牌色），不依赖图标资源。
+///
+/// 两个字段都允许留空，空值各自回退到自动值（见 [`AppProfile::menu_icon`]）：
+/// 用户在「新建应用」里只挑了颜色时，落盘的就是 `{ "color": "#..." }`，
+/// 简标文字继续跟着展示名自动变（改名字不用再手动改简标）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IconSpec {
-    /// 圆圈里显示的字，1–2 个字符。
+    /// 圆圈里显示的字，1–2 个字符；留空表示按展示名自动取。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
-    /// 品牌色，形如 `#3B82F6`。
+    /// 品牌色，形如 `#3B82F6`；留空表示按配置 id 自动取。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub color: String,
 }
 
@@ -78,7 +84,10 @@ pub struct IconSpec {
 /// 全部沿用作用域胶囊与快捷菜单已有的低饱和品牌色（前三个就是种子配置在用的
 /// 陶土 / 钢蓝 / 琥珀），画布绘制时还会再向中性灰混 22%，不会一屏跳跃的亮色。
 /// 颜色只由稳定 id 决定，改展示名不会换色、重启也不会变。
-const AUTO_ICON_COLORS: [&str; 8] = [
+///
+/// 「新建应用」里给用户挑的也是这同一组颜色（命令 `app_icon_palette` 交给前端），
+/// 避免出现调色板和内环观感对不上的第二套色卡。
+static AUTO_ICON_COLORS: [&str; 8] = [
     "#D97757", // 陶土
     "#4D6BFE", // 钢蓝
     "#F59E0B", // 琥珀
@@ -88,6 +97,11 @@ const AUTO_ICON_COLORS: [&str; 8] = [
     "#EC4899", // 玫红
     "#64748B", // 石墨
 ];
+
+/// 可选简标颜色（供「新建应用」/ 作用范围的颜色选择器使用）。
+pub fn icon_palette() -> &'static [&'static str] {
+    &AUTO_ICON_COLORS
+}
 
 impl IconSpec {
     /// 从展示名与稳定 id 生成简标：名字取前 1–2 个字母/数字/汉字，颜色按 id 定。
@@ -100,6 +114,29 @@ impl IconSpec {
             label: auto_label(name),
             color: color_from_seed(seed).to_string(),
         }
+    }
+
+    /// 只指定颜色、简标文字留空（跟着展示名自动变）的简标。
+    pub fn with_color(color: &str) -> Self {
+        Self {
+            label: String::new(),
+            color: color.to_string(),
+        }
+    }
+
+    /// 规范化用户输入的颜色：接受 `#rrggbb` / `rrggbb`，统一成小写 `#rrggbb`。
+    ///
+    /// 这是唯一入口——命令层与配置层都走它，避免把 `red`、`#FFF` 这类
+    /// 前端猜不出 Canvas 会怎么画的写法落进配置文件。
+    pub fn parse_color(raw: &str) -> Result<String, String> {
+        let text = raw.trim();
+        let hex = text.strip_prefix('#').unwrap_or(text);
+        if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!(
+                "颜色格式应为 #RRGGBB（例如 #4D6BFE），收到「{text}」"
+            ));
+        }
+        Ok(format!("#{}", hex.to_ascii_lowercase()))
     }
 }
 

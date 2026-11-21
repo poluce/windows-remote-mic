@@ -376,6 +376,46 @@ fn menu_icon_falls_back_to_generated_label_and_color() {
 }
 
 #[test]
+fn icon_color_only_keeps_label_auto() {
+    // 用户在「新建应用」里只挑了颜色：落盘简标文字为空，颜色手挑。
+    let mut p = profile("Codex.exe", "Codex 桌面版");
+    p.id = "codex-desktop".into();
+    p.icon = Some(IconSpec::with_color("#10A37F"));
+
+    let icon = p.menu_icon();
+    assert_eq!(icon.label, "CO", "没写 label 时按展示名自动取");
+    assert_eq!(icon.color, "#10A37F", "手挑的颜色要生效");
+
+    // 改展示名后简标跟着变，颜色不变——这正是「只挑颜色」想要的。
+    p.name = "微信".into();
+    assert_eq!(p.menu_icon().label, "微信");
+    assert_eq!(p.menu_icon().color, "#10A37F");
+}
+
+#[test]
+fn parse_color_accepts_hex_with_or_without_hash() {
+    assert_eq!(IconSpec::parse_color("#4D6BFE").unwrap(), "#4d6bfe");
+    assert_eq!(IconSpec::parse_color("  #d97757  ").unwrap(), "#d97757");
+    assert_eq!(IconSpec::parse_color("10a37f").unwrap(), "#10a37f");
+    // 不合法的一律拒绝，而不是猜一个颜色画上去。
+    for bad in ["red", "#FFF", "#GGGGGG", "", "#12345", "#1234567"] {
+        assert!(IconSpec::parse_color(bad).is_err(), "「{bad}」不该被接受");
+    }
+}
+
+#[test]
+fn icon_spec_omits_empty_fields_when_serialized() {
+    // 只挑颜色的配置写成 { "color": "#10a37f" }，不留下 "label": "" 这种噪音。
+    let json = serde_json::to_string(&IconSpec::with_color("#10a37f")).unwrap();
+    assert_eq!(json, r##"{"color":"#10a37f"}"##);
+
+    // 反过来，旧文件里只有 label 也能读（color 留空 → 自动色）。
+    let parsed: IconSpec = serde_json::from_str(r#"{"label":"DS"}"#).unwrap();
+    assert_eq!(parsed.label, "DS");
+    assert_eq!(parsed.color, "");
+}
+
+#[test]
 fn auto_icon_label_handles_cjk_and_empty_names() {
     assert_eq!(IconSpec::auto("微信", "wechat").label, "微信");
     assert_eq!(IconSpec::auto("ZCode", "zcode").label, "ZC");

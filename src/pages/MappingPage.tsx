@@ -8,6 +8,7 @@ import { ShortcutDialog } from "../components/ShortcutDialog";
 import { MappingMatrix } from "./mapping/MappingMatrix";
 import { ScopeBar } from "./mapping/ScopeBar";
 import { COMBO_CATEGORY, formatComboDisplay } from "./mapping/combo";
+import { previewLabel } from "./mapping/iconColor";
 import { keysId } from "./mapping/shortcuts";
 import { useRemoteZoom } from "./mapping/useRemoteZoom";
 import { useMappingEditor } from "./mapping/useMappingEditor";
@@ -61,6 +62,8 @@ export function MappingPage() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
+    iconPalette,
+    handleSetIconColor,
   } = useMappingEditor();
 
   const { buttons, categories } = catalog;
@@ -84,6 +87,52 @@ export function MappingPage() {
           onRemove={onRemoveScope}
           onNew={() => setNewOpen(true)}
         />
+
+        {/* 选中某份应用配置时，就地调整它在快捷菜单内环里的简标颜色。
+            颜色同样走「后端写文件 → 重载 → 读回快照」，与内环保持单一事实来源。 */}
+        {!isGlobalScope && activeProfile && (
+          <div className="scope-color-row">
+            <span
+              className={`icon-preview${activeProfile.icon_color_custom ? "" : " auto"}`}
+              style={
+                activeProfile.icon_color_custom && activeProfile.icon_color
+                  ? { background: activeProfile.icon_color }
+                  : undefined
+              }
+              title="快捷菜单内环上的样子"
+              aria-hidden
+            >
+              {previewLabel(activeProfile.name)}
+            </span>
+            <span className="scope-color-label">内环颜色</span>
+            <button
+              type="button"
+              className={`icon-swatch auto${
+                activeProfile.icon_color_custom ? "" : " active"
+              }`}
+              title="自动（按配置 id 分配）"
+              onClick={() => handleSetIconColor(null)}
+            >
+              自动
+            </button>
+            {iconPalette.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`icon-swatch${
+                  activeProfile.icon_color_custom &&
+                  activeProfile.icon_color?.toLowerCase() === color.toLowerCase()
+                    ? " active"
+                    : ""
+                }`}
+                style={{ background: color }}
+                title={color}
+                aria-label={`选择颜色 ${color}`}
+                onClick={() => handleSetIconColor(color)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="mapping-wizard">
