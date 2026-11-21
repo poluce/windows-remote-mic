@@ -157,6 +157,8 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
 - **菜单键默认动作是 `ToggleQuickMenu`**，旧配置 `ContextMenu`（右键菜单）会在启动时自动迁移。
 - **菜单独占输入模式**：打开快捷菜单时调度器进入 `InputMode::QuickMenu`，遥控器方向 / 确定 / 菜单 / 返回等按键
   不再走普通触发检测，而是以 `quick-menu-key` 事件转发给快捷菜单窗口；关闭后恢复 `InputMode::Normal`。
+- **菜单内方向键语义**（遥控器与本地键盘一致，勿再互换）：**左右 = 当前环内滚动**（右 = 下一个 +1，
+  左 = 上一个 −1，按住连发）；**上下 = 切换内外环**（上 = 外环，下 = 内环）。
 - **状态持久化**：`quick-menu.html` 把菜单停留位置与所选环状态存入 `localStorage`（key `remote-mic-quick-menu-state`）。
 - 该窗口加载静态 HTML，**不走 Vite HMR**；修改后需重新打开窗口（或重启应用）才能生效。
 - **热更新坑**：不要删掉 `toggle_quick_menu` 里显示时的 `window.location.reload()`，
