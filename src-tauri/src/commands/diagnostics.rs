@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader};
 use core_mapping::trigger::TriggerDetector;
 
 #[tauri::command]
-pub fn generate_diagnostic_report() -> String {
+pub fn generate_diagnostic_report() -> Result<String, String> {
     let mut report = String::new();
     report.push_str("# Remote Mic 诊断报告\n\n");
 
@@ -38,7 +38,13 @@ pub fn generate_diagnostic_report() -> String {
         }
     }
 
-    report
+    let dir = core_log::log_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建报告目录：{e}"))?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let path = dir.join(format!("diagnostic-report-{stamp}.md"));
+    std::fs::write(&path, report.as_bytes()).map_err(|e| format!("写入诊断报告失败：{e}"))?;
+    core_log::log_info(&format!("[diagnostics] 诊断报告已保存：{}", path.display()));
+    Ok(path.display().to_string())
 }
 
 /// 一个自检项，结论为 PASS / FAIL / SKIP。

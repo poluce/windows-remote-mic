@@ -42,6 +42,7 @@ export function DiagnosticsPage() {
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
   const [vhidBusy, setVhidBusy] = useState(false);
   const [vhidMsg, setVhidMsg] = useState("");
+  const [reportMsg, setReportMsg] = useState("");
   const [foreground, setForeground] = useState<ForegroundStatus | null>(null);
   const [profileMsg, setProfileMsg] = useState("");
 
@@ -141,15 +142,26 @@ export function DiagnosticsPage() {
 
   async function generateReport() {
     if (!isTauri()) {
+      setReportMsg("浏览器预览：请在桌面应用内生成诊断报告");
+      return;
+    }
+    setReportMsg("正在生成诊断报告…");
+    try {
+      const path = await invoke<string>("generate_diagnostic_report");
+      setReportMsg(`诊断报告已保存：${path}`);
+    } catch (err) {
+      setReportMsg(`生成失败：${err}`);
+    }
+  }
+
+  async function openReportDir() {
+    if (!isTauri()) {
       return;
     }
     try {
-      const report = await invoke<string>("generate_diagnostic_report");
-      // 这里暂时直接打印到控制台，后续实现弹窗预览
-      console.log(report);
-      alert("报告已生成，已打印到控制台（后续实现弹窗）");
+      await invoke("open_log_dir");
     } catch (err) {
-      alert(`生成失败: ${err}`);
+      setReportMsg(`打开报告目录失败：${err}`);
     }
   }
 
@@ -224,6 +236,9 @@ export function DiagnosticsPage() {
         <button className="btn primary" onClick={generateReport}>
           生成诊断报告
         </button>
+        <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
+          打开报告目录
+        </button>
         <button className="btn" onClick={loopTone} disabled={looping}>
           {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
         </button>
@@ -234,6 +249,7 @@ export function DiagnosticsPage() {
           {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
         </button>
         {vhidMsg && <span className="hint diag-actions-msg multiline">{vhidMsg}</span>}
+        {reportMsg && <span className="hint diag-actions-msg multiline">{reportMsg}</span>}
         {status && <span className="hint diag-actions-msg">{status}</span>}
         {selfTests && (
           <div className="check-list diag-actions-list">
