@@ -1,8 +1,34 @@
 //! 快捷菜单与应用窗口操作（前台状态、菜单图标收集、聚焦或启动目标应用）。
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::{load_app_profiles, AppState};
+
+/// 快捷菜单内环里「本软件」那一项的固定 id。
+///
+/// 主窗口不是应用配置（`app-profiles/*.json` 里没有它），但用户在菜单里需要一条
+/// **回到全局设置**的路径：内环原本只能切到自建应用，进了某个应用就回不来了。
+/// 点它 = 把主窗口切到前台；前台是本软件时没有应用配置能命中，按键自然走全局映射，
+/// 于是「全局设置」和「各应用设置」在同一个菜单里就能来回切。
+///
+/// 用双下划线包起来是刻意的：`new_profile_id` 把进程名 slug 成 `[a-z0-9-]`，
+/// 永远产不出下划线，所以真实配置 id 不可能撞上它。
+pub const SELF_MENU_ID: &str = "__self__";
+
+/// 快捷菜单内环里「本软件 / 全局设置」那一项的外观。
+///
+/// 抽成纯函数是为了能单测：`app_menu_apps` 需要 `AppHandle` 才能查窗口可见性，
+/// 在单测里造不出来，但这一项的内容不该跟着窗口一起变成不可测。
+fn self_menu_entry(open: bool) -> core_dispatch::MenuAppEntry {
+    core_dispatch::MenuAppEntry {
+        id: SELF_MENU_ID.to_string(),
+        name: "全局设置".to_string(),
+        label: "设".to_string(),
+        // 与主界面强调色一致（钢蓝）；内环绘制时还会再向中性灰混 22%。
+        color: "#2b6fc0".to_string(),
+        open,
+    }
+}
 
 /// 当前前台应用与命中的应用配置。
 ///
@@ -35,7 +61,8 @@ pub fn app_icon_palette() -> Vec<&'static str> {
     core_app_profile::icon_palette().to_vec()
 }
 
-/// 快捷菜单内圈要显示的应用图标（只含配了 `icon` 的配置）。
+/// 快捷菜单内圈要显示的应用图标：**第一项固定是本软件（全局设置）**，
+/// 后面是 `app-profiles/` 里的全部配置（没有 `icon` 的用自动简标兜底）。
 ///
 /// 声明成 `async` 是纵深防御：它会遍历本机所有顶层窗口，虽然实测每次只要
 /// 约 2 毫秒，但没有理由让 UI 线程替它站岗——真撞上某个窗口出问题时，至少
@@ -45,12 +72,19 @@ pub fn app_icon_palette() -> Vec<&'static str> {
 /// 成功时前端拿到的仍是数组本身。
 #[tauri::command]
 pub async fn app_menu_apps(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<core_dispatch::MenuAppEntry>, String> {
     core_log::log_line("[app-profile] 开始收集菜单应用");
-    let apps = state.dispatcher.menu_apps();
+    let mut apps = state.dispatcher.menu_apps();
+    // 主窗口可见时给自己点一个小白点（和自建应用「已打开」的含义一致）。
+    let main_open = app
+        .get_webview_window("main")
+        .and_then(|win| win.is_visible().ok())
+        .unwrap_or(false);
+    apps.insert(0, self_menu_entry(main_open));
     core_log::log_line(&format!(
-        "[app-profile] 菜单应用收集完成：{} 个",
+        "[app-profile] 菜单应用收集完成：{} 个（含全局设置）",
         apps.len()
     ));
     Ok(apps)
@@ -82,6 +116,11 @@ pub async fn open_app_profile(
     id: String,
 ) -> Result<String, String> {
     core_log::log_line(&format!("[app-profile] 收到打开请求：{id}"));
+
+    // 第一项是「本软件 / 全局设置」，不是应用配置——直接切回主窗口。
+    if id == SELF_MENU_ID {
+        return open_self_window(&app, &state);
+    }
 
     // 定位用 id（文件名），**不用展示名**——展示名在编辑器里可以改，
     // 拿它当身份的话，用户改个名字快捷菜单就点空了。
@@ -157,6 +196,76 @@ where
 fn hide_quick_menu(app: &tauri::AppHandle, state: &State<'_, AppState>) {
     if let Err(e) = crate::commands::quick_menu::hide_quick_menu(app, state) {
         core_log::log_warn(&format!("[app-profile] 收起快捷菜单失败：{e}"));
+    }
+}
+
+/// 「点全局设置」：把主窗口显示出来并切到前台，然后收起快捷菜单。
+///
+/// 前台变成主窗口后**没有任何应用配置能命中**，按键自动回到全局映射——
+/// 这就是「从某个应用切回全局设置」的实现方式，不需要额外的模式开关。
+///
+/// 顺序同 `open_app_profile` 的聚焦分支：先聚焦再收菜单。主窗口和快捷菜单
+/// 属于同一个进程，前台权限还在自己手里，`set_focus` 不会卡。
+fn open_self_window(app: &tauri::AppHandle, state: &State<'_, AppState>) -> Result<String, String> {
+    let Some(window) = app.get_webview_window("main") else {
+        hide_quick_menu(app, state);
+        return Err("找不到主窗口".to_string());
+    };
+    let shown = window
+        .show()
+        .and_then(|_| window.unminimize())
+        .and_then(|_| window.set_focus())
+        .map_err(|e| e.to_string());
+    hide_quick_menu(app, state);
+    match shown {
+        Ok(()) => {
+            core_log::log_info("[app-profile] 已切回本软件主窗口（全局设置）");
+            Ok("已回到全局设置".to_string())
+        }
+        Err(e) => {
+            core_log::log_warn(&format!("[app-profile] 切回主窗口失败：{e}"));
+            Err(format!("切回主窗口失败：{e}"))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 内环第一项是「本软件 / 全局设置」，不是应用配置。
+    #[test]
+    fn self_menu_entry_is_a_pinned_global_settings_item() {
+        let entry = self_menu_entry(true);
+        assert_eq!(entry.id, SELF_MENU_ID);
+        assert_eq!(entry.name, "全局设置");
+        assert_eq!(entry.label, "设");
+        assert_eq!(
+            entry.label.chars().count(),
+            1,
+            "简标要短，内环圆圈只放得下 1–2 个字"
+        );
+        assert!(
+            entry.color.starts_with('#') && entry.color.len() == 7,
+            "颜色必须是 #rrggbb：{}",
+            entry.color
+        );
+
+        // 「已打开」只影响前端小白点，不该改变条目身份。
+        assert!(entry.open);
+        assert!(!self_menu_entry(false).open);
+    }
+
+    /// 固定 id 必须撞不上任何真实配置：`new_profile_id` 只能产出 `[a-z0-9-]`。
+    #[test]
+    fn self_menu_id_cannot_collide_with_profile_ids() {
+        assert!(!SELF_MENU_ID.is_empty());
+        assert!(
+            !SELF_MENU_ID
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "固定 id 含有 slug 不会产出的字符，才能保证不撞车"
+        );
     }
 }
 
