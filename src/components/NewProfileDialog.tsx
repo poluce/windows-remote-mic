@@ -1,18 +1,30 @@
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-/** `app_profile_status` 里本对话框用得到的字段。 */
-type ForegroundStatus = {
-  process: string | null;
+/** `app_profile_foreground_candidates` 返回的一项：一个最近出现过的前台应用。 */
+type ForegroundCandidate = {
+  process: string;
   title: string | null;
 };
+
+/** 进程名去掉 `.exe` 后缀，用作展示名的默认值（`ZCode.exe` → `ZCode`）。 */
+function processStem(process: string): string {
+  return process.replace(/\.exe$/i, "");
+}
 
 /**
  * 新建一份应用配置。
  *
  * 只问三件事：展示名、进程名、可选的窗口标题关键字。第二个是这份配置能不能
- * 生效的关键，所以旁边直接给出**当前前台进程名**并允许一键填入——让人去任务
+ * 生效的关键，所以旁边直接给出**最近前台应用**并允许一键填入——让人去任务
  * 管理器里抄，抄错一个字母这份配置就永远不会命中，而且不会有任何报错。
+ *
+ * # 为什么不提供「当前前台」
+ *
+ * 用户是点本页的「+ 新建应用」进来的，此刻前台窗口必然是 Remote Mic 自己，
+ * 「当前前台」填进去只会得到 `remote-mic.exe`——一份只匹配本应用、永远命中
+ * 不了目标应用的死配置。真正要填的是「刚才还在用、现在被本应用盖住」的那个
+ * 应用，所以后端给的是最近前台历史（已排除本应用自己）。
  */
 export function NewProfileDialog({
   open,
@@ -26,18 +38,18 @@ export function NewProfileDialog({
   const [name, setName] = useState("");
   const [process, setProcess] = useState("");
   const [title, setTitle] = useState("");
-  const [foreground, setForeground] = useState<ForegroundStatus | null>(null);
+  const [candidates, setCandidates] = useState<ForegroundCandidate[]>([]);
 
-  // 每次打开都重新读一次前台：对话框可能开着的时候用户已经切走了。
+  // 每次打开都重新读一次：对话框可能开着的时候用户又切过别的应用。
   useEffect(() => {
     if (!open) return;
     if (!isTauri()) {
-      setForeground({ process: "ZCode.exe", title: "ZCode" });
+      setCandidates([{ process: "ZCode.exe", title: "ZCode" }]);
       return;
     }
-    invoke<ForegroundStatus>("app_profile_status")
-      .then(setForeground)
-      .catch(() => setForeground(null));
+    invoke<ForegroundCandidate[]>("app_profile_foreground_candidates")
+      .then((list) => setCandidates(Array.isArray(list) ? list : []))
+      .catch(() => setCandidates([]));
   }, [open]);
 
   useEffect(() => {
@@ -52,7 +64,12 @@ export function NewProfileDialog({
   if (!open) return null;
 
   const canCreate = process.trim().length > 0 || title.trim().length > 0;
-  const fgProcess = foreground?.process?.trim() || "";
+
+  /** 点最近前台：填进程名；展示名还空着时顺手按进程名给个默认值。 */
+  function useCandidate(candidate: ForegroundCandidate) {
+    setProcess(candidate.process);
+    if (!name.trim()) setName(processStem(candidate.process));
+  }
 
   return (
     <div className="dialog-mask open" onClick={onCancel}>
@@ -81,24 +98,32 @@ export function NewProfileDialog({
               placeholder="例如：ZCode.exe"
               onChange={(e) => setProcess(e.target.value)}
             />
-            <button
-              type="button"
-              className="btn"
-              disabled={!fgProcess}
-              onClick={() => setProcess(fgProcess)}
-            >
-              用当前前台填入
-            </button>
           </div>
           <div className="tip">
             在任务管理器「详细信息」里查到的名称。写错了这份配置不会生效。
-            {fgProcess && (
-              <>
-                {" "}
-                当前前台：<code>{fgProcess}</code>
-              </>
-            )}
           </div>
+          {candidates.length > 0 ? (
+            <div className="tip">
+              最近前台（点一下填入进程名）：
+              <span className="fg-chips">
+                {candidates.map((candidate) => (
+                  <button
+                    key={candidate.process}
+                    type="button"
+                    className="btn ghost small"
+                    title={candidate.title ?? undefined}
+                    onClick={() => useCandidate(candidate)}
+                  >
+                    {candidate.process}
+                  </button>
+                ))}
+              </span>
+            </div>
+          ) : (
+            <div className="tip">
+              先切到目标应用、再回到本页新建，这里就会列出最近用过的进程名。
+            </div>
+          )}
         </div>
 
         <div className="field">

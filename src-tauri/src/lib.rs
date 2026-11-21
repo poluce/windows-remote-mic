@@ -412,6 +412,7 @@ pub fn run() {
             commands::diagnostics::run_self_test,
             commands::diagnostics::generate_diagnostic_report,
             commands::app_profile::menu::app_profile_status,
+            commands::app_profile::menu::app_profile_foreground_candidates,
             commands::app_profile::editor::app_profile_catalog,
             commands::app_profile::menu::app_menu_apps,
             commands::app_profile::menu::open_app_profile,

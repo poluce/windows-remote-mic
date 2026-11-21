@@ -214,8 +214,13 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 用户目录：`%LOCALAPPDATA%\RemoteMic\RC003\app-profiles\*.json`；
   - 种子模板：仓库根 `profiles/*.json`，首次启动播种到用户目录；
   - 前端作用域切换在映射页顶部（`pages/mapping/ScopeBar.tsx`）；
-  - 后端命令：`app_profile_status / app_profile_catalog / app_menu_apps / create_app_profile /
-    save_profile_binding / clear_profile_binding / delete_app_profile / reload_app_profiles`；
+  - 后端命令：`app_profile_status / app_profile_foreground_candidates / app_profile_catalog /
+    app_menu_apps / create_app_profile / save_profile_binding / clear_profile_binding /
+    delete_app_profile / reload_app_profiles`；
+  - **「新建应用配置」的进程名候选不能用当前前台**：用户点进本页时前台必然是本应用自己
+    （`remote-mic.exe`），填出来只会匹配自己。命令 `app_profile_foreground_candidates` 给的是
+    **最近前台历史**（tick 线程每次刷新前台快照时记录，最多 5 条、按进程名去重、排除本应用），
+    对话框点一下即可填入；历史为空才提示用户先切到目标应用。
   - 写命令均为「读文件 → 改一处 → 原子写回 → 重载调度器」，前端不需要再补 reload；
   - 设计说明见 [docs/design/app-profile-mapping.html](docs/design/app-profile-mapping.html)。
 - **自定义快捷键（NamedShortcut）**：名字只是显示层，绑定里存的是 `combo:lctrl+k` 原始写法；

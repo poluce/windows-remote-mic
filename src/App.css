@@ -1083,6 +1083,19 @@ button {
   padding: 1px 5px;
 }
 
+/* 「最近前台」候选：一排小胶囊按钮，点一下填入上方的进程名 */
+.field .tip .fg-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.field .tip .fg-chips .btn {
+  margin: 2px 0;
+}
+
 .stage2 {
   display: inline-block;
   margin-left: 6px;

@@ -12,6 +12,20 @@ pub fn app_profile_status(state: State<AppState>) -> core_dispatch::ForegroundSt
     state.dispatcher.foreground_status()
 }
 
+/// 「新建应用配置」对话框的进程名候选：当前前台（不是本应用自己时）+ 最近前台历史。
+///
+/// # 为什么不能直接用 `app_profile_status`
+///
+/// 打开本页时前台窗口**必然是本应用自己**（用户是点这里进来的），
+/// `app_profile_status.process` 于是返回 `remote-mic.exe`——拿它填进程名，
+/// 建出来的配置只会匹配本应用自己，永远不会命中目标应用。
+/// 用户真正要填的是「刚才还在用、现在被本应用盖住的那个应用」，
+/// 所以这里给的是最近前台历史（后台 tick 线程每次刷新前台快照时记录）。
+#[tauri::command]
+pub fn app_profile_foreground_candidates() -> Vec<core_app_profile::ForegroundApp> {
+    core_app_profile::foreground_candidates()
+}
+
 /// 快捷菜单内圈要显示的应用图标（只含配了 `icon` 的配置）。
 ///
 /// 声明成 `async` 是纵深防御：它会遍历本机所有顶层窗口，虽然实测每次只要
