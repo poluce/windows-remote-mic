@@ -93,9 +93,9 @@ export function MappingPage() {
         {!isGlobalScope && activeProfile && (
           <div className="scope-color-row">
             <span
-              className={`icon-preview${activeProfile.icon_color_custom ? "" : " auto"}`}
+              className="icon-preview"
               style={
-                activeProfile.icon_color_custom && activeProfile.icon_color
+                activeProfile.icon_color
                   ? { background: activeProfile.icon_color }
                   : undefined
               }

@@ -370,6 +370,13 @@
   margin-right: 2px;
 }
 
+/* 这一行是工具栏，比新建对话框里那个预览小一号 */
+.scope-color-row .icon-preview {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+
 /* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
 .matrix-hint {
   margin: 0 0 8px;

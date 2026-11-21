@@ -1060,6 +1060,11 @@ button {
   box-shadow: 0 0 0 3px var(--rm-accent-soft);
 }
 
+.field input::placeholder {
+  color: var(--rm-text-3);
+  opacity: 1;
+}
+
 .field .row {
   display: flex;
   gap: 8px;
@@ -1083,31 +1088,27 @@ button {
   padding: 1px 5px;
 }
 
-/* 「最近前台」候选：一排小胶囊按钮，点一下填入上方的进程名 */
-.field .tip .fg-chips {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-.field .tip .fg-chips .btn {
-  margin: 2px 0;
-}
-
-/* ---------- 内环简标颜色选择器（新建应用 / 作用范围共用） ---------- */
-.icon-color-row {
+/* 展示名左侧的实时简标预览：就是快捷菜单内环里那个「实心圆 + 白字」 */
+.field-avatar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
-/* 预览：画成快捷菜单内环里那个「实心圆 + 白字」的样子 */
+.field-avatar input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 还没填名字、也没挑颜色：淡色占位圆，别做成一块压住视线的深色饼 */
+.icon-preview.empty {
+  background: var(--rm-sunken);
+  box-shadow: inset 0 0 0 1px var(--rm-line-strong);
+}
+
 .icon-preview {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -1118,34 +1119,139 @@ button {
   font-weight: 600;
   letter-spacing: 0.2px;
   background: var(--rm-text-3);
-  border: 1.5px solid var(--rm-solid);
-  box-shadow: 0 0 0 1px var(--rm-line);
+  box-shadow: inset 0 0 0 1px rgba(19, 26, 36, 0.08);
+  transition: background var(--rm-dur) var(--rm-ease);
 }
 
-/* 自动色还没定下来：降饱和一点，暗示「由系统分配」 */
-.icon-preview.auto {
-  filter: saturate(0.35);
-  border-style: dashed;
+/* 最近出现过的前台应用：一行小胶囊，点一下填进上方的进程名 */
+.suggest {
+  margin-top: 8px;
+  font-size: var(--rm-fs-11);
+  line-height: 24px;
+}
+
+.suggest-label {
+  margin-right: 8px;
+  color: var(--rm-text-3);
+}
+
+.suggest-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.suggest-chip {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--rm-r-full);
+  border: 1px solid var(--rm-line);
+  background: var(--rm-chip);
+  color: var(--rm-text-2);
+  font-size: var(--rm-fs-11);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--rm-dur) var(--rm-ease),
+    background var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
+}
+
+.suggest-chip:hover {
+  border-color: var(--rm-accent-line);
+  background: var(--rm-chip-hover);
+  color: var(--rm-text);
+}
+
+/* 已经填进输入框的那一个 */
+.suggest-chip.active {
+  border-color: var(--rm-accent-line);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  font-weight: 500;
+}
+
+/* 分隔「认应用」和「定外观」两组字段 */
+.dialog-divider {
+  height: 1px;
+  margin: 20px 0 0;
+  background: var(--rm-line);
+}
+
+/* 高级项入口：一行弱化的文字按钮，不抢主流程的注意力 */
+.dialog-more {
+  margin-top: 14px;
+}
+
+/* 标签 + 右侧弱化操作（高级项的「收起」） */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-label-row label {
+  margin-bottom: 0;
+}
+
+.link-btn {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--rm-text-3);
+  font-size: var(--rm-fs-12);
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--rm-line-strong);
+  text-underline-offset: 3px;
+  transition: color var(--rm-dur) var(--rm-ease);
+}
+
+.link-btn:hover {
+  color: var(--rm-accent-strong);
+  text-decoration-color: currentColor;
+}
+
+/* ---------- 内环简标颜色选择器（新建应用 / 作用范围共用） ---------- */
+.icon-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .icon-swatch {
+  position: relative;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1px solid var(--rm-line-strong);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   padding: 0;
   flex: none;
   cursor: pointer;
-  background: var(--rm-chip);
-  transition: transform 120ms var(--rm-ease), box-shadow var(--rm-dur) var(--rm-ease);
+  transition: transform 120ms var(--rm-ease);
 }
 
 .icon-swatch:hover {
-  transform: scale(1.08);
+  transform: scale(1.1);
 }
 
+/* 选中 = 圆心一个白色对勾，比套两圈描边安静，也不改变色点的尺寸 */
 .icon-swatch.active {
-  box-shadow: 0 0 0 2px var(--rm-solid), 0 0 0 4px var(--accent);
+  transform: scale(1.06);
+}
+
+.icon-swatch.active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 8px;
+  height: 4.5px;
+  border-left: 1.8px solid #fff;
+  border-bottom: 1.8px solid #fff;
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 /* 「自动」不是一种颜色，长成文字胶囊，和色点区分开 */
@@ -1154,15 +1260,23 @@ button {
   height: 22px;
   border-radius: var(--rm-r-full);
   padding: 0 10px;
-  font-size: var(--rm-fs-11);
+  border-color: var(--rm-line);
+  background: var(--rm-chip);
   color: var(--rm-text-2);
+  font-size: var(--rm-fs-11);
   font-family: inherit;
 }
 
+.icon-swatch.auto.active::after {
+  content: none;
+}
+
 .icon-swatch.auto.active {
-  color: var(--rm-accent-strong);
-  background: var(--rm-accent-soft);
+  transform: none;
   border-color: var(--rm-accent-line);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  font-weight: 500;
 }
 
 .stage2 {
