@@ -18,9 +18,10 @@ pub struct AppProfileView {
     pub process: String,
     /// 窗口标题关键字。
     pub title_contains: Vec<String>,
-    /// 快捷菜单内圈用的品牌色（形如 `#F59E0B`）；没配图标时为空。
+    /// 快捷菜单内圈用的品牌色（形如 `#F59E0B`）；与内环实际画出的颜色一致。
     ///
-    /// 作用范围胶囊上的小圆点用它，和快捷菜单内圈保持一致。
+    /// 作用范围胶囊上的小圆点用它，和快捷菜单内圈保持一致；没写 `icon` 的配置
+    /// 拿到的也是自动简标的颜色，所以这份配置一定会在内环里有入口。
     pub icon_color: Option<String>,
     pub note: String,
     /// 这份配置覆盖了哪些 (按键, 触发)。没列出的格子沿用全局。
@@ -34,7 +35,7 @@ impl AppProfileView {
             name: p.display_name(),
             process: p.process.display(),
             title_contains: p.window_title_contains.clone(),
-            icon_color: p.icon.as_ref().map(|icon| icon.color.clone()),
+            icon_color: Some(p.menu_icon().color),
             note: p.note.clone(),
             bindings: p.bindings.iter().map(binding_entry).collect(),
         }

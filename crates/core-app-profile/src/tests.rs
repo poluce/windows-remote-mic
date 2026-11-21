@@ -323,7 +323,8 @@ fn match_context_prefers_process_over_title() {
 }
 
 #[test]
-fn menu_entries_skip_profiles_without_icon() {
+fn menu_entries_include_all_profiles() {
+    // 入菜单不再看「有没有 icon」：作用域栏里建出来的每一份配置都要能切。
     let mut registry = ProfileRegistry::default();
     registry.upsert(profile("A.exe", "无图标"));
     let mut with_icon = profile("B.exe", "有图标");
@@ -340,8 +341,48 @@ fn menu_entries_skip_profiles_without_icon() {
     registry.upsert(blank);
 
     let entries = registry.menu_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].display_name(), "有图标");
+    let names: Vec<String> = entries.iter().map(|p| p.display_name()).collect();
+    assert_eq!(names, vec!["无图标", "有图标", "空图标"]);
+}
+
+#[test]
+fn menu_icon_falls_back_to_generated_label_and_color() {
+    // 没写 icon：用展示名前两个字母/汉字 + 由 id 决定的稳定颜色。
+    let mut p = profile("Codex.exe", "Codex 桌面版");
+    p.id = "codex-desktop".into();
+    let icon = p.menu_icon();
+    assert_eq!(icon.label, "CO");
+    assert!(icon.color.starts_with('#') && icon.color.len() == 7);
+
+    // 同一份配置永远同一个颜色（重启、改名之外都稳定）。
+    assert_eq!(p.menu_icon(), icon);
+
+    // 显式 icon 优先。
+    p.icon = Some(IconSpec {
+        label: "Cx".into(),
+        color: "#10A37F".into(),
+    });
+    assert_eq!(p.menu_icon().label, "Cx");
+    assert_eq!(p.menu_icon().color, "#10A37F");
+
+    // 显式 label / color 为空时各自回退，不会画出空圆圈。
+    p.icon = Some(IconSpec {
+        label: "  ".into(),
+        color: String::new(),
+    });
+    let icon = p.menu_icon();
+    assert_eq!(icon.label, "CO");
+    assert_eq!(icon.color.len(), 7);
+}
+
+#[test]
+fn auto_icon_label_handles_cjk_and_empty_names() {
+    assert_eq!(IconSpec::auto("微信", "wechat").label, "微信");
+    assert_eq!(IconSpec::auto("ZCode", "zcode").label, "ZC");
+    assert_eq!(IconSpec::auto("  桌面版  ", "x").label, "桌面");
+    // 取不到任何字母/汉字时退回 `?`。
+    assert_eq!(IconSpec::auto("（未命名）", "x").label, "未命");
+    assert_eq!(IconSpec::auto("", "x").label, "?");
 }
 
 #[test]

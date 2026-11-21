@@ -73,6 +73,71 @@ pub struct IconSpec {
     pub color: String,
 }
 
+/// 自动简标的调色板。
+///
+/// 全部沿用作用域胶囊与快捷菜单已有的低饱和品牌色（前三个就是种子配置在用的
+/// 陶土 / 钢蓝 / 琥珀），画布绘制时还会再向中性灰混 22%，不会一屏跳跃的亮色。
+/// 颜色只由稳定 id 决定，改展示名不会换色、重启也不会变。
+const AUTO_ICON_COLORS: [&str; 8] = [
+    "#D97757", // 陶土
+    "#4D6BFE", // 钢蓝
+    "#F59E0B", // 琥珀
+    "#10B981", // 翠绿
+    "#8B5CF6", // 紫罗兰
+    "#0EA5E9", // 天蓝
+    "#EC4899", // 玫红
+    "#64748B", // 石墨
+];
+
+impl IconSpec {
+    /// 从展示名与稳定 id 生成简标：名字取前 1–2 个字母/数字/汉字，颜色按 id 定。
+    ///
+    /// 「新建应用」只填名称与进程名/标题，没有图标编辑器；内环又要能直接切到
+    /// 用户自己建的配置，所以没写 `icon` 的配置在这里得到一个可用的兜底简标。
+    /// 结果只依赖入参，因此每次打开菜单、每次启动都一致。
+    pub fn auto(name: &str, seed: &str) -> Self {
+        Self {
+            label: auto_label(name),
+            color: color_from_seed(seed).to_string(),
+        }
+    }
+}
+
+/// 取展示名的前 1–2 个字母/数字/汉字；取不到时退回 `?`，避免画出空圆圈。
+fn auto_label(name: &str) -> String {
+    let mut label = String::new();
+    for ch in name.chars() {
+        if !ch.is_alphanumeric() {
+            continue;
+        }
+        // ASCII 字母统一大写，和种子里的「CC」「DS」「Z」观感一致。
+        label.push(if ch.is_ascii_alphabetic() {
+            ch.to_ascii_uppercase()
+        } else {
+            ch
+        });
+        if label.chars().count() >= 2 {
+            break;
+        }
+    }
+    if label.is_empty() {
+        "?".to_string()
+    } else {
+        label
+    }
+}
+
+/// FNV-1a：把稳定 id 映射到调色板某一项。不用 `RandomState`——它每次进程启动
+/// 都会换种子，菜单颜色会跟着闪。
+fn color_from_seed(seed: &str) -> &'static str {
+    let mut hash: u32 = 2_166_136_261;
+    for byte in seed.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    AUTO_ICON_COLORS[hash as usize % AUTO_ICON_COLORS.len()]
+}
+
 /// 启动一个应用的方式。
 ///
 /// 三种形态对应实际安装情况：
@@ -137,6 +202,39 @@ impl AppProfile {
             self.process.display()
         } else {
             self.name.clone()
+        }
+    }
+
+    /// 快捷菜单内环实际要画的简标：**每份配置都有**。
+    ///
+    /// 显式写了 `icon` 就用它（空 label / 空 color 各自回退到自动值），没写就
+    /// 自动生成——内环不再以「有没有 icon 字段」当入菜单开关，用户在这里新建
+    /// 的每一份应用配置都能直接在菜单里切换。
+    pub fn menu_icon(&self) -> IconSpec {
+        let name = self.display_name();
+        // id 是文件名（稳定）；测试或临时构造的配置没有 id 时退回展示名，
+        // 至少同一进程内颜色是稳定的。
+        let seed = if self.id.is_empty() {
+            name.clone()
+        } else {
+            self.id.clone()
+        };
+        let auto = IconSpec::auto(&name, &seed);
+
+        match &self.icon {
+            Some(icon) => IconSpec {
+                label: if icon.label.trim().is_empty() {
+                    auto.label
+                } else {
+                    icon.label.clone()
+                },
+                color: if icon.color.trim().is_empty() {
+                    auto.color
+                } else {
+                    icon.color.clone()
+                },
+            },
+            None => auto,
         }
     }
 

@@ -239,7 +239,7 @@ fn profile_json(profile: &core_app_profile::AppProfile) -> Value {
         "name": profile.display_name(),
         "process": profile.process.display(),
         "title_contains": profile.window_title_contains,
-        "icon_color": profile.icon.as_ref().map(|i| i.color.clone()),
+        "icon_color": profile.menu_icon().color,
         "note": profile.note,
         "bindings": profile.bindings.iter().map(binding_json).collect::<Vec<_>>(),
     })

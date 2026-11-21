@@ -304,8 +304,9 @@ impl KeyDispatcher {
 
     /// 快捷菜单内圈要显示的应用图标。
     ///
-    /// 只返回配了 `icon` 的配置——**图标即入菜单的开关**，不在菜单里露脸的应用
-    /// 仍然可以正常享受前台自动切换映射，只是没有入口。
+    /// **列出全部应用配置**：没有显式 `icon` 的用自动简标兜底（见
+    /// [`core_app_profile::AppProfile::menu_icon`]）。用户新建一份应用配置后
+    /// 就直接能在菜单里切过去，不需要再手写图标字段。
     pub fn menu_apps(&self) -> Vec<MenuAppEntry> {
         // 先把要展示的配置拷出来、放掉调度器的锁，再去枚举窗口。
         // `find_window` 要遍历本机所有顶层窗口，不该让按键线程陪着一起等，
@@ -317,15 +318,15 @@ impl KeyDispatcher {
 
         profiles
             .iter()
-            .filter_map(|p| {
-                let icon = p.icon.as_ref()?;
-                Some(MenuAppEntry {
+            .map(|p| {
+                let icon = p.menu_icon();
+                MenuAppEntry {
                     id: p.id.clone(),
                     name: p.display_name(),
-                    label: icon.label.clone(),
-                    color: icon.color.clone(),
+                    label: icon.label,
+                    color: icon.color,
                     open: core_app_profile::find_window(p).is_some(),
-                })
+                }
             })
             .collect()
     }

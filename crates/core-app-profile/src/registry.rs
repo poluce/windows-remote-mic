@@ -109,11 +109,12 @@ impl ProfileRegistry {
             .or_else(|| self.profiles.iter().find(|p| p.matches_title(window_title)))
     }
 
-    /// 配了图标的配置，用于快捷菜单内圈；顺序即文件里的声明顺序。
+    /// 快捷菜单内圈要列出的配置：**全部配置**，顺序即文件里的声明顺序。
+    ///
+    /// 没有 `icon` 的配置由 [`AppProfile::menu_icon`] 生成兜底简标，不再排除——
+    /// 用户在作用域栏新建的应用必须能直接在菜单里切到，这是「加应用 = 加菜单项」
+    /// 的语义。
     pub fn menu_entries(&self) -> Vec<&AppProfile> {
-        self.profiles
-            .iter()
-            .filter(|p| p.icon.as_ref().is_some_and(|i| !i.label.trim().is_empty()))
-            .collect()
+        self.profiles.iter().collect()
     }
 }
