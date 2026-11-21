@@ -10,6 +10,9 @@ type ForegroundCandidate = {
   title: string | null;
 };
 
+/** 自定义取色器的初始值（点开时停在这里，没选过就用它）。 */
+const DEFAULT_CUSTOM_COLOR = "#4d6bfe";
+
 /** 进程名去掉 `.exe` 后缀，用作展示名的默认值（`ZCode.exe` → `ZCode`）。 */
 function processStem(process: string): string {
   return process.replace(/\.exe$/i, "");
@@ -93,6 +96,10 @@ export function NewProfileDialog({
 
   const canCreate = process.trim().length > 0 || title.trim().length > 0;
   const label = name.trim() ? previewLabel(name) : "";
+  /** 当前颜色不在预设色卡里 = 用户用取色器挑的自定义色。 */
+  const isCustomColor =
+    iconColor !== null &&
+    !palette.some((color) => color.toLowerCase() === iconColor.toLowerCase());
 
   /** 点最近前台：填进程名；展示名还空着时顺手按进程名给个默认值。 */
   function useCandidate(candidate: ForegroundCandidate) {
@@ -172,6 +179,36 @@ export function NewProfileDialog({
                         }}
                       />
                     ))}
+
+                    {/* 自定义：点开系统取色器，可调任意颜色 */}
+                    <label
+                      className={`icon-swatch custom${
+                        isCustomColor ? " active" : ""
+                      }`}
+                      title={
+                        isCustomColor && iconColor
+                          ? `自定义颜色 ${iconColor}`
+                          : "自定义颜色…"
+                      }
+                    >
+                      <span
+                        className="custom-fill"
+                        style={
+                          isCustomColor && iconColor
+                            ? { background: iconColor }
+                            : undefined
+                        }
+                      />
+                      <input
+                        type="color"
+                        value={iconColor ?? DEFAULT_CUSTOM_COLOR}
+                        aria-label="自定义颜色"
+                        onChange={(e) => {
+                          setIconColor(e.target.value.toLowerCase());
+                          setColorOpen(false);
+                        }}
+                      />
+                    </label>
                   </div>
                 </div>
               </>
