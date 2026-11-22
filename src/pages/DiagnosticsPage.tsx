@@ -23,15 +23,6 @@ type SelfTestItem = {
   detail: string;
 };
 
-/// 前台应用与命中的应用配置（对应后端 core_dispatch::ForegroundStatus）。
-type ForegroundStatus = {
-  process: string | null;
-  title: string | null;
-  profile: string | null;
-  profile_count: number;
-  overridden_buttons: string[];
-};
-
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
@@ -43,8 +34,6 @@ export function DiagnosticsPage() {
   const [vhidBusy, setVhidBusy] = useState(false);
   const [vhidMsg, setVhidMsg] = useState("");
   const [reportMsg, setReportMsg] = useState("");
-  const [foreground, setForeground] = useState<ForegroundStatus | null>(null);
-  const [profileMsg, setProfileMsg] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -64,31 +53,7 @@ export function DiagnosticsPage() {
 
   useEffect(() => {
     runCheck();
-    refreshForeground();
   }, []);
-
-  async function refreshForeground() {
-    if (!isTauri()) return;
-    try {
-      setForeground(await invoke<ForegroundStatus>("app_profile_status"));
-    } catch {
-      // 后端暂不可用时保持上一次结果
-    }
-  }
-
-  async function reloadProfiles() {
-    if (!isTauri()) {
-      setProfileMsg("请在桌面应用内操作");
-      return;
-    }
-    try {
-      const count = await invoke<number>("reload_app_profiles");
-      await refreshForeground();
-      setProfileMsg(`已重载 ${count} 份应用配置`);
-    } catch (err) {
-      setProfileMsg(`重载失败：${err}`);
-    }
-  }
 
   async function installVbCable() {
     if (!isTauri()) {
@@ -303,63 +268,6 @@ export function DiagnosticsPage() {
             {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
           </button>
         </div>
-      </section>
-
-      <section className="card diag-card">
-        <div className="diag-head">
-          <div className="diag-head-text">
-            <div className="diag-title">应用专属映射</div>
-            <div className="diag-status">
-              当前{foreground?.profile ? `命中「${foreground.profile}」` : "使用全局映射"}
-              <span className="diag-status-meta">
-                已加载 {foreground?.profile_count ?? 0} 份配置
-              </span>
-            </div>
-          </div>
-          <div className="diag-head-actions">
-            <button className="btn" onClick={refreshForeground}>
-              刷新
-            </button>
-            <button className="btn" onClick={reloadProfiles}>
-              重载配置
-            </button>
-          </div>
-        </div>
-
-        <div className="diag-rows">
-          <div className="diag-row">
-            <span className="diag-row-label">当前前台进程</span>
-            <span className="diag-row-value diag-mono">
-              {foreground?.process ?? "读不到前台窗口"}
-            </span>
-          </div>
-          <div className="diag-row">
-            <span className="diag-row-label">当前窗口标题</span>
-            <span className="diag-row-value diag-ellipsis" title={foreground?.title ?? ""}>
-              {foreground?.title ?? "—"}
-            </span>
-          </div>
-          <div className="diag-row">
-            <span className="diag-row-label">命中的应用配置</span>
-            <span className="diag-row-value">
-              {foreground?.profile ?? "未命中"}
-            </span>
-          </div>
-          <div className="diag-row">
-            <span className="diag-row-label">覆盖的按键</span>
-            <span className="diag-row-value diag-ellipsis">
-              {foreground?.overridden_buttons.length
-                ? foreground.overridden_buttons.join("、")
-                : "—"}
-            </span>
-          </div>
-        </div>
-
-        {profileMsg && <div className="diag-note">{profileMsg}</div>}
-        <p className="diag-help">
-          切到目标应用后点「刷新」：这里的进程名就是配置里的 <code>process</code>；
-          网页应用或跑在 WSL 里的服务认不出进程，改用 <code>window_title_contains</code> 匹配标题。
-        </p>
       </section>
 
       <div className="section-label">按键测试</div>

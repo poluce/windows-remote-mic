@@ -100,18 +100,6 @@
   color: var(--rm-text-3);
 }
 
-.diag-mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: var(--rm-fs-12);
-}
-
-.diag-ellipsis {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ---------- 空态 / 说明 ---------- */
 .diag-empty {
   padding: 16px 0 6px;
@@ -127,21 +115,6 @@
   line-height: 1.7;
   /* 诊断报告路径、安装错误都可能很长 */
   word-break: break-all;
-}
-
-.diag-help {
-  margin: 10px 0 0;
-  font-size: var(--rm-fs-12);
-  color: var(--rm-text-4);
-  line-height: 1.7;
-}
-
-.diag-help code {
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--rm-chip);
-  color: var(--rm-text-2);
-  font-size: 11.5px;
 }
 
 /* ---------- 卡底工具条 ---------- */
