@@ -3,13 +3,12 @@
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  /* 左列只有遥控器图形，而且它**没有卡片外壳**（见 .remote-card）。所以这一列
-     需要多宽就等于遥控器多宽：137px（定尺寸像素图，zoom 顶到 1.3 就是 136.5，
-     不再随窗口变）。底下那行键名「确定」28px 远比它窄，不参与决定。
-     145px = 137 + 8px 保险；140px 只剩 2px，135px 就开始裁掉图形了。
+  /* 左列只有遥控器图形（没有卡片外壳，见 .remote-card），宽度就跟着它走：
+     `useRemoteZoom` 按右卡高度算好 zoom 后，把「遥控器宽度 + 余量」写进
+     `--remote-col-width`，这里用上；量不到之前退回 145px（旧值，够放 1.3 倍）。
      右边写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话窗口一窄
      就会被里面两张卡的最小宽度顶出去。 */
-  grid-template-columns: minmax(0, 145px) minmax(0, 1fr);
+  grid-template-columns: max(145px, var(--remote-col-width, 145px)) minmax(0, 1fr);
   gap: 16px;
   /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
      各占各的内容高度，遥控器那一列会明显比右边的向导 + 矩阵卡矮一截。 */
@@ -32,9 +31,9 @@
   align-items: center;
 }
 
-/* 映射向导里的遥控器放大展示 */
+/* 映射向导里的遥控器放大展示（zoom 的具体值由 useRemoteZoom 按高度写入） */
 .mapping-wizard .x2pro-remote {
-  zoom: 1.3;
+  zoom: var(--remote-zoom, 1.3);
 }
 
 /* ---------- 映射向导：左栏的垂直间距 ----------
@@ -440,9 +439,10 @@
   overflow: visible;
 }
 
-/* 动作文字 + × 的共同容器：宽度跟随内容，× 不会飘到整列最右边 */
+/* 动作文字 + × 的共同容器：宽度跟随内容。
+   × 是「单元格」的右上角角标（绝对定位挂在 .matrix-cell 上，见 .matrix-cell-x），
+   所以这里**不能**再建定位上下文——否则窄列里 × 会压到文字上。 */
 .matrix-cell-content {
-  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: 0;
