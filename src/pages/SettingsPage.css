@@ -1,6 +1,23 @@
 /* 通用设置页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
 
 /* ---------- 通用设置页 ---------- */
+/* 三张卡各自带标题（基础 / 智能体接入 / 关于与更新），不再用页面级的 section-label
+   分组——那会让每组之间多出 22px 空档，整页看起来碎。 */
+.settings-card {
+  padding: 14px 18px 8px;
+}
+
+.settings-card .card-title {
+  margin: 0 0 2px;
+  font-size: var(--rm-fs-13);
+  color: var(--rm-text);
+}
+
+/* 卡片标题本身已经和第一行分开，第一行不再需要额外上边距 */
+.settings-card .card-title + .form-row {
+  border-top: none;
+}
+
 /* 复用已有的 .form-card / .form-row / .form-label（macOS 系统设置式），
    这里只补「标题 + 说明」两行文字的主体列，以及行尾的窄下拉。 */
 .form-text {

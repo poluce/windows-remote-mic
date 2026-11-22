@@ -258,13 +258,13 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="section-label">外观</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">基础</div>
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">主题</div>
             <p className="hint">
-              跟随系统时会随 Windows 的浅色 / 深色设置自动切换
+              跟随系统时随 Windows 自动切换
               {themePref === "system" && `（当前为${resolvedTheme === "dark" ? "深色" : "浅色"}）`}。
             </p>
           </div>
@@ -282,15 +282,12 @@ export function SettingsPage() {
             ))}
           </div>
         </div>
-      </section>
 
-      <div className="section-label">按键信号</div>
-      <section className="card form-card">
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">关闭窗口时最小化到系统托盘</div>
             <p className="hint">
-              开启后点击窗口右上角 × 时仅隐藏，不退出应用。
+              点右上角 × 时只隐藏，不退出应用。
             </p>
           </div>
           <button
@@ -310,7 +307,7 @@ export function SettingsPage() {
           <div className="form-text">
             <div className="form-label">拦截 HID 按键信号</div>
             <p className="hint">
-              开启后按键由本应用独占，系统不再响应；关闭则两边同时响应。
+              开启后按键由本应用独占，系统不再响应。
             </p>
           </div>
           <button
@@ -331,14 +328,11 @@ export function SettingsPage() {
              <p className="hint warn">驱动注入尚未就绪，此时按键可能仍会被系统响应。</p>
           </div>
         )}
-      </section>
 
-      <div className="section-label">按键判定</div>
-      <section className="card form-card">
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">长按判定</div>
-            <p className="hint">按住多久算长按。麦克风的「按住说话」也用它。</p>
+            <p className="hint">按住多久算长按；麦克风的「按住说话」也用它。</p>
           </div>
           <select
             className="select timing-select"
@@ -356,9 +350,7 @@ export function SettingsPage() {
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">双击间隔</div>
-            <p className="hint">
-              两次按下间隔多短算双击。只有绑定了双击的按键才会等这个窗口；没绑双击的键，单击松开立即生效。
-            </p>
+            <p className="hint">只有绑定了双击的按键才会等这个窗口。</p>
           </div>
           <select
             className="select timing-select"
@@ -375,14 +367,13 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <div className="section-label">智能体接入</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">智能体接入</div>
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">允许智能体配置（MCP）</div>
             <p className="hint">
-              仅本机可访问。开启后智能体可通过 MCP 修改按键映射与触发时间，修改立即生效；
-              关闭后接口立即失效。默认关闭。
+              仅本机可访问。开启后智能体可修改按键映射与触发时间，立即生效。默认关闭。
             </p>
             {agentStatus && (
               <p className="hint">
@@ -441,8 +432,8 @@ export function SettingsPage() {
         {agentMsg && <p className="hint">{agentMsg}</p>}
       </section>
 
-      <div className="section-label">关于与更新</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">关于与更新</div>
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">
