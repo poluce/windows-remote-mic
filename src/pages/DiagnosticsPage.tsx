@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { RemoteKeyTester } from "../components/RemoteKeyTester";
 import { IconSearch } from "../components/icons";
-import { OUTPUT_DEVICE } from "../constants";
 import "./DiagnosticsPage.css";
 
 type Diagnostics = {
@@ -29,10 +28,7 @@ export function DiagnosticsPage() {
   const [checked, setChecked] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState("");
-  const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
-  const [vhidBusy, setVhidBusy] = useState(false);
-  const [vhidMsg, setVhidMsg] = useState("");
   const [reportMsg, setReportMsg] = useState("");
 
   async function runCheck() {
@@ -70,22 +66,6 @@ export function DiagnosticsPage() {
       setInstallMsg(`安装失败：${err}`);
     } finally {
       setInstalling(false);
-    }
-  }
-
-  async function installVhidDriver() {
-    if (!isTauri()) {
-      setVhidMsg("请在桌面应用内操作");
-      return;
-    }
-    setVhidBusy(true);
-    setVhidMsg("正在安装虚拟键盘驱动…请在 UAC 弹窗中点「是」");
-    try {
-      setVhidMsg(await invoke<string>("install_vhid_driver"));
-    } catch (err) {
-      setVhidMsg(`安装失败：${err}`);
-    } finally {
-      setVhidBusy(false);
     }
   }
 
@@ -127,26 +107,6 @@ export function DiagnosticsPage() {
       await invoke("open_log_dir");
     } catch (err) {
       setReportMsg(`打开报告目录失败：${err}`);
-    }
-  }
-
-  async function loopTone() {
-    if (!isTauri()) {
-      setStatus("测试音循环仅在桌面应用内可用");
-      return;
-    }
-    setLooping(true);
-    setStatus("循环播放测试音中…");
-    try {
-      const result = await invoke<string>("play_test_tone_loop", {
-        deviceName: OUTPUT_DEVICE,
-        repetitions: 3,
-      });
-      setStatus(result);
-    } catch (err) {
-      setStatus(`播放失败: ${err}`);
-    } finally {
-      setLooping(false);
     }
   }
 
@@ -221,7 +181,7 @@ export function DiagnosticsPage() {
             </span>
           </div>
 
-          {selfTests ? (
+          {selfTests &&
             selfTests.map((t) => (
               <div className="diag-row" key={t.name}>
                 <span className="diag-row-label">{t.name}</span>
@@ -236,13 +196,7 @@ export function DiagnosticsPage() {
                   </span>
                 </span>
               </div>
-            ))
-          ) : (
-            <div className="diag-empty">
-              还没跑过自检。点右上角「运行全自检」，会检查音频端点、虚拟声卡、虚拟键盘、
-              语音链路等 10 项。
-            </div>
-          )}
+            ))}
         </div>
 
         {checked && !data.has_vb_cable && (
@@ -251,21 +205,14 @@ export function DiagnosticsPage() {
           </div>
         )}
         {installMsg && <div className="diag-note">{installMsg}</div>}
-        {vhidMsg && <div className="diag-note">{vhidMsg}</div>}
         {reportMsg && <div className="diag-note">{reportMsg}</div>}
 
         <div className="diag-tools">
           <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
             打开报告目录
           </button>
-          <button className="btn" onClick={loopTone} disabled={looping}>
-            {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
-          </button>
           <button className="btn" onClick={toggleQuickMenu}>
             打开 / 关闭快捷菜单
-          </button>
-          <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
-            {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
           </button>
         </div>
       </section>

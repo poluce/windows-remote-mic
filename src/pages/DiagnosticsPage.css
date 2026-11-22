@@ -100,14 +100,7 @@
   color: var(--rm-text-3);
 }
 
-/* ---------- 空态 / 说明 ---------- */
-.diag-empty {
-  padding: 16px 0 6px;
-  font-size: var(--rm-fs-12);
-  color: var(--rm-text-3);
-  line-height: 1.7;
-}
-
+/* ---------- 说明 / 消息 ---------- */
 .diag-note {
   margin-top: 10px;
   font-size: var(--rm-fs-12);
