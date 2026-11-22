@@ -93,7 +93,7 @@ static AUTO_ICON_COLORS: [&str; 8] = [
     "#FFB800", // 琥珀
     "#FFE600", // 亮黄
     "#8CE000", // 黄绿
-    "#FF6B8B", // 粉红
+    "#4D6BFE", // 钢蓝
     "#FF2A85", // 玫红
     "#B84DFF", // 紫
 ];

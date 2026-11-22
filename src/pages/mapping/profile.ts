@@ -13,7 +13,7 @@ const FALLBACK_ICON_PALETTE = [
   "#ffb800",
   "#ffe600",
   "#8ce000",
-  "#ff6b8b",
+  "#4d6bfe",
   "#ff2a85",
   "#b84dff",
 ];
