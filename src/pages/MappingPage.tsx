@@ -43,6 +43,7 @@ export function MappingPage() {
     save,
     toggleBinding,
     clearBinding,
+    clearOverride,
     toast,
     dismissToast,
     activeProfile,
@@ -229,7 +230,11 @@ export function MappingPage() {
                   if (bound) void toggleBinding(button, trig);
                 }}
                 onClear={(button, trig) => {
-                  void clearBinding(button, trig);
+                  if (isGlobalScope) {
+                    void clearBinding(button, trig);
+                  } else {
+                    void clearOverride(button, trig);
+                  }
                 }}
               />
             </div>

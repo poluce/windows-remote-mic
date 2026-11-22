@@ -12,6 +12,7 @@ import {
   toComboActionKey,
 } from "./combo";
 import {
+  clearProfileBinding,
   createProfile as createProfileRequest,
   deleteProfile,
   loadProfiles,
@@ -376,6 +377,25 @@ export function useMappingEditor() {
     }
   }
 
+  /**
+   * 取消这一格在**当前应用配置**里的覆盖，退回沿用全局。
+   *
+   * 和全局作用域的「取消关联」（删掉全局绑定）是两件事：这里只动
+   * `app-profiles/<id>.json` 里这条覆盖，全局配置原样保留。
+   */
+  async function clearOverride(button: string, trig: string) {
+    if (!isTauri() || isGlobalScope) return;
+    const name = buttons.find((b) => b.key === button)?.name ?? button;
+    const where = `${name} · ${triggerLabel[trig] ?? trig}`;
+    try {
+      await clearProfileBinding(scope, button, trig);
+      await refreshProfiles();
+      showToast(`「${where}」已回到沿用全局`);
+    } catch (err) {
+      showToast(`取消失败: ${err}`);
+    }
+  }
+
   async function handleCreate(values: ProfileFormValues) {
     setNewOpen(false);
     try {
@@ -500,6 +520,7 @@ export function useMappingEditor() {
     save,
     toggleBinding,
     clearBinding,
+    clearOverride,
     toast,
     dismissToast,
     activeProfile,

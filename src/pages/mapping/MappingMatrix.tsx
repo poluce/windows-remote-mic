@@ -102,10 +102,16 @@ export function MappingMatrix({
                   .join(" ");
 
                 const title = entry
-                  ? `${own ? "这份配置改过：" : "沿用全局："}${entry.action}${
-                      enabled ? "（点击禁用）" : "（已禁用，点击恢复）"
-                    }`
-                  : "未绑定（点击选中，再选动作保存）";
+                  ? own
+                    ? `这份配置改过：${entry.action}${
+                        interactive
+                          ? enabled
+                            ? "（点击禁用）"
+                            : "（已禁用，点击恢复）"
+                          : "（点右上角 × 回到沿用全局）"
+                      }`
+                    : `沿用全局：${entry.action}`
+                  : "未绑定：点击选中，再从左侧选动作保存";
 
                 return (
                   <span
@@ -126,15 +132,20 @@ export function MappingMatrix({
                         {entry?.action || "—"}
                       </span>
                     </span>
-                    {interactive && entry && (
+                    {/* 全局：删掉全局绑定；应用配置：只删「这一格的覆盖」，回到沿用全局 */}
+                    {(onClear && (interactive ? Boolean(entry) : Boolean(own))) && (
                       <button
                         type="button"
                         className="matrix-cell-x"
-                        title={`取消关联：${entry.action}`}
+                        title={
+                          interactive
+                            ? `取消关联：${entry?.action}`
+                            : `取消这份配置的覆盖：${own?.action}`
+                        }
                         aria-label={`取消关联 ${button.name} · ${t.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onClear?.(button.key, t.key);
+                          onClear(button.key, t.key);
                         }}
                       >
                         ×
@@ -161,12 +172,10 @@ export function MappingMatrix({
           <i className="sw empty" />
           未绑定
         </span>
-        {interactive && (
-          <span className="lg">
-            <i className="sw x">×</i>
-            取消关联
-          </span>
-        )}
+        <span className="lg">
+          <i className="sw x">×</i>
+          取消关联
+        </span>
       </div>
     </>
   );
