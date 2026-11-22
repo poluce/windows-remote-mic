@@ -31,6 +31,7 @@ import {
 } from "./shortcuts";
 import {
   GLOBAL_SCOPE,
+  GLOBAL_SCOPE_COLOR,
   type AppProfileView,
   type MappingCatalog,
   type MappingEntry,
@@ -281,7 +282,12 @@ export function useMappingEditor() {
   const isGlobalScope = scope === GLOBAL_SCOPE;
 
   const scopeItems: ScopeItem[] = [
-    { id: GLOBAL_SCOPE, label: "全局", removable: false },
+    {
+      id: GLOBAL_SCOPE,
+      label: "全局",
+      color: GLOBAL_SCOPE_COLOR,
+      removable: false,
+    },
     ...profiles.map((p) => ({
       id: p.id,
       label: p.name,

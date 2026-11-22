@@ -74,3 +74,10 @@ export type ScopeId = string;
  * 那份配置会在界面上被全局挡掉，永远选不中。
  */
 export const GLOBAL_SCOPE: ScopeId = "__global__";
+
+/// 「全局」胶囊的填充色。
+///
+/// 与后端快捷菜单内环「全局设置」简标的颜色一致
+/// （`commands/app_profile/menu.rs` 的 `self_menu_entry`，钢蓝 #2b6fc0），
+/// 这样同一个「全局」在菜单和映射页看起来是同一个东西。
+export const GLOBAL_SCOPE_COLOR = "#2b6fc0";

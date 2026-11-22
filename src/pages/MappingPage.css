@@ -316,9 +316,11 @@
 }
 
 .scope-pill.filled.active {
+  /* 两种作用域都是实心胶囊，选中态必须一眼看出来：
+     内圈用与字色同源的描边（深底上偏白、浅底上偏黑），外加一层浮起阴影。 */
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, currentColor 65%, transparent),
-    0 1px 2px rgba(15, 23, 42, 0.16);
+    inset 0 0 0 2px color-mix(in srgb, currentColor 80%, transparent),
+    0 2px 8px rgba(15, 23, 42, 0.22);
 }
 
 /* 圆点颜色来自后端应用档案（profiles/*.json），互相之间色相差异很大。
