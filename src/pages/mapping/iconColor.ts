@@ -75,3 +75,25 @@ export function hslToHex(h: number, s: number, l: number): string {
       .padStart(2, "0");
   return `#${channel(rgb[0])}${channel(rgb[1])}${channel(rgb[2])}`;
 }
+
+
+/**
+ * 简标文字该用白字还是深色字。
+ *
+ * 预设色卡里既有 `#B84DFF` 这种深紫，也有 `#FFE600` 这种亮黄；统一白字会把亮色
+ * 上的字糊掉。按 WCAG 的相对亮度算一下，选对比度更高的那一侧。
+ */
+export function readableTextColor(hex: string): "#ffffff" | "#131a24" {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return "#ffffff";
+  const channel = (offset: number) => {
+    const v = parseInt(match[1].slice(offset, offset + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  // 与白色、深色的对比度比较：luminance 越低越该用白字。
+  const contrastWhite = 1.05 / (luminance + 0.05);
+  const contrastDark = (luminance + 0.05) / 0.058;
+  return contrastWhite >= contrastDark ? "#ffffff" : "#131a24";
+}

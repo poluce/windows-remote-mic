@@ -6,6 +6,7 @@ import {
   hexToHsl,
   hslToHex,
   previewLabel,
+  readableTextColor,
 } from "../pages/mapping/iconColor";
 
 /** `app_profile_foreground_candidates` 返回的一项：一个最近出现过的前台应用。 */
@@ -156,7 +157,14 @@ export function ProfileDialog({
               className={`icon-preview${iconColor ? "" : " auto"}${
                 label ? "" : " empty"
               }`}
-              style={iconColor ? { background: iconColor } : undefined}
+              style={
+                iconColor
+                  ? {
+                      background: iconColor,
+                      color: readableTextColor(iconColor),
+                    }
+                  : undefined
+              }
               title="设置快捷菜单内环颜色"
               aria-label="设置快捷菜单内环颜色"
               aria-expanded={colorOpen}

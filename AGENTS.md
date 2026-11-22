@@ -165,7 +165,7 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   于是「全局设置 ↔ 各应用设置」在同一个菜单里能来回切，不需要额外的模式开关。
   后面依次是 `app-profiles/` 里**每一份**配置——在映射页「+ 新建应用」建好的配置立即出现在内环，
   可直接切换，不需要额外配置。没写 `icon` 的配置用自动简标兜底（展示名前 1–2 个字母/汉字 +
-  按 id 稳定映射的低饱和色）；`icon` 只用于**自定义**简标，不再是入菜单开关。
+  按 id 稳定映射的预设色）；`icon` 只用于**自定义**简标，不再是入菜单开关。
 - 该窗口加载静态 HTML，**不走 Vite HMR**；修改后需重新打开窗口（或重启应用）才能生效。
 - **热更新坑**：不要删掉 `toggle_quick_menu` 里显示时的 `window.location.reload()`，
   否则改 `quick-menu.html` 后必须重启整个应用才能看到变化。
@@ -218,17 +218,20 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 种子模板：仓库根 `profiles/*.json`，首次启动播种到用户目录；
   - 前端作用域切换在映射页顶部（`pages/mapping/ScopeBar.tsx`）；
   - 后端命令：`app_profile_status / app_profile_foreground_candidates / app_profile_catalog /
-    app_menu_apps / create_app_profile / save_profile_binding / clear_profile_binding /
-    delete_app_profile / reload_app_profiles`；
+    app_menu_apps / create_app_profile / update_app_profile / save_profile_binding /
+    clear_profile_binding / delete_app_profile / reload_app_profiles`；
   - **「新建应用配置」的进程名候选不能用当前前台**：用户点进本页时前台必然是本应用自己
     （`remote-mic.exe`），填出来只会匹配自己。命令 `app_profile_foreground_candidates` 给的是
     **最近前台历史**（tick 线程每次刷新前台快照时记录，最多 5 条、按进程名去重、排除本应用），
     对话框点一下即可填入；历史为空才提示用户先切到目标应用。
   - 写命令均为「读文件 → 改一处 → 原子写回 → 重载调度器」，前端不需要再补 reload；
-  - **内环简标颜色可选**：`IconSpec` 的 `label` / `color` 都可省略（空值各自回退到自动规则），
-    「新建应用」对话框与作用范围条（选中某份配置后）都能挑颜色，可选项来自后端
-    `app_icon_palette`（唯一色卡，别在前端硬编码第二份）；改颜色走 `set_profile_icon_color`，
-    传 `null` 恢复自动色，且不会动用户手写的简标文字。
+  - **配置编辑走同一张弹窗**：新建与编辑共用 `components/ProfileDialog.tsx`，作用范围条下
+    **不再就地展开设置行**——自建配置胶囊左上角 ✎ 打开编辑弹窗（右上角 × 仍删除整份配置），
+    保存走 `update_app_profile`（展示名 / 匹配规则 / 内环颜色一次写回）。
+  - **内环简标颜色**：`IconSpec` 的 `label` / `color` 都可省略（空值各自回退到自动规则）；
+    点展示名左侧圆圈开颜色浮层（`自动` + 8 个预设色 + 色相/明度滑杆），可选项来自后端
+    `app_icon_palette`（唯一色卡，别在前端硬编码第二份），传 `null` 恢复自动色，
+    且不会动用户手写的简标文字。预设色卡含亮黄/黄绿时，简标文字会按底色亮度自动切黑或白。
   - 设计说明见 [docs/design/app-profile-mapping.html](docs/design/app-profile-mapping.html)。
 - **自定义快捷键（NamedShortcut）**：名字只是显示层，绑定里存的是 `combo:lctrl+k` 原始写法；
   改 / 删名字不影响已有绑定（显示时回退原始按键）。

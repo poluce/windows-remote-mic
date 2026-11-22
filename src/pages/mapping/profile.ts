@@ -8,14 +8,14 @@ import type { AppProfileView } from "./types";
  * `AUTO_ICON_COLORS`），这里只在没有 Tauri 时兜底，不要拿它当第二事实来源。
  */
 const FALLBACK_ICON_PALETTE = [
-  "#d97757",
-  "#4d6bfe",
-  "#f59e0b",
-  "#10b981",
-  "#8b5cf6",
-  "#0ea5e9",
-  "#ec4899",
-  "#64748b",
+  "#ff4d4f",
+  "#ff7a00",
+  "#ffb800",
+  "#ffe600",
+  "#8ce000",
+  "#ff6b8b",
+  "#ff2a85",
+  "#b84dff",
 ];
 
 /**

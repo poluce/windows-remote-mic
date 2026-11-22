@@ -66,6 +66,20 @@
       return '#' + to2(mix(r, nr)) + to2(mix(g, ng)) + to2(mix(b, nb));
     }
 
+    // 简标文字该用白字还是深色字：色卡里既有深紫也有亮黄，统一白字会在亮底上糊掉。
+    function readableTextColor(hex) {
+      if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return '#ffffff';
+      const channel = (offset) => {
+        const v = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      const luminance =
+        0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+      const contrastWhite = 1.05 / (luminance + 0.05);
+      const contrastDark = (luminance + 0.05) / 0.058;
+      return contrastWhite >= contrastDark ? '#ffffff' : '#131a24';
+    }
+
     const CX = 420;
     const CY = 420;
     const OUTER_R = 350;
@@ -237,7 +251,8 @@
           const label = String(item.label || '?');
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#ffffff';
+          // 文字色跟着降饱和后的底色走，亮黄/黄绿上用深色字
+          ctx.fillStyle = readableTextColor(muteBrandColor(item.color || '#5c6979'));
           ctx.font =
             '700 ' +
             (label.length > 2 ? 12 : label.length > 1 ? 15 : 19) +
