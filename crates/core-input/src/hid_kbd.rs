@@ -254,6 +254,18 @@ fn token_to_part(tok: &str) -> Option<HidPart> {
         "down" => HidPart::Key(0x51),
         "up" => HidPart::Key(0x52),
         "apps" | "context_menu" => HidPart::Key(0x65),
+        // 标点（HID 键盘页）：Ctrl+/、Ctrl+, 这类应用快捷键要用到。
+        "minus" | "-" => HidPart::Key(0x2D),
+        "equal" | "=" => HidPart::Key(0x2E),
+        "leftbracket" | "[" => HidPart::Key(0x2F),
+        "rightbracket" | "]" => HidPart::Key(0x30),
+        "backslash" | "\\" => HidPart::Key(0x31),
+        "semicolon" | ";" => HidPart::Key(0x33),
+        "quote" | "'" => HidPart::Key(0x34),
+        "backquote" | "`" => HidPart::Key(0x35),
+        "comma" | "," => HidPart::Key(0x36),
+        "period" | "." => HidPart::Key(0x37),
+        "slash" | "/" => HidPart::Key(0x38),
         // 注意：音量三键不在这里 —— 它们走 Consumer 页（见 consumer_bit），
         // 键盘页 0x7F/0x80/0x81 超出本描述符声明的 usage 范围（0x00–0x65），
         // 塞进键盘报告会被系统忽略。

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { RemoteKeyTester } from "../components/RemoteKeyTester";
 import { IconSearch } from "../components/icons";
-import { OUTPUT_DEVICE } from "../constants";
 import "./DiagnosticsPage.css";
 
 type Diagnostics = {
@@ -23,28 +22,14 @@ type SelfTestItem = {
   detail: string;
 };
 
-/// 前台应用与命中的应用配置（对应后端 core_dispatch::ForegroundStatus）。
-type ForegroundStatus = {
-  process: string | null;
-  title: string | null;
-  profile: string | null;
-  profile_count: number;
-  overridden_buttons: string[];
-};
-
 export function DiagnosticsPage() {
   const [data, setData] = useState<Diagnostics>(EMPTY);
   const [status, setStatus] = useState("请在桌面应用内运行检查");
   const [checked, setChecked] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState("");
-  const [looping, setLooping] = useState(false);
   const [selfTests, setSelfTests] = useState<SelfTestItem[] | null>(null);
-  const [vhidBusy, setVhidBusy] = useState(false);
-  const [vhidMsg, setVhidMsg] = useState("");
   const [reportMsg, setReportMsg] = useState("");
-  const [foreground, setForeground] = useState<ForegroundStatus | null>(null);
-  const [profileMsg, setProfileMsg] = useState("");
 
   async function runCheck() {
     if (!isTauri()) {
@@ -64,31 +49,7 @@ export function DiagnosticsPage() {
 
   useEffect(() => {
     runCheck();
-    refreshForeground();
   }, []);
-
-  async function refreshForeground() {
-    if (!isTauri()) return;
-    try {
-      setForeground(await invoke<ForegroundStatus>("app_profile_status"));
-    } catch {
-      // 后端暂不可用时保持上一次结果
-    }
-  }
-
-  async function reloadProfiles() {
-    if (!isTauri()) {
-      setProfileMsg("请在桌面应用内操作");
-      return;
-    }
-    try {
-      const count = await invoke<number>("reload_app_profiles");
-      await refreshForeground();
-      setProfileMsg(`已重载 ${count} 份应用配置`);
-    } catch (err) {
-      setProfileMsg(`重载失败：${err}`);
-    }
-  }
 
   async function installVbCable() {
     if (!isTauri()) {
@@ -105,22 +66,6 @@ export function DiagnosticsPage() {
       setInstallMsg(`安装失败：${err}`);
     } finally {
       setInstalling(false);
-    }
-  }
-
-  async function installVhidDriver() {
-    if (!isTauri()) {
-      setVhidMsg("请在桌面应用内操作");
-      return;
-    }
-    setVhidBusy(true);
-    setVhidMsg("正在安装虚拟键盘驱动…请在 UAC 弹窗中点「是」");
-    try {
-      setVhidMsg(await invoke<string>("install_vhid_driver"));
-    } catch (err) {
-      setVhidMsg(`安装失败：${err}`);
-    } finally {
-      setVhidBusy(false);
     }
   }
 
@@ -165,158 +110,111 @@ export function DiagnosticsPage() {
     }
   }
 
-  async function loopTone() {
-    if (!isTauri()) {
-      setStatus("测试音循环仅在桌面应用内可用");
-      return;
-    }
-    setLooping(true);
-    setStatus("循环播放测试音中…");
-    try {
-      const result = await invoke<string>("play_test_tone_loop", {
-        deviceName: OUTPUT_DEVICE,
-        repetitions: 3,
-      });
-      setStatus(result);
-    } catch (err) {
-      setStatus(`播放失败: ${err}`);
-    } finally {
-      setLooping(false);
-    }
-  }
-
   function toggleQuickMenu() {
     if (!isTauri()) return;
     invoke("toggle_quick_menu");
   }
+
+  const testTotal = selfTests?.length ?? 0;
+  const testPass = selfTests?.filter((t) => t.status === "pass").length ?? 0;
+  const testFail = selfTests?.filter((t) => t.status === "fail").length ?? 0;
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1>诊断</h1>
-          <p>检查虚拟声卡、虚拟 HID、语音链路与按键测试。</p>
+          <p>检查虚拟声卡、虚拟键盘与语音链路，出问题时在这里生成报告。</p>
         </div>
       </div>
 
-      <div className="section-label">状态与自检</div>
-      <div className="diag-grid">
-      <section className="card vbcable-card">
-        <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
-        <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          {data.has_vb_cable ? "正常" : "未就绪"}
-        </span>
-        <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          CABLE 输入
-        </span>
-        <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          CABLE 输出
-        </span>
-        {checked && !data.has_vb_cable && (
-          <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
-            {installing ? "正在下载…" : "下载并安装 VB-CABLE"}
-          </button>
-        )}
-        {checked && !data.has_vb_cable && (
-          <span className="hint vbcable-msg">
-            需网络与管理员权限；安装完成后需重启电脑，重启后点「重新检测」。
-          </span>
-        )}
-        {installMsg && <span className="hint vbcable-msg">{installMsg}</span>}
-      </section>
+      <section className="card diag-card">
+        <div className="diag-head">
+          <div className="diag-head-text">
+            <div className="diag-title">系统状态与自检</div>
+            <div className="diag-status">
+              {status}
+              {selfTests && (
+                <span className="diag-status-meta">
+                  共 {testTotal} 项 · 通过 {testPass}
+                  {testFail > 0 ? ` · 需处理 ${testFail}` : ""}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="diag-head-actions">
+            <button className="btn primary" onClick={runSelfTest}>
+              <IconSearch size={14} />
+              运行全自检
+            </button>
+            <button className="btn" onClick={generateReport}>
+              生成报告
+            </button>
+          </div>
+        </div>
 
-      <section className="card diag-actions-card">
-        <button className="btn primary" onClick={runSelfTest}>
-          <IconSearch size={14} />
-          运行系统全自检
-        </button>
-        <button className="btn primary" onClick={generateReport}>
-          生成诊断报告
-        </button>
-        <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
-          打开报告目录
-        </button>
-        <button className="btn" onClick={loopTone} disabled={looping}>
-          {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
-        </button>
-        <button className="btn" onClick={toggleQuickMenu}>
-          打开/关闭快捷菜单
-        </button>
-        <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
-          {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
-        </button>
-        {vhidMsg && <span className="hint diag-actions-msg multiline">{vhidMsg}</span>}
-        {reportMsg && <span className="hint diag-actions-msg multiline">{reportMsg}</span>}
-        {status && <span className="hint diag-actions-msg">{status}</span>}
-        {selfTests && (
-          <div className="check-list diag-actions-list">
-            {selfTests.map((t) => (
-              <div key={t.name} className="check-row">
-                <span>{t.name}</span>
-                <div>
-                  <span className={`pill ${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
-                    {t.status.toUpperCase()}
+        <div className="diag-rows">
+          <div className="diag-row">
+            <span className="diag-row-label">虚拟声卡（VB-CABLE）</span>
+            <span className="diag-row-value">
+              <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                {data.has_vb_cable ? "正常" : "未就绪"}
+              </span>
+              <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                CABLE 输入
+              </span>
+              <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                CABLE 输出
+              </span>
+              {checked && !data.has_vb_cable && (
+                <button
+                  className="btn small"
+                  onClick={installVbCable}
+                  disabled={installing || !isTauri()}
+                >
+                  {installing ? "正在下载…" : "下载并安装"}
+                </button>
+              )}
+            </span>
+          </div>
+
+          {selfTests &&
+            selfTests.map((t) => (
+              <div className="diag-row" key={t.name}>
+                <span className="diag-row-label">{t.name}</span>
+                <span className="diag-row-value">
+                  {t.detail && <span className="diag-row-detail">{t.detail}</span>}
+                  <span
+                    className={`pill ${
+                      t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"
+                    }`}
+                  >
+                    {t.status === "pass" ? "通过" : t.status === "fail" ? "失败" : "跳过"}
                   </span>
-                  {t.detail && <span className="hint multiline"> {t.detail}</span>}
-                </div>
+                </span>
               </div>
             ))}
+        </div>
+
+        {checked && !data.has_vb_cable && (
+          <div className="diag-note">
+            装好 VB-CABLE 后需要重启电脑，回来再点「运行全自检」。
           </div>
         )}
-      </section>
-      </div>
+        {installMsg && <div className="diag-note">{installMsg}</div>}
+        {reportMsg && <div className="diag-note">{reportMsg}</div>}
 
-      <div className="section-label">应用专属映射</div>
-      <section className="card">
-        <div className="check-list">
-          <div className="check-row">
-            <span>当前前台进程</span>
-            <span className="hint">
-              {foreground?.process ?? "（读不到前台窗口）"}
-            </span>
-          </div>
-          <div className="check-row">
-            <span>当前窗口标题</span>
-            <span className="hint">{foreground?.title ?? "—"}</span>
-          </div>
-          <div className="check-row">
-            <span>命中的应用配置</span>
-            <span className="hint">
-              {foreground?.profile ?? "未命中，沿用全局映射"}
-            </span>
-          </div>
-          <div className="check-row">
-            <span>覆盖的按键</span>
-            <span className="hint">
-              {foreground?.overridden_buttons.length
-                ? foreground.overridden_buttons.join("、")
-                : "—"}
-            </span>
-          </div>
-          <div className="check-row">
-            <span>已加载配置</span>
-            <span className="hint">{foreground?.profile_count ?? 0} 份</span>
-          </div>
-        </div>
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={refreshForeground}>
-            刷新
+        <div className="diag-tools">
+          <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
+            打开报告目录
           </button>
-          <button className="btn" onClick={reloadProfiles}>
-            重载配置文件
+          <button className="btn" onClick={toggleQuickMenu}>
+            打开 / 关闭快捷菜单
           </button>
         </div>
-        {profileMsg && <p className="hint multiline">{profileMsg}</p>}
-        <p className="hint">
-          切到目标应用后点「刷新」，这里显示的进程名就是写进
-          <code> profiles/*.json </code>的 <code>process</code> 值。
-          进程名认不出来的目标（Chrome 里的网页应用、跑在 WSL 里的服务）改用
-          <code> window_title_contains </code>匹配窗口标题。
-          用户自定义配置放在 <code>&lt;配置目录&gt;/app-profiles/</code>。
-        </p>
       </section>
 
       <div className="section-label">按键测试</div>

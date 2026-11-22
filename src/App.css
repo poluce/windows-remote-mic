@@ -363,6 +363,22 @@ button {
   letter-spacing: 0.01em;
 }
 
+/* 带标题的表单卡：标题就是卡名（基础 / 语音链路 …），不再用页面级分组标签 */
+.settings-card {
+  padding: 14px 18px 8px;
+}
+
+.settings-card .card-title {
+  margin: 0 0 2px;
+  font-size: var(--rm-fs-13);
+  color: var(--rm-text);
+}
+
+/* 卡片标题本身已经和第一行分开，第一行不再需要额外上边距 */
+.settings-card .card-title + .form-row {
+  border-top: none;
+}
+
 /* 功能分区标签（尚未迁移页头的页面继续用） */
 .section-label {
   margin: 22px 4px 8px;
@@ -862,54 +878,6 @@ button {
   white-space: pre-wrap;
 }
 
-.current-key {
-  text-align: center;
-  font-weight: 600;
-  color: var(--rm-accent-strong);
-  font-size: var(--rm-fs-14);
-}
-
-/* ---------- 诊断页的两种紧凑行（虚拟声卡 / 操作按钮） ---------- */
-.vbcable-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-}
-
-.vbcable-title {
-  font-weight: 600;
-  font-size: var(--rm-fs-13);
-  color: var(--rm-text);
-  white-space: nowrap;
-  margin-right: 4px;
-}
-
-/* 说明文字强制独占一行，避免和按钮挤在一行里重叠 */
-.vbcable-msg {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-}
-
-.diag-actions-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-}
-
-.diag-actions-msg {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-}
-
-.diag-actions-list {
-  flex-basis: 100%;
-  margin-top: 8px;
-}
-
 /* 映射页页头更紧凑（这一页必须一屏放下，不允许整页滚动） */
 .page-head-compact {
   margin-bottom: 12px;
@@ -1060,6 +1028,11 @@ button {
   box-shadow: 0 0 0 3px var(--rm-accent-soft);
 }
 
+.field input::placeholder {
+  color: var(--rm-text-3);
+  opacity: 1;
+}
+
 .field .row {
   display: flex;
   gap: 8px;
@@ -1081,6 +1054,306 @@ button {
   background: var(--rm-sunken);
   border-radius: 4px;
   padding: 1px 5px;
+}
+
+/* 展示名左侧的简标圆点：既是预览，也是颜色的入口（点开浮层选色） */
+.field-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-avatar input {
+  flex: 1;
+  min-width: 0;
+}
+
+.icon-preview {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--rm-line-strong);
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--rm-fs-11);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  background: var(--rm-text-3);
+  box-shadow: inset 0 0 0 1px rgba(19, 26, 36, 0.08);
+  cursor: pointer;
+  transition: background var(--rm-dur) var(--rm-ease),
+    box-shadow var(--rm-dur) var(--rm-ease);
+}
+
+.icon-preview:hover,
+.icon-preview[aria-expanded="true"] {
+  box-shadow: 0 0 0 3px var(--rm-accent-soft);
+}
+
+/* 还没填名字、也没挑颜色：淡色圆 + 加号，是「点这里设颜色」的入口 */
+.icon-preview.empty {
+  background: var(--rm-sunken);
+  border-color: var(--rm-line-strong);
+  color: var(--rm-text-3);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 颜色浮层：从圆圈下面展开的一小块面板 */
+.color-pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.color-pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 2;
+  padding: 10px 12px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-r-sm);
+  background: var(--rm-solid);
+  box-shadow: var(--rm-sh-2);
+}
+
+.color-pop-title {
+  margin-bottom: 8px;
+  font-size: var(--rm-fs-11);
+  color: var(--rm-text-3);
+}
+
+/* 最近出现过的前台应用：一行小胶囊，点一下填进上方的进程名 */
+.suggest {
+  margin-top: 8px;
+  font-size: var(--rm-fs-11);
+  line-height: 24px;
+}
+
+.suggest-label {
+  margin-right: 8px;
+  color: var(--rm-text-3);
+}
+
+.suggest-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+.suggest-chip {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--rm-r-full);
+  border: 1px solid var(--rm-line);
+  background: var(--rm-chip);
+  color: var(--rm-text-2);
+  font-size: var(--rm-fs-11);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--rm-dur) var(--rm-ease),
+    background var(--rm-dur) var(--rm-ease), color var(--rm-dur) var(--rm-ease);
+}
+
+.suggest-chip:hover {
+  border-color: var(--rm-accent-line);
+  background: var(--rm-chip-hover);
+  color: var(--rm-text);
+}
+
+/* 已经填进输入框的那一个 */
+.suggest-chip.active {
+  border-color: var(--rm-accent-line);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  font-weight: 500;
+}
+
+/* 分隔「认应用」和「定外观」两组字段 */
+.dialog-divider {
+  height: 1px;
+  margin: 20px 0 0;
+  background: var(--rm-line);
+}
+
+/* 高级项入口：一行弱化的文字按钮，不抢主流程的注意力 */
+.dialog-more {
+  margin-top: 14px;
+}
+
+/* 标签 + 右侧弱化操作（高级项的「收起」） */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field-label-row label {
+  margin-bottom: 0;
+}
+
+.link-btn {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--rm-text-3);
+  font-size: var(--rm-fs-12);
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--rm-line-strong);
+  text-underline-offset: 3px;
+  transition: color var(--rm-dur) var(--rm-ease);
+}
+
+.link-btn:hover {
+  color: var(--rm-accent-strong);
+  text-decoration-color: currentColor;
+}
+
+/* ---------- 内环简标颜色选择器（新建应用 / 作用范围共用） ---------- */
+.icon-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.icon-swatch {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  transition: transform 120ms var(--rm-ease);
+}
+
+.icon-swatch:hover {
+  transform: scale(1.1);
+}
+
+/* 选中 = 圆心一个白色对勾，比套两圈描边安静，也不改变色点的尺寸 */
+.icon-swatch.active {
+  transform: scale(1.06);
+}
+
+.icon-swatch.active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 8px;
+  height: 4.5px;
+  border-left: 1.8px solid #fff;
+  border-bottom: 1.8px solid #fff;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* 浮层里的自定义取色：两条滑杆直接调，不再弹二级窗口 */
+.color-pop {
+  width: 330px;
+}
+
+.color-pop-divider {
+  height: 1px;
+  margin: 10px 0 8px;
+  background: var(--rm-line);
+}
+
+.color-custom-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--rm-fs-11);
+  color: var(--rm-text-3);
+}
+
+/* 颜色值是数据，等宽字体扫读更稳 */
+.color-custom-value {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--rm-text-2);
+}
+
+.color-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+  font-size: var(--rm-fs-11);
+  color: var(--rm-text-3);
+}
+
+.color-slider > span {
+  flex: none;
+  width: 28px;
+}
+
+.color-slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-r-full);
+  cursor: pointer;
+}
+
+.color-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--rm-solid);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--rm-line-strong), var(--rm-sh-1);
+}
+
+.color-slider input[type="range"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--rm-accent-soft);
+}
+
+/* 「自动」不是一种颜色，长成文字胶囊，和色点区分开 */
+.icon-swatch.auto {
+  width: auto;
+  height: 22px;
+  border-radius: var(--rm-r-full);
+  padding: 0 10px;
+  border-color: var(--rm-line);
+  background: var(--rm-chip);
+  color: var(--rm-text-2);
+  font-size: var(--rm-fs-11);
+  font-family: inherit;
+}
+
+.icon-swatch.auto.active::after {
+  content: none;
+}
+
+.icon-swatch.auto.active {
+  transform: none;
+  border-color: var(--rm-accent-line);
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  font-weight: 500;
 }
 
 .stage2 {

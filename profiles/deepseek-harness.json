@@ -1,13 +1,140 @@
 {
   "name": "DeepSeek Harness",
-  "window_title_contains": ["DeepSeek Harness"],
-  "icon": { "label": "DS", "color": "#4D6BFE" },
-  "launch": { "kind": "url", "value": "http://127.0.0.1:3088" },
-  "note": "DSH 装在 WSL 里，Windows 侧没有它的进程，因此只按窗口标题匹配（浏览器窗口标题形如「<会话名> ··· DeepSeek Harness」）。启动即用默认浏览器打开上面的地址；**前提是 WSL 里的服务已经在跑**，否则只会开出一个打不开的页面。只放通用键：网页应用的快捷键由网页自己决定，不要按桌面应用猜。",
+  "window_title_contains": [
+    "DeepSeek Harness"
+  ],
+  "icon": {
+    "label": "DS",
+    "color": "#4D6BFE"
+  },
+  "launch": {
+    "kind": "url",
+    "value": "http://127.0.0.1:3088"
+  },
+  "note": "DSH 快捷键（Web/Windows 默认）：Ctrl+/ 速查、Ctrl+Alt+, 设置、Ctrl+Alt+N 新建会话、Ctrl+Alt+K 搜索会话、Ctrl+Alt+B / Ctrl+Shift+B 左右侧栏。遥控器：上下短按=方向键（列表/会话搜索里选择），长按=PageUp/PageDown 翻页；左右开合侧栏；确定=Enter；返回=Esc；主页=新会话；菜单=速查（长按=设置）；TV=搜索会话；音量键保留系统音量，电源不绑定。",
   "bindings": [
-    { "button": "Up", "trigger": "SingleClick", "action": { "KeyCombo": ["pageup"] } },
-    { "button": "Down", "trigger": "SingleClick", "action": { "KeyCombo": ["pagedown"] } },
-    { "button": "Ok", "trigger": "SingleClick", "action": "Return" },
-    { "button": "Back", "trigger": "SingleClick", "action": "Escape" }
+    {
+      "button": "Up",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "up"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Up",
+      "trigger": "LongPress",
+      "action": {
+        "KeyCombo": [
+          "pageup"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Down",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "down"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Down",
+      "trigger": "LongPress",
+      "action": {
+        "KeyCombo": [
+          "pagedown"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Left",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "lalt",
+          "b"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Right",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "lshift",
+          "b"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Ok",
+      "trigger": "SingleClick",
+      "action": "Return",
+      "enabled": true
+    },
+    {
+      "button": "Back",
+      "trigger": "SingleClick",
+      "action": "Escape",
+      "enabled": true
+    },
+    {
+      "button": "Home",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "lalt",
+          "n"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Menu",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "slash"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Menu",
+      "trigger": "LongPress",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "lalt",
+          "comma"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Tv",
+      "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "lctrl",
+          "lalt",
+          "k"
+        ]
+      },
+      "enabled": true
+    }
   ]
 }

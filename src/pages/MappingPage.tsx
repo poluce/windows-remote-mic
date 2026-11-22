@@ -1,9 +1,12 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { NewProfileDialog } from "../components/NewProfileDialog";
+import {
+  ProfileDialog,
+  type ProfileFormValues,
+} from "../components/ProfileDialog";
 import { ShortcutDialog } from "../components/ShortcutDialog";
 import { MappingMatrix } from "./mapping/MappingMatrix";
 import { ScopeBar } from "./mapping/ScopeBar";
@@ -27,7 +30,6 @@ export function MappingPage() {
     isGlobalScope,
     selected,
     setSelected,
-    selectedName,
     trigger,
     setTrigger,
     availableTriggers,
@@ -38,16 +40,12 @@ export function MappingPage() {
     setAction,
     comboTokens,
     setComboTokens,
-    saveMsg,
     save,
-    useGlobal,
     toggleBinding,
     clearBinding,
+    clearOverride,
     toast,
     dismissToast,
-    selectedOverride,
-    selectedGlobal,
-    activeProfile,
     globalView,
     overrideView,
     newOpen,
@@ -61,17 +59,32 @@ export function MappingPage() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
+    openProfileEditor,
+    editingProfile,
+    setEditingProfile,
+    handleUpdateProfile,
   } = useMappingEditor();
+
+  // 编辑弹窗的初始值：只在「编辑的是哪一份」变化时重算，
+  // 否则每次渲染都是新对象，表单会被 effect 反复重置。
+  const editInitial = useMemo<ProfileFormValues | null>(() => {
+    if (!editingProfile) return null;
+    return {
+      name: editingProfile.name,
+      process: editingProfile.process,
+      titleContains: editingProfile.title_contains.join("，"),
+      iconColor: editingProfile.icon_color_custom
+        ? editingProfile.icon_color
+        : null,
+    };
+  }, [editingProfile]);
 
   const { buttons, categories } = catalog;
 
   return (
     <div className="page page-fill">
       <div className="page-head page-head-compact">
-        <div>
-          <h1>按键映射</h1>
-          <p>为 13 个按键配置单击 / 双击 / 长按 / 按下 / 松开，可按前台应用切换作用范围。</p>
-        </div>
+        <h1>按键映射</h1>
       </div>
 
       {/* 作用范围条是工具条而不是内容卡：用轻卡（无扩散阴影），
@@ -81,9 +94,11 @@ export function MappingPage() {
           items={scopeItems}
           active={scope}
           onSelect={setScope}
+          onEdit={openProfileEditor}
           onRemove={onRemoveScope}
           onNew={() => setNewOpen(true)}
         />
+
       </section>
 
       <div className="mapping-wizard">
@@ -91,7 +106,6 @@ export function MappingPage() {
           <div className="remote-art" ref={remoteArtRef}>
             <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
           </div>
-          <p className="hint current-key">{selectedName}</p>
         </section>
 
         {/* 向导与映射表合并成一张卡，左右水平排布 */}
@@ -185,37 +199,18 @@ export function MappingPage() {
                 </div>
               </div>
 
-              {/* 下半：覆盖说明与保存钉在这一栏底部，按钮墙再长也够得着 */}
+              {/* 保存钉在这一栏底部，按钮墙再长也够得着 */}
               <div className="wizard-foot">
-                {selectedOverride && (
-                  <p className="hint override-note">
-                    这一格已改成「{selectedOverride.action}」，全局是「
-                    {selectedGlobal?.action ?? "未绑定"}」。
-                  </p>
-                )}
-
                 <div className="actions">
                   <button className="btn primary" onClick={save} disabled={!isTauri()}>
-                    {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
+                    保存
                   </button>
-                  {!isGlobalScope && selectedOverride && (
-                    <button className="btn" onClick={useGlobal}>
-                      改用全局
-                    </button>
-                  )}
                 </div>
-                {saveMsg && <p className="hint">{saveMsg}</p>}
               </div>
             </div>
 
             <div className="merged-col">
               <MappingMatrix
-                title={isGlobalScope ? "映射表" : `映射表 · ${activeProfile?.name ?? ""}`}
-                hint={
-                  isGlobalScope
-                    ? undefined
-                    : `蓝底 ＝ 这份配置改过的，其余沿用全局`
-                }
                 buttons={buttons}
                 triggers={matrixTriggers}
                 global={globalView}
@@ -233,7 +228,11 @@ export function MappingPage() {
                   if (bound) void toggleBinding(button, trig);
                 }}
                 onClear={(button, trig) => {
-                  void clearBinding(button, trig);
+                  if (isGlobalScope) {
+                    void clearBinding(button, trig);
+                  } else {
+                    void clearOverride(button, trig);
+                  }
                 }}
               />
             </div>
@@ -267,10 +266,21 @@ export function MappingPage() {
         </div>
       )}
 
-      <NewProfileDialog
+      <ProfileDialog
         open={newOpen}
+        mode="create"
+        initial={null}
         onCancel={() => setNewOpen(false)}
-        onCreate={handleCreate}
+        onSubmit={handleCreate}
+      />
+
+      {/* 编辑和新建共用同一张表单：改名 / 改匹配规则 / 改内环颜色都在弹窗里 */}
+      <ProfileDialog
+        open={editingProfile !== null}
+        mode="edit"
+        initial={editInitial}
+        onCancel={() => setEditingProfile(null)}
+        onSubmit={handleUpdateProfile}
       />
 
       <ConfirmDialog
@@ -279,7 +289,7 @@ export function MappingPage() {
         title="删除这份配置？"
         desc={
           pendingDelete
-            ? `「${pendingDelete.name}」将不再有专属配置，所有按键沿用全局。`
+            ? `「${pendingDelete.name}」将不再有专属配置，这个应用改用全局那一套。`
             : undefined
         }
         confirmLabel="删除"

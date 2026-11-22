@@ -36,9 +36,71 @@ pub(crate) fn load_app_profiles() -> core_app_profile::ProfileRegistry {
     if written > 0 {
         core_log::log_line(&format!("[app-profile] 首次落地了 {written} 份种子配置"));
     }
-    core_app_profile::ProfileRegistry::load(Some(
+    let mut registry = core_app_profile::ProfileRegistry::load(Some(
         &store.dir.join(core_app_profile::USER_PROFILE_DIR),
-    ))
+    ));
+    migrate_to_standalone_sets(&store, &mut registry);
+    registry
+}
+
+/// 把「只存改过的几格」的旧应用配置补成**独立的一整套**。
+///
+/// 现在全局与每份应用配置是两张互不相干的按键表；旧数据里没写的格子原本是
+/// 「沿用全局」，改造后如果不补，用户切到那个应用会发现大部分键突然没动作。
+/// 所以在升级后的第一次加载时，按当时的全局快照把缺的格子补进每份配置，
+/// 再把 `profiles_standalone` 置位——以后两边怎么改都互不影响。
+fn migrate_to_standalone_sets(
+    store: &core_config::ConfigStore,
+    registry: &mut core_app_profile::ProfileRegistry,
+) {
+    let config = match store.load() {
+        Ok(config) => config,
+        Err(e) => {
+            core_log::log_warn(&format!(
+                "[app-profile] 读不到全局映射，跳过独立按键表迁移：{e}"
+            ));
+            return;
+        }
+    };
+    if config.profiles_standalone {
+        return;
+    }
+
+    let global = &config.mapping.bindings;
+    let mut migrated = 0usize;
+    for mut profile in registry.profiles().to_vec() {
+        let before = profile.bindings.len();
+        for binding in global {
+            let covered = profile
+                .bindings
+                .iter()
+                .any(|b| b.button == binding.button && b.trigger == binding.trigger);
+            if !covered {
+                profile.bindings.push(binding.clone());
+            }
+        }
+        if profile.bindings.len() == before {
+            continue;
+        }
+        if let Err(e) = core_app_profile::save_profile(&store.dir, &profile) {
+            core_log::log_warn(&format!(
+                "[app-profile] 配置 {} 补全失败（继续用内存里的版本）：{e}",
+                profile.id
+            ));
+        }
+        registry.upsert(profile);
+        migrated += 1;
+    }
+
+    if let Err(e) = store.update(|config| {
+        config.profiles_standalone = true;
+        Ok(())
+    }) {
+        core_log::log_warn(&format!("[app-profile] 写入迁移标记失败：{e}"));
+    }
+    core_log::log_line(&format!(
+        "[app-profile] 应用配置改为独立按键表，已按全局快照补全 {migrated} 份"
+    ));
 }
 
 /// 来自设置界面的映射编辑数据。

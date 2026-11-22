@@ -1,6 +1,7 @@
 /* 通用设置页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
 
 /* ---------- 通用设置页 ---------- */
+
 /* 复用已有的 .form-card / .form-row / .form-label（macOS 系统设置式），
    这里只补「标题 + 说明」两行文字的主体列，以及行尾的窄下拉。 */
 .form-text {
@@ -49,4 +50,9 @@
   line-height: 1.55;
   color: var(--rm-text-2);
   white-space: pre;
+}
+
+/* 智能体接入：状态跟在说明后面，不再单独占一行 */
+.agent-state {
+  color: var(--rm-text-3);
 }

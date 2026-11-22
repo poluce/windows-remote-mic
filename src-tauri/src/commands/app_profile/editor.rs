@@ -18,12 +18,17 @@ pub struct AppProfileView {
     pub process: String,
     /// 窗口标题关键字。
     pub title_contains: Vec<String>,
-    /// 快捷菜单内圈用的品牌色（形如 `#F59E0B`）；没配图标时为空。
+    /// 快捷菜单内圈用的品牌色（形如 `#F59E0B`）；与内环实际画出的颜色一致。
     ///
-    /// 作用范围胶囊上的小圆点用它，和快捷菜单内圈保持一致。
+    /// 作用范围胶囊上的小圆点用它，和快捷菜单内圈保持一致；没写 `icon` 的配置
+    /// 拿到的也是自动简标的颜色，所以这份配置一定会在内环里有入口。
     pub icon_color: Option<String>,
+    /// 这个颜色是不是用户手挑的（false = 由配置 id 自动生成）。
+    ///
+    /// 颜色选择器用它决定「自动」这一档要不要显示为选中状态。
+    pub icon_color_custom: bool,
     pub note: String,
-    /// 这份配置覆盖了哪些 (按键, 触发)。没列出的格子沿用全局。
+    /// 这份配置自己的一整套 (按键, 触发)。没列出的格子在这个应用里没有动作。
     pub bindings: Vec<crate::MappingEntry>,
 }
 
@@ -34,7 +39,11 @@ impl AppProfileView {
             name: p.display_name(),
             process: p.process.display(),
             title_contains: p.window_title_contains.clone(),
-            icon_color: p.icon.as_ref().map(|icon| icon.color.clone()),
+            icon_color: Some(p.menu_icon().color),
+            icon_color_custom: p
+                .icon
+                .as_ref()
+                .is_some_and(|icon| !icon.color.trim().is_empty()),
             note: p.note.clone(),
             bindings: p.bindings.iter().map(binding_entry).collect(),
         }
@@ -68,11 +77,15 @@ pub fn app_profile_catalog(state: State<AppState>) -> Vec<AppProfileView> {
 ///
 /// 进程名与窗口标题关键字**至少要填一个**：两个都空的配置永远不会命中，
 /// 建出来就是个死配置，不如直接拒绝。
+///
+/// `icon_color` 是快捷菜单内环的简标颜色（可选）：给了就写进 `icon.color`，
+/// 简标文字留空表示「按展示名自动」；不给则整份配置留空，内环用自动色。
 #[tauri::command]
 pub fn create_app_profile(
     name: String,
     process: String,
     window_title_contains: String,
+    icon_color: Option<String>,
     state: State<AppState>,
 ) -> Result<String, String> {
     let dir = config_dir()?;
@@ -81,6 +94,17 @@ pub fn create_app_profile(
     if processes.is_empty() && titles.is_empty() {
         return Err("进程名和窗口标题关键字至少要填一个，否则这份配置永远不会生效".into());
     }
+    let icon = match icon_color
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        Some(color) => {
+            let color = core_app_profile::IconSpec::parse_color(color)?;
+            Some(core_app_profile::IconSpec::with_color(&color))
+        }
+        None => None,
+    };
 
     let id = core_app_profile::new_profile_id(&dir, &process);
     let profile = core_app_profile::AppProfile {
@@ -92,6 +116,10 @@ pub fn create_app_profile(
         },
         name: name.trim().to_string(),
         window_title_contains: titles,
+        icon,
+        // 应用配置是独立的一整套：新建时把当前全局快照复制进来当起点，
+        // 之后两边互不影响（不想要哪格直接在矩阵里删掉）。
+        bindings: crate::services::mapping::global_bindings(),
         ..Default::default()
     };
 
@@ -102,6 +130,68 @@ pub fn create_app_profile(
         profile.display_name()
     ));
     Ok(id)
+}
+
+/// 修改一份已存在的应用配置：展示名、匹配规则、内环颜色。
+///
+/// 「新建应用」和「编辑应用」共用同一张表单，所以这里一次性写回全部字段，
+/// 而不是拆成一堆单字段命令——前端只在一处提交，少一次「改了名字但颜色没跟上」
+/// 的中间态。
+///
+/// `icon_color` 为空表示恢复自动色：只清颜色、保留用户手写的简标文字。
+#[tauri::command]
+pub fn update_app_profile(
+    id: String,
+    name: String,
+    process: String,
+    window_title_contains: String,
+    icon_color: Option<String>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let dir = config_dir()?;
+    let mut profile = find_profile(&state, &id)?;
+
+    let processes = split_list(&process);
+    let titles = split_list(&window_title_contains);
+    if processes.is_empty() && titles.is_empty() {
+        return Err("进程名和窗口标题关键字至少要填一个，否则这份配置永远不会生效".into());
+    }
+
+    profile.name = name.trim().to_string();
+    profile.process = match processes.len() {
+        0 => core_app_profile::ProcessSpec::Many(Vec::new()),
+        1 => core_app_profile::ProcessSpec::One(processes[0].clone()),
+        _ => core_app_profile::ProcessSpec::Many(processes),
+    };
+    profile.window_title_contains = titles;
+
+    match icon_color
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        Some(color) => {
+            let color = core_app_profile::IconSpec::parse_color(color)?;
+            let label = profile
+                .icon
+                .as_ref()
+                .map(|icon| icon.label.clone())
+                .unwrap_or_default();
+            profile.icon = Some(core_app_profile::IconSpec { label, color });
+        }
+        None => match profile.icon.as_mut() {
+            Some(icon) if !icon.label.trim().is_empty() => icon.color.clear(),
+            _ => profile.icon = None,
+        },
+    }
+
+    core_app_profile::save_profile(&dir, &profile).map_err(|e| format!("写入配置失败：{e}"))?;
+    reload_profiles(&state);
+    core_log::log_info(&format!(
+        "[app-profile] 已更新应用配置 {id}（{}）",
+        profile.display_name()
+    ));
+    Ok(())
 }
 
 /// 把某个 (按键, 触发) 写进这份配置（已存在则改掉）。

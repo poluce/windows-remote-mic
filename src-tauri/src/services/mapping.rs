@@ -56,6 +56,14 @@ pub fn list_mappings() -> Vec<MappingEntry> {
         .unwrap_or_default()
 }
 
+/// 当前全局映射的原始绑定快照（新建应用配置时作为这个应用自己的初始一套）。
+pub fn global_bindings() -> Vec<KeyBinding> {
+    store()
+        .and_then(|s| s.load().map_err(|e| e.to_string()))
+        .map(|cfg| cfg.mapping.bindings)
+        .unwrap_or_default()
+}
+
 /// 当前配置 revision（旧配置读成 0）。
 pub fn revision() -> u64 {
     store()

@@ -53,10 +53,12 @@ export type AppProfileView = {
   /** 展示用的进程名写法；纯标题配置为空串。 */
   process: string;
   title_contains: string[];
-  /** 快捷菜单内圈用的品牌色；没配图标时为 null。 */
+  /** 快捷菜单内圈用的品牌色（没手挑时是按配置 id 自动生成的色）。 */
   icon_color: string | null;
+  /** 这个颜色是不是用户手挑的（false = 自动生成）。 */
+  icon_color_custom: boolean;
   note: string;
-  /** 这份配置覆盖了哪些 (按键, 触发)；没列出的格子沿用全局。 */
+  /** 这份配置自己的一整套 (按键, 触发)；没列出的格子在这个应用里没有动作。 */
   bindings: MappingEntry[];
 };
 
@@ -72,3 +74,10 @@ export type ScopeId = string;
  * 那份配置会在界面上被全局挡掉，永远选不中。
  */
 export const GLOBAL_SCOPE: ScopeId = "__global__";
+
+/// 「全局」胶囊的填充色。
+///
+/// 与后端快捷菜单内环「全局设置」简标的颜色一致
+/// （`commands/app_profile/menu.rs` 的 `self_menu_entry`，钢蓝 #2b6fc0），
+/// 这样同一个「全局」在菜单和映射页看起来是同一个东西。
+export const GLOBAL_SCOPE_COLOR = "#2b6fc0";

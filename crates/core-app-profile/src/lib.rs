@@ -53,8 +53,11 @@ mod window;
 #[cfg(test)]
 mod tests;
 
-pub use foreground::{file_name, foreground_process_name, foreground_window_title};
-pub use model::{AppProfile, IconSpec, LaunchSpec, ProcessSpec};
+pub use foreground::{
+    file_name, foreground_candidates, foreground_process_name, foreground_window_title,
+    recent_foreground_apps, ForegroundApp,
+};
+pub use model::{icon_palette, AppProfile, IconSpec, LaunchSpec, ProcessSpec};
 pub use registry::ProfileRegistry;
 pub use seeds::{seed_templates, seed_user_dir, SEED_MANIFEST, USER_PROFILE_DIR};
 pub use store::{new_profile_id, remove_profile, save_profile};

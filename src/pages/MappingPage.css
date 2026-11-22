@@ -3,13 +3,12 @@
 /* ---------- 映射向导 ---------- */
 .mapping-wizard {
   display: grid;
-  /* 左列只有遥控器图形，而且它**没有卡片外壳**（见 .remote-card）。所以这一列
-     需要多宽就等于遥控器多宽：137px（定尺寸像素图，zoom 顶到 1.3 就是 136.5，
-     不再随窗口变）。底下那行键名「确定」28px 远比它窄，不参与决定。
-     145px = 137 + 8px 保险；140px 只剩 2px，135px 就开始裁掉图形了。
+  /* 左列只有遥控器图形（没有卡片外壳，见 .remote-card），宽度就跟着它走：
+     `useRemoteZoom` 按右卡高度算好 zoom 后，把「遥控器宽度 + 余量」写进
+     `--remote-col-width`，这里用上；量不到之前退回 145px（旧值，够放 1.3 倍）。
      右边写 minmax(0, 1fr)：1fr 的隐式下限是内容宽度，不放开的话窗口一窄
      就会被里面两张卡的最小宽度顶出去。 */
-  grid-template-columns: minmax(0, 145px) minmax(0, 1fr);
+  grid-template-columns: max(145px, var(--remote-col-width, 145px)) minmax(0, 1fr);
   gap: 16px;
   /* 两张卡等高：默认的 stretch 会让较矮的那张补到行高。用 start 的话
      各占各的内容高度，遥控器那一列会明显比右边的向导 + 矩阵卡矮一截。 */
@@ -32,9 +31,9 @@
   align-items: center;
 }
 
-/* 映射向导里的遥控器放大展示 */
+/* 映射向导里的遥控器放大展示（zoom 的具体值由 useRemoteZoom 按高度写入） */
 .mapping-wizard .x2pro-remote {
-  zoom: 1.3;
+  zoom: var(--remote-zoom, 1.3);
 }
 
 /* ---------- 映射向导：左栏的垂直间距 ----------
@@ -303,6 +302,27 @@
   color: var(--text-2);
 }
 
+/* 自建配置：整颗胶囊用它的内环颜色填充。
+   字色由行内样式按底色亮度选黑/白；选中态用一圈「字色」描边，
+   深浅底上都看得见，也不会和填充色打架。 */
+.scope-pill.filled {
+  border-color: transparent;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
+.scope-pill.filled:hover {
+  filter: brightness(1.06);
+}
+
+.scope-pill.filled.active {
+  /* 两种作用域都是实心胶囊，选中态必须一眼看出来：
+     内圈用与字色同源的描边（深底上偏白、浅底上偏黑），外加一层浮起阴影。 */
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, currentColor 80%, transparent),
+    0 2px 8px rgba(15, 23, 42, 0.22);
+}
+
 /* 圆点颜色来自后端应用档案（profiles/*.json），互相之间色相差异很大。
    在展示层统一降饱和并加一圈细边，避免一屏出现多个跳眼的色点。 */
 .scope-dot {
@@ -353,11 +373,38 @@
   outline-offset: 1px;
 }
 
-/* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
-.matrix-hint {
-  margin: 0 0 8px;
+/* 自建配置左上角的编辑角标：和右上角的删除 × 对称 */
+.scope-edit {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--rm-solid);
+  background: var(--rm-raise);
+  color: var(--rm-text-3);
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
+.scope-edit:hover {
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  border-color: var(--rm-accent-line);
+}
+
+.scope-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */
 .matrix {
   border-top: 1px solid var(--border);
   overflow-x: hidden;
@@ -409,9 +456,10 @@
   overflow: visible;
 }
 
-/* 动作文字 + × 的共同容器：宽度跟随内容，× 不会飘到整列最右边 */
+/* 动作文字 + × 的共同容器：宽度跟随内容。
+   × 是「单元格」的右上角角标（绝对定位挂在 .matrix-cell 上，见 .matrix-cell-x），
+   所以这里**不能**再建定位上下文——否则窄列里 × 会压到文字上。 */
 .matrix-cell-content {
-  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -480,13 +528,6 @@
   background: var(--rm-err);
 }
 
-/* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
-.matrix-cell.own {
-  background: var(--rm-accent-tint);
-  color: var(--rm-accent-strong);
-  font-weight: 600;
-}
-
 .matrix-cell.sel {
   box-shadow: inset 0 0 0 1.5px var(--rm-accent);
   border-radius: 3px;
@@ -507,10 +548,6 @@
 
 .matrix-row.mic .matrix-key {
   color: var(--text-2);
-}
-
-.override-note {
-  margin: 8px 0 0;
 }
 
 /* ---------- 映射卡：向导与矩阵左右并排 ---------- */
@@ -675,13 +712,17 @@
 
 
 /* ---------- 映射矩阵图例 ---------- */
+/* 图例固定一行：全局与分析范围切换时多一项「取消关联」，
+   换行会让整张卡片高度跳一下——这里宁可挤一点也不折行。 */
 .matrix-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  flex-wrap: nowrap;
+  gap: 6px 14px;
   margin-top: 10px;
   font-size: 11.5px;
   color: var(--rm-text-3);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .matrix-legend .lg {

@@ -11,7 +11,7 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  * - **已绑定（启用）**：文字微绿；悬停 / 选中时右上角出现红色 ×；
  * - **已禁用**：红色填充（动作保留，点格子恢复）；
  * - **未绑定**：`—`，点击选中后在左侧选动作保存；
- * - **应用档案覆盖**：蓝底（沿用全局的格子不带蓝底）。
+ * - **全局与每份应用配置是两套独立的表**：当前作用域只看自己那张，不跨表兜底。
  *
  * 交互（仅全局作用域开启，`interactive`）：
  * - 点击已绑定格 = 切换禁用 / 启用，并把它设为编辑目标；
@@ -19,8 +19,6 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  * - 点右上角 × = 取消关联（删除绑定，`onClear`）。
  */
 export function MappingMatrix({
-  title,
-  hint,
   buttons,
   triggers,
   global,
@@ -31,8 +29,6 @@ export function MappingMatrix({
   onCellClick,
   onClear,
 }: {
-  title: string;
-  hint?: string;
   buttons: RemoteButton[];
   triggers: TriggerOption[];
   global: Map<string, MappingEntry>;
@@ -54,9 +50,6 @@ export function MappingMatrix({
 
   return (
     <>
-      <div className="wizard-label">{title}</div>
-      {hint && <p className="hint matrix-hint">{hint}</p>}
-
       <div className="matrix">
         <div className="matrix-row head">
           <span className="matrix-key">按键</span>
@@ -90,25 +83,28 @@ export function MappingMatrix({
               <span className="matrix-key">{button.name}</span>
               {triggers.map((t) => {
                 const key = cellKey(button.key, t.key);
+                // 全局与每份应用配置是两张独立的表：当前作用域读哪张，
+                // 就只看哪张，不跨表兜底。
                 const own = override.get(key);
-                const entry = own ?? global.get(key);
+                const entry = interactive ? own ?? global.get(key) : own;
                 const enabled = entry?.enabled !== false;
                 const isSelected =
                   selected.button === button.key && selected.trigger === t.key;
                 const cls = [
                   "matrix-cell",
                   entry ? (enabled ? "on" : "off") : "empty",
-                  own ? "own" : "",
                   isSelected ? "sel" : "",
                 ]
                   .filter(Boolean)
                   .join(" ");
 
                 const title = entry
-                  ? `${own ? "这份配置改过：" : "沿用全局："}${entry.action}${
-                      enabled ? "（点击禁用）" : "（已禁用，点击恢复）"
-                    }`
-                  : "未绑定（点击选中，再选动作保存）";
+                  ? interactive
+                    ? `${entry.action}${
+                        enabled ? "（点击禁用）" : "（已禁用，点击恢复）"
+                      }`
+                    : `${entry.action}（点右上角 × 取消这一格）`
+                  : "未绑定：点击选中，再从左侧选动作保存";
 
                 return (
                   <span
@@ -129,7 +125,8 @@ export function MappingMatrix({
                         {entry?.action || "—"}
                       </span>
                     </span>
-                    {interactive && entry && (
+                    {/* 当前作用域里这一格有绑定才出现：删掉它 = 这个键在这里不再有动作 */}
+                    {onClear && entry && (
                       <button
                         type="button"
                         className="matrix-cell-x"
@@ -137,7 +134,7 @@ export function MappingMatrix({
                         aria-label={`取消关联 ${button.name} · ${t.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onClear?.(button.key, t.key);
+                          onClear(button.key, t.key);
                         }}
                       >
                         ×
@@ -154,22 +151,20 @@ export function MappingMatrix({
       <div className="matrix-legend">
         <span className="lg">
           <i className="sw on" />
-          已绑定（文字微绿）
+          已绑定
         </span>
         <span className="lg">
           <i className="sw off" />
-          已禁用（点击恢复）
+          已禁用
         </span>
         <span className="lg">
           <i className="sw empty" />
           未绑定
         </span>
-        {interactive && (
-          <span className="lg">
-            <i className="sw x">×</i>
-            取消关联（悬停 / 选中显示）
-          </span>
-        )}
+        <span className="lg">
+          <i className="sw x">×</i>
+          取消关联
+        </span>
       </div>
     </>
   );

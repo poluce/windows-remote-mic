@@ -2,6 +2,23 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { AppProfileView } from "./types";
 
 /**
+ * 浏览器预览用的调色板兜底。
+ *
+ * 真实来源是后端的 `app_icon_palette`（`core-app-profile/src/model.rs` 的
+ * `AUTO_ICON_COLORS`），这里只在没有 Tauri 时兜底，不要拿它当第二事实来源。
+ */
+const FALLBACK_ICON_PALETTE = [
+  "#ff4d4f",
+  "#ff7a00",
+  "#ffb800",
+  "#ffe600",
+  "#8ce000",
+  "#4d6bfe",
+  "#ff2a85",
+  "#b84dff",
+];
+
+/**
  * 应用专属配置的读写封装。
  *
  * 每个写命令在后端都是「读文件 → 改一处 → 原子写回 → 重载调度器」一整套，
@@ -24,17 +41,52 @@ export async function loadProfiles(): Promise<AppProfileView[]> {
   }
 }
 
-/** 新建一份配置，返回它的 id。 */
+/** 新建一份配置，返回它的 id。`iconColor` 为空表示内环简标颜色自动生成。 */
 export async function createProfile(
   name: string,
   process: string,
   titleContains: string,
+  iconColor: string | null = null,
 ): Promise<string> {
   return invoke<string>("create_app_profile", {
     name,
     process,
     windowTitleContains: titleContains,
+    iconColor,
   });
+}
+
+/** 修改一份已存在的配置（展示名 / 匹配规则 / 内环颜色）。 */
+export async function updateProfile(
+  id: string,
+  name: string,
+  process: string,
+  titleContains: string,
+  iconColor: string | null,
+): Promise<void> {
+  await invoke("update_app_profile", {
+    id,
+    name,
+    process,
+    windowTitleContains: titleContains,
+    iconColor,
+  });
+}
+
+/**
+ * 后端的简标调色板。
+ *
+ * 不在前端硬编码第二份色卡：内环自动色、颜色选择器、作用范围圆点都从这一处取。
+ * 浏览器预览（`isTauri()` 为 false）时退回 `FALLBACK_ICON_PALETTE`。
+ */
+export async function loadIconPalette(): Promise<string[]> {
+  if (!isTauri()) return FALLBACK_ICON_PALETTE;
+  try {
+    const palette = await invoke<string[]>("app_icon_palette");
+    return palette.length ? palette : FALLBACK_ICON_PALETTE;
+  } catch {
+    return FALLBACK_ICON_PALETTE;
+  }
 }
 
 /** 把某个 (按键, 触发) 写进这份配置。 */

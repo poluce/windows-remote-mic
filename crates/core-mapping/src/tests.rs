@@ -158,6 +158,20 @@ fn parse_combo_spec_canonicalizes_order_and_aliases() {
         combo_display(&["lctrl".into(), "lshift".into(), "s".into()]),
         "左Ctrl+左Shift+S"
     );
+    // 标点键：DSH 等应用的快捷键大量落在这些键上
+    assert_eq!(
+        parse_combo_spec("ctrl+/"),
+        Some(vec!["lctrl".into(), "slash".into()])
+    );
+    assert_eq!(
+        parse_combo_spec("ctrl+alt+,"),
+        Some(vec!["lctrl".into(), "lalt".into(), "comma".into()])
+    );
+    assert_eq!(
+        parse_combo_spec("ctrl+`"),
+        Some(vec!["lctrl".into(), "backquote".into()])
+    );
+    assert_eq!(combo_display(&["lctrl".into(), "slash".into()]), "左Ctrl+/");
 }
 
 #[test]

@@ -65,12 +65,114 @@ fn normalize(name: &str) -> String {
 }
 
 /// 快捷菜单里用的矢量简标（首字母 + 品牌色），不依赖图标资源。
+///
+/// 两个字段都允许留空，空值各自回退到自动值（见 [`AppProfile::menu_icon`]）：
+/// 用户在「新建应用」里只挑了颜色时，落盘的就是 `{ "color": "#..." }`，
+/// 简标文字继续跟着展示名自动变（改名字不用再手动改简标）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IconSpec {
-    /// 圆圈里显示的字，1–2 个字符。
+    /// 圆圈里显示的字，1–2 个字符；留空表示按展示名自动取。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
-    /// 品牌色，形如 `#3B82F6`。
+    /// 品牌色，形如 `#3B82F6`；留空表示按配置 id 自动取。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub color: String,
+}
+
+/// 自动简标与预设色卡共用的调色板。
+///
+/// 这组是按用户要求定下的默认色（暖色起手、冷色收尾）；快捷菜单绘制时会整体向
+/// 中性灰混 22%，落在浅色底上仍然收得住。颜色只由稳定 id 决定，改展示名不会
+/// 换色、重启也不会变。
+///
+/// 「新建应用」里给用户挑的也是这同一组颜色（命令 `app_icon_palette` 交给前端），
+/// 避免出现调色板和内环观感对不上的第二套色卡。
+static AUTO_ICON_COLORS: [&str; 8] = [
+    "#FF4D4F", // 珊瑚红
+    "#FF7A00", // 橙
+    "#FFB800", // 琥珀
+    "#FFE600", // 亮黄
+    "#8CE000", // 黄绿
+    "#4D6BFE", // 钢蓝
+    "#FF2A85", // 玫红
+    "#B84DFF", // 紫
+];
+
+/// 可选简标颜色（供「新建应用」/ 作用范围的颜色选择器使用）。
+pub fn icon_palette() -> &'static [&'static str] {
+    &AUTO_ICON_COLORS
+}
+
+impl IconSpec {
+    /// 从展示名与稳定 id 生成简标：名字取前 1–2 个字母/数字/汉字，颜色按 id 定。
+    ///
+    /// 「新建应用」只填名称与进程名/标题，没有图标编辑器；内环又要能直接切到
+    /// 用户自己建的配置，所以没写 `icon` 的配置在这里得到一个可用的兜底简标。
+    /// 结果只依赖入参，因此每次打开菜单、每次启动都一致。
+    pub fn auto(name: &str, seed: &str) -> Self {
+        Self {
+            label: auto_label(name),
+            color: color_from_seed(seed).to_string(),
+        }
+    }
+
+    /// 只指定颜色、简标文字留空（跟着展示名自动变）的简标。
+    pub fn with_color(color: &str) -> Self {
+        Self {
+            label: String::new(),
+            color: color.to_string(),
+        }
+    }
+
+    /// 规范化用户输入的颜色：接受 `#rrggbb` / `rrggbb`，统一成小写 `#rrggbb`。
+    ///
+    /// 这是唯一入口——命令层与配置层都走它，避免把 `red`、`#FFF` 这类
+    /// 前端猜不出 Canvas 会怎么画的写法落进配置文件。
+    pub fn parse_color(raw: &str) -> Result<String, String> {
+        let text = raw.trim();
+        let hex = text.strip_prefix('#').unwrap_or(text);
+        if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(format!(
+                "颜色格式应为 #RRGGBB（例如 #4D6BFE），收到「{text}」"
+            ));
+        }
+        Ok(format!("#{}", hex.to_ascii_lowercase()))
+    }
+}
+
+/// 取展示名的前 1–2 个字母/数字/汉字；取不到时退回 `?`，避免画出空圆圈。
+fn auto_label(name: &str) -> String {
+    let mut label = String::new();
+    for ch in name.chars() {
+        if !ch.is_alphanumeric() {
+            continue;
+        }
+        // ASCII 字母统一大写，和种子里的「CC」「DS」「Z」观感一致。
+        label.push(if ch.is_ascii_alphabetic() {
+            ch.to_ascii_uppercase()
+        } else {
+            ch
+        });
+        if label.chars().count() >= 2 {
+            break;
+        }
+    }
+    if label.is_empty() {
+        "?".to_string()
+    } else {
+        label
+    }
+}
+
+/// FNV-1a：把稳定 id 映射到调色板某一项。不用 `RandomState`——它每次进程启动
+/// 都会换种子，菜单颜色会跟着闪。
+fn color_from_seed(seed: &str) -> &'static str {
+    let mut hash: u32 = 2_166_136_261;
+    for byte in seed.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    AUTO_ICON_COLORS[hash as usize % AUTO_ICON_COLORS.len()]
 }
 
 /// 启动一个应用的方式。
@@ -137,6 +239,39 @@ impl AppProfile {
             self.process.display()
         } else {
             self.name.clone()
+        }
+    }
+
+    /// 快捷菜单内环实际要画的简标：**每份配置都有**。
+    ///
+    /// 显式写了 `icon` 就用它（空 label / 空 color 各自回退到自动值），没写就
+    /// 自动生成——内环不再以「有没有 icon 字段」当入菜单开关，用户在这里新建
+    /// 的每一份应用配置都能直接在菜单里切换。
+    pub fn menu_icon(&self) -> IconSpec {
+        let name = self.display_name();
+        // id 是文件名（稳定）；测试或临时构造的配置没有 id 时退回展示名，
+        // 至少同一进程内颜色是稳定的。
+        let seed = if self.id.is_empty() {
+            name.clone()
+        } else {
+            self.id.clone()
+        };
+        let auto = IconSpec::auto(&name, &seed);
+
+        match &self.icon {
+            Some(icon) => IconSpec {
+                label: if icon.label.trim().is_empty() {
+                    auto.label
+                } else {
+                    icon.label.clone()
+                },
+                color: if icon.color.trim().is_empty() {
+                    auto.color
+                } else {
+                    icon.color.clone()
+                },
+            },
+            None => auto,
         }
     }
 

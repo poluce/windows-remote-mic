@@ -258,13 +258,13 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="section-label">外观</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">基础</div>
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">主题</div>
             <p className="hint">
-              跟随系统时会随 Windows 的浅色 / 深色设置自动切换
+              跟随系统时随 Windows 自动切换
               {themePref === "system" && `（当前为${resolvedTheme === "dark" ? "深色" : "浅色"}）`}。
             </p>
           </div>
@@ -282,15 +282,12 @@ export function SettingsPage() {
             ))}
           </div>
         </div>
-      </section>
 
-      <div className="section-label">按键信号</div>
-      <section className="card form-card">
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">关闭窗口时最小化到系统托盘</div>
             <p className="hint">
-              开启后点击窗口右上角 × 时仅隐藏，不退出应用。
+              点右上角 × 时只隐藏，不退出应用。
             </p>
           </div>
           <button
@@ -310,7 +307,7 @@ export function SettingsPage() {
           <div className="form-text">
             <div className="form-label">拦截 HID 按键信号</div>
             <p className="hint">
-              开启后按键由本应用独占，系统不再响应；关闭则两边同时响应。
+              开启后按键由本应用独占，系统不再响应。
             </p>
           </div>
           <button
@@ -331,14 +328,11 @@ export function SettingsPage() {
              <p className="hint warn">驱动注入尚未就绪，此时按键可能仍会被系统响应。</p>
           </div>
         )}
-      </section>
 
-      <div className="section-label">按键判定</div>
-      <section className="card form-card">
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">长按判定</div>
-            <p className="hint">按住多久算长按。麦克风的「按住说话」也用它。</p>
+            <p className="hint">按住多久算长按。</p>
           </div>
           <select
             className="select timing-select"
@@ -356,9 +350,7 @@ export function SettingsPage() {
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">双击间隔</div>
-            <p className="hint">
-              两次按下间隔多短算双击。只有绑定了双击的按键才会等这个窗口；没绑双击的键，单击松开立即生效。
-            </p>
+            <p className="hint">两次按下间隔多短算双击。</p>
           </div>
           <select
             className="select timing-select"
@@ -375,36 +367,29 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <div className="section-label">智能体接入</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">智能体接入（MCP）</div>
         <div className="form-row">
           <div className="form-text">
-            <div className="form-label">允许智能体配置（MCP）</div>
+            <div className="form-label">允许智能体配置</div>
             <p className="hint">
-              仅本机可访问。开启后智能体可通过 MCP 修改按键映射与触发时间，修改立即生效；
-              关闭后接口立即失效。默认关闭。
+              仅本机可访问，改动立即生效。
+              {agentStatus && (
+                <span className="agent-state">
+                  {agentStatus.running
+                    ? ` · 运行中 127.0.0.1:${agentStatus.port}`
+                    : agentStatus.enabled
+                      ? " · 启动失败，请关闭后重试"
+                      : " · 未启用"}
+                </span>
+              )}
             </p>
-            {agentStatus && (
-              <p className="hint">
-                状态：
-                {agentStatus.running
-                  ? `运行中（127.0.0.1:${agentStatus.port}）`
-                  : agentStatus.enabled
-                    ? "已停止（启动失败，请关闭开关后重试）"
-                    : "已停止；开启后生成 token"}
-              </p>
-            )}
-            {agentStatus?.running && (
-              <p className="hint">
-                MCP sidecar：<code>{agentStatus.sidecar_path}</code>
-              </p>
-            )}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={agentStatus?.enabled === true}
-            aria-label="允许智能体配置（MCP）"
+            aria-label="允许智能体配置"
             className={`switch${agentStatus?.enabled ? " on" : ""}`}
             onClick={toggleAgentApi}
             disabled={!isTauri() || agentBusy || !agentStatus}
@@ -418,8 +403,8 @@ export function SettingsPage() {
             <div className="form-text">
               <div className="form-label">MCP 配置</div>
               <p className="hint">
-                把下面这段加入智能体的 MCP 配置（Claude Code / Codex / DSH 等）。
-                应用重启后 token 会轮换，sidecar 会自动读取新的发现文件。
+                把下面这段加进智能体的 MCP 配置。应用每次启动都会换新端口和访问令牌，
+                sidecar 每次调用都会重新读取，所以这段配置不用跟着改。
               </p>
               <pre className="agent-config-code">{agentConfig}</pre>
               <div className="actions">
@@ -441,8 +426,8 @@ export function SettingsPage() {
         {agentMsg && <p className="hint">{agentMsg}</p>}
       </section>
 
-      <div className="section-label">关于与更新</div>
-      <section className="card form-card">
+      <section className="card form-card settings-card">
+        <div className="card-title">关于与更新</div>
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">

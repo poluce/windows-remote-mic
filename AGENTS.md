@@ -134,11 +134,11 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
 
 - 主窗口是设置型应用：左侧导航，内容区直接渲染页面（无顶栏、无页面标题）。
 - 页面（实际导航，见 `src/components/Sidebar.tsx`）：
-  - **连接**：设备卡（扫描 / 连接 / 断开）、连接状态 pills（语音桥 / 返回音量旁路 / ATVV 端点）、
-    语音链路（虚拟声卡选择、语音桥状态）、等待 / 重试 / 失败提示。
+  - **连接**：设备卡（状态 + 电量 + 扫描 / 连接 / 断开，以及返回音量旁路 / ATVV 端点两个状态）、
+    语音链路（虚拟声卡选择、语音桥状态、唤出语音输入条）、等待 / 重试 / 失败提示。
   - **按键映射**：遥控器按键矩阵、触发方式、动作选择、应用档案作用域、自定义快捷键、按键校准。
   - **通用设置**：拦截 HID 按键信号（eat 模式）、长按判定、双击间隔。
-  - **诊断**：状态与自检（10 项）、VB-CABLE 检测 / 一键安装、应用专属映射概览、按键测试、测试音。
+  - **诊断**：状态与自检（10 项）、VB-CABLE 检测 / 一键安装、按键测试、诊断报告。
   - **日志**：查看尾部、清空、打开目录、DEBUG 开关。
   - **引导**：4 步首次配置（蓝牙配对 → 虚拟声卡 → Win+H 麦克风绑定 → 模拟自检与日常使用）。
 - **没有独立的「语音」页和「统计」页**：语音相关在连接页，统计只在后台落盘。
@@ -157,7 +157,15 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
 - **菜单键默认动作是 `ToggleQuickMenu`**，旧配置 `ContextMenu`（右键菜单）会在启动时自动迁移。
 - **菜单独占输入模式**：打开快捷菜单时调度器进入 `InputMode::QuickMenu`，遥控器方向 / 确定 / 菜单 / 返回等按键
   不再走普通触发检测，而是以 `quick-menu-key` 事件转发给快捷菜单窗口；关闭后恢复 `InputMode::Normal`。
+- **菜单内方向键语义**（遥控器与本地键盘一致，勿再互换）：**左右 = 当前环内滚动**（右 = 下一个 +1，
+  左 = 上一个 −1，按住连发）；**上下 = 切换内外环**（上 = 外环，下 = 内环）。
 - **状态持久化**：`quick-menu.html` 把菜单停留位置与所选环状态存入 `localStorage`（key `remote-mic-quick-menu-state`）。
+- **内环 = 全局设置 + 全部应用配置**：第一项固定是「全局设置」（简标「设」，`SELF_MENU_ID = "__self__"`），
+  点它把主窗口切到前台并收起菜单——前台是本软件时没有应用配置能命中，按键自然回到全局映射，
+  于是「全局设置 ↔ 各应用设置」在同一个菜单里能来回切，不需要额外的模式开关。
+  后面依次是 `app-profiles/` 里**每一份**配置——在映射页「+ 新建应用」建好的配置立即出现在内环，
+  可直接切换，不需要额外配置。没写 `icon` 的配置用自动简标兜底（展示名前 1–2 个字母/汉字 +
+  按 id 稳定映射的预设色）；`icon` 只用于**自定义**简标，不再是入菜单开关。
 - 该窗口加载静态 HTML，**不走 Vite HMR**；修改后需重新打开窗口（或重启应用）才能生效。
 - **热更新坑**：不要删掉 `toggle_quick_menu` 里显示时的 `window.location.reload()`，
   否则改 `quick-menu.html` 后必须重启整个应用才能看到变化。
@@ -190,7 +198,8 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
     `long_press_ms`（默认 550）、`double_click_ms`（默认 250）、`voice_target`、`shortcuts`、
     `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）、`revision`（配置写版本号）、
-    `agent_api_enabled`（是否允许外部智能体接入，默认 false）。
+    `agent_api_enabled`（是否允许外部智能体接入，默认 false）、
+    `profiles_standalone`（应用配置是否已迁移成独立按键表，迁移标记）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
 - **单击时序**：只有显式绑定了双击的按键才会等双击窗口确认单击；**没有双击绑定的按键在松开
   瞬间立即执行**（快速连按每次都生效，不会被合并成双击吞掉）。绑了不同动作的长按仍按阈值触发一次。
@@ -205,14 +214,32 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 13 个按键（顺序与前端矩阵一致：电源、麦克风、上、左、确定、右、下、返回、音量+、主页、音量−、菜单、TV）；
   - 5 种触发；2 个动作分类（系统 / 自定义，「自定义」用哨兵值 `custom_combo`）；
   - 默认绑定列表（14 条），前端只负责渲染。
-- **应用档案（app profile）**：按前台窗口进程（`process` / `window_title_contains`）匹配一套按键绑定与快捷键。
+- **应用档案（app profile）**：按前台窗口进程（`process` / `window_title_contains`）匹配**独立的一整套**
+  按键绑定与快捷键。全局是一套、每份配置是另一套，命中应用配置时**不再回落到全局**
+  （语音键 `Mic` 例外，始终读全局）；新建配置时把当前全局快照复制进来当起点，
+  旧数据在升级后的首次加载时按当时的全局快照补全一次（`config.json` 的 `profiles_standalone` 标记）。
   - 用户目录：`%LOCALAPPDATA%\RemoteMic\RC003\app-profiles\*.json`；
   - 种子模板：仓库根 `profiles/*.json`，首次启动播种到用户目录；
   - 前端作用域切换在映射页顶部（`pages/mapping/ScopeBar.tsx`）；
-  - 后端命令：`app_profile_status / app_profile_catalog / app_menu_apps / create_app_profile /
-    save_profile_binding / clear_profile_binding / delete_app_profile / reload_app_profiles`；
+  - 后端命令：`app_profile_status / app_profile_foreground_candidates / app_profile_catalog /
+    app_menu_apps / create_app_profile / update_app_profile / save_profile_binding /
+    clear_profile_binding / delete_app_profile / reload_app_profiles`；
+  - **「新建应用配置」的进程名候选不能用当前前台**：用户点进本页时前台必然是本应用自己
+    （`remote-mic.exe`），填出来只会匹配自己。命令 `app_profile_foreground_candidates` 给的是
+    **最近前台历史**（tick 线程每次刷新前台快照时记录，最多 5 条、按进程名去重、排除本应用），
+    对话框点一下即可填入；历史为空才提示用户先切到目标应用。
   - 写命令均为「读文件 → 改一处 → 原子写回 → 重载调度器」，前端不需要再补 reload；
+  - **配置编辑走同一张弹窗**：新建与编辑共用 `components/ProfileDialog.tsx`，作用范围条下
+    **不再就地展开设置行**——自建配置胶囊左上角 ✎ 打开编辑弹窗（右上角 × 仍删除整份配置），
+    保存走 `update_app_profile`（展示名 / 匹配规则 / 内环颜色一次写回）。
+  - **内环简标颜色**：`IconSpec` 的 `label` / `color` 都可省略（空值各自回退到自动规则）；
+    点展示名左侧圆圈开颜色浮层（`自动` + 8 个预设色 + 色相/明度滑杆），可选项来自后端
+    `app_icon_palette`（唯一色卡，别在前端硬编码第二份），传 `null` 恢复自动色，
+    且不会动用户手写的简标文字。预设色卡含亮黄/黄绿时，简标文字会按底色亮度自动切黑或白。
   - 设计说明见 [docs/design/app-profile-mapping.html](docs/design/app-profile-mapping.html)。
+- **组合键键名**：`core-mapping/src/combo.rs` 的别名表同时接受字母 / 数字 / F1–F12 / 方向与功能键，
+  以及 `slash comma period backquote minus equal semicolon quote leftbracket rightbracket backslash`
+  （也可直接写 `/ , . \` - = ; ' [ ] \\`）；`core-input/src/hid_kbd.rs` 负责对应到 HID usage。
 - **自定义快捷键（NamedShortcut）**：名字只是显示层，绑定里存的是 `combo:lctrl+k` 原始写法；
   改 / 删名字不影响已有绑定（显示时回退原始按键）。
 - **语音目标 `voice_target`**：默认 `windows_voice`（Win+H）；`ime_wechat / ime_doubao / ime_sogou`
@@ -428,6 +455,9 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
 
 - 用户界面：通用设置 →「智能体接入」卡片，**明确的开关**，默认关闭；开启后显示端口、
   MCP 配置片段、复制配置 / 重新生成 token。
+- Windows 注意：监听套接字设了 `set_nonblocking(true)` 之后，`accept` 出来的连接会**继承**
+  非阻塞模式；`handle` 里必须先 `set_nonblocking(false)`，否则第一次 read 就是
+  `WSAEWOULDBLOCK(10035)`，请求会被静默丢弃。
 - 应用内：`src-tauri/src/agent_api/` 在 `127.0.0.1` 随机端口起一个极简 HTTP JSON-RPC，
   32 字节 token 写入 `%LOCALAPPDATA%\RemoteMic\RC003\agent-api.json`；只接受 POST /rpc，
   校验 token / Host / 拒绝 Origin / 限流 / 64 KiB 上限。

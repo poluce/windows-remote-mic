@@ -1,55 +1,142 @@
-/* 诊断页专用样式（从 App.css 拆出，随页面组件按需加载）。 */
+/* 诊断页专用样式（从 App.css 拆出，随页面组件按需加载）。
+ *
+ * 两张卡共用同一套骨架：卡头（标题 + 一句状态 + 右侧动作），
+ * 下面是一列「标签 —— 值」行，行之间只用一条细线分隔；工具按钮统一收在卡底。
+ * 这样无论自检跑没跑过、有没有命中应用配置，卡片高度都只随行数变化，
+ * 不会出现一边高一边矮的空洞。
+ */
 
-/* ---------- 诊断页双栏 ---------- */
-.diag-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: start;
-  margin-bottom: 14px;
+.diag-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rm-line);
 }
 
-.diag-grid .card {
-  margin-bottom: 0;
+.diag-head-text {
+  min-width: 0;
 }
 
-@media (max-width: 900px) {
-  .diag-grid {
-    grid-template-columns: 1fr;
-  }
+.diag-title {
+  font-size: var(--rm-fs-14);
+  font-weight: 600;
+  color: var(--rm-text);
 }
 
-/* ---------- 诊断 ---------- */
-.check-list {
+.diag-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-3);
+  line-height: 1.5;
+}
+
+.diag-status-meta {
+  color: var(--rm-text-4);
+}
+
+.diag-status-meta::before {
+  content: "·";
+  margin-right: 6px;
+}
+
+.diag-head-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* ---------- 标签 / 值行 ---------- */
+.diag-rows {
   display: flex;
   flex-direction: column;
 }
 
-.check-row {
+.diag-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 2px;
+  gap: 16px;
+  padding: 9px 0;
   border-bottom: 1px solid var(--rm-line);
   font-size: var(--rm-fs-13);
   color: var(--rm-text);
 }
 
-/* 左侧标签固定宽度不换行：右侧值很长时（例如窗口标题），
-   否则标签会被挤成一行一个字。 */
-.check-row > :first-child {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* 自检行里的说明文字不参与两端对齐，靠左并允许收缩 */
-.check-row .hint {
-  margin: 0;
-  text-align: left;
-  min-width: 0;
-}
-
-.check-row:last-child {
+.diag-row:last-child {
   border-bottom: none;
+}
+
+/* 标签不换行：窗口标题、覆盖按键这类长值不能把标签挤成一列单字 */
+.diag-row-label {
+  flex: none;
+  white-space: nowrap;
+  color: var(--rm-text-2);
+}
+
+.diag-row-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 68%;
+  color: var(--rm-text-2);
+  text-align: right;
+}
+
+.diag-row-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-3);
+}
+
+/* ---------- 说明 / 消息 ---------- */
+.diag-note {
+  margin-top: 10px;
+  font-size: var(--rm-fs-12);
+  color: var(--rm-text-3);
+  line-height: 1.7;
+  /* 诊断报告路径、安装错误都可能很长 */
+  word-break: break-all;
+}
+
+/* ---------- 卡底工具条 ---------- */
+.diag-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rm-line);
+}
+
+@media (max-width: 720px) {
+  .diag-head {
+    flex-direction: column;
+  }
+
+  .diag-head-actions {
+    flex-wrap: wrap;
+  }
+
+  .diag-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .diag-row-value {
+    max-width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+  }
 }

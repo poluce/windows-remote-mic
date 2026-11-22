@@ -17,7 +17,9 @@ import {
   deleteProfile,
   loadProfiles,
   saveProfileBinding,
+  updateProfile,
 } from "./profile";
+import type { ProfileFormValues } from "../../components/ProfileDialog";
 import {
   comboLabel,
   deleteShortcut,
@@ -29,6 +31,7 @@ import {
 } from "./shortcuts";
 import {
   GLOBAL_SCOPE,
+  GLOBAL_SCOPE_COLOR,
   type AppProfileView,
   type MappingCatalog,
   type MappingEntry,
@@ -51,8 +54,11 @@ export function useMappingEditor() {
   const [category, setCategory] = useState("system");
   const [action, setAction] = useState("return");
   const [comboTokens, setComboTokens] = useState<string[]>([]);
-  const [saveMsg, setSaveMsg] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  /** 正在编辑的那份配置；null = 没打开编辑弹窗。 */
+  const [editingProfile, setEditingProfile] = useState<AppProfileView | null>(
+    null,
+  );
   const [pendingDelete, setPendingDelete] = useState<AppProfileView | null>(null);
   /** 快捷键对话框：`editing` 为 null 表示新建。 */
   const [shortcutDialog, setShortcutDialog] = useState<{
@@ -116,10 +122,10 @@ export function useMappingEditor() {
       // 先清掉，避免用户点撤销时把智能体的新改动覆盖回去。
       dismissToast();
       void refreshMappings().catch((err) => {
-        setSaveMsg(`智能体修改后刷新映射失败: ${err}`);
+        showToast(`智能体修改后刷新映射失败: ${err}`);
       });
       void refreshProfiles().catch((err) => {
-        setSaveMsg(`智能体修改后刷新应用配置失败: ${err}`);
+        showToast(`智能体修改后刷新应用配置失败: ${err}`);
       });
       loadShortcuts().then((next) => {
         if (!disposed) setShortcuts(next);
@@ -266,7 +272,6 @@ export function useMappingEditor() {
   const availableTriggers = triggersFor(selected);
   const matrixTriggers = useMemo(() => triggersFor("ok"), [triggersFor]);
 
-  const selectedName = buttons.find((b) => b.key === selected)?.name || selected;
   const actionLabel =
     category === COMBO_CATEGORY
       ? comboLabel(shortcuts, comboTokens)
@@ -274,14 +279,15 @@ export function useMappingEditor() {
           (a) => a.key === action,
         )?.label || action;
 
-  const selectedCell = cellKey(selected, trigger);
-  // 这两条只用于显示（覆盖说明里的「全局是〈什么〉」），所以取带名字的那套
-  const selectedOverride = overrideView.get(selectedCell);
-  const selectedGlobal = globalView.get(selectedCell);
   const isGlobalScope = scope === GLOBAL_SCOPE;
 
   const scopeItems: ScopeItem[] = [
-    { id: GLOBAL_SCOPE, label: "全局", removable: false },
+    {
+      id: GLOBAL_SCOPE,
+      label: "全局",
+      color: GLOBAL_SCOPE_COLOR,
+      removable: false,
+    },
     ...profiles.map((p) => ({
       id: p.id,
       label: p.name,
@@ -295,7 +301,7 @@ export function useMappingEditor() {
     let savedLabel = actionLabel;
     if (category === COMBO_CATEGORY) {
       if (!comboTokens.length) {
-        setSaveMsg("请先选一个自定义快捷键，或用「+ 新建快捷键」建一个");
+        showToast("请先选一个自定义快捷键，或用「+ 新建快捷键」建一个");
         return;
       }
       actionToSave = toComboActionKey(comboTokens);
@@ -303,7 +309,7 @@ export function useMappingEditor() {
     }
     if (!isTauri()) return;
 
-    const where = `${selectedName} · ${triggerLabel[trigger]}`;
+    const where = `${buttons.find((b) => b.key === selected)?.name ?? selected} · ${triggerLabel[trigger]}`;
     try {
       if (isGlobalScope) {
         await invoke("save_mapping", {
@@ -311,29 +317,16 @@ export function useMappingEditor() {
         });
         // 后端写文件并热更新调度器后，把结果读回来当唯一事实来源。
         await refreshMappings();
-        setSaveMsg(`已保存：${where} → ${savedLabel}`);
+        showToast(`已保存：${where} → ${savedLabel}`);
       } else {
         await saveProfileBinding(scope, selected, trigger, actionToSave);
         // 后端写完文件并重载了调度器，这里把它的结果读回来当唯一事实来源，
         // 不在前端自己拼一份「应该是这样」的副本。
         await refreshProfiles();
-        setSaveMsg(`已保存到「${activeProfile?.name}」：${where} → ${savedLabel}`);
+        showToast(`已保存到「${activeProfile?.name}」：${where} → ${savedLabel}`);
       }
     } catch (err) {
-      setSaveMsg(`保存失败: ${err}`);
-    }
-  }
-
-  /** 「改用全局」：只撤掉选中的这一格，这份配置的其它格子不动。 */
-  async function useGlobal() {
-    if (isGlobalScope) return;
-    const where = `${selectedName} · ${triggerLabel[trigger]}`;
-    try {
-      await clearProfileBinding(scope, selected, trigger);
-      await refreshProfiles();
-      setSaveMsg(`「${where}」已改回沿用全局`);
-    } catch (err) {
-      setSaveMsg(`取消失败: ${err}`);
+      showToast(`保存失败: ${err}`);
     }
   }
 
@@ -351,11 +344,11 @@ export function useMappingEditor() {
         enabled: !entry.enabled,
       });
       await refreshMappings();
-      setSaveMsg(
+      showToast(
         entry.enabled ? `已禁用：${where}（再点一下恢复）` : `已启用：${where}`,
       );
     } catch (err) {
-      setSaveMsg(`切换失败: ${err}`);
+      showToast(`切换失败: ${err}`);
     }
   }
 
@@ -369,8 +362,7 @@ export function useMappingEditor() {
     try {
       await invoke("clear_mapping_binding", { button, trigger: trig });
       await refreshMappings();
-      setSaveMsg(`已取消关联：${where}`);
-      showToast(`已取消关联：${where}`, async () => {
+            showToast(`已取消关联：${where}`, async () => {
         try {
           await invoke("save_mapping", {
             edit: {
@@ -381,26 +373,75 @@ export function useMappingEditor() {
             },
           });
           await refreshMappings();
-          setSaveMsg(`已撤销：${where}`);
-          dismissToast();
+                    dismissToast();
         } catch (err) {
-          setSaveMsg(`撤销失败: ${err}`);
+          showToast(`撤销失败: ${err}`);
         }
       });
     } catch (err) {
-      setSaveMsg(`取消失败: ${err}`);
+      showToast(`取消失败: ${err}`);
     }
   }
 
-  async function handleCreate(name: string, process: string, title: string) {
+  /**
+   * 取消这一格在**当前应用配置**里的绑定：这个应用里该键不再有动作。
+   *
+   * 和全局作用域的「取消关联」（删掉全局绑定）是两张独立的表：这里只动
+   * `app-profiles/<id>.json`，全局配置原样保留。
+   */
+  async function clearOverride(button: string, trig: string) {
+    if (!isTauri() || isGlobalScope) return;
+    const name = buttons.find((b) => b.key === button)?.name ?? button;
+    const where = `${name} · ${triggerLabel[trig] ?? trig}`;
+    try {
+      await clearProfileBinding(scope, button, trig);
+      await refreshProfiles();
+      showToast(`「${where}」已取消关联（这个应用里不再有动作）`);
+    } catch (err) {
+      showToast(`取消失败: ${err}`);
+    }
+  }
+
+  async function handleCreate(values: ProfileFormValues) {
     setNewOpen(false);
     try {
-      const id = await createProfileRequest(name, process, title);
+      const id = await createProfileRequest(
+        values.name,
+        values.process,
+        values.titleContains,
+        values.iconColor,
+      );
       await refreshProfiles();
       setScope(id);
-      setSaveMsg("已新建这份配置，改过的按键会自动覆盖全局");
+      showToast("已新建这份配置：按键已按当前全局复制，之后两边互不影响");
     } catch (err) {
-      setSaveMsg(`新建失败: ${err}`);
+      showToast(`新建失败: ${err}`);
+    }
+  }
+
+  /** 打开某份配置的编辑弹窗（和「新建应用」共用同一张表单）。 */
+  function openProfileEditor(item: ScopeItem) {
+    const target = profiles.find((p) => p.id === item.id);
+    if (target) setEditingProfile(target);
+  }
+
+  /** 保存编辑结果：改名 / 改匹配规则 / 改内环颜色一次写回。 */
+  async function handleUpdateProfile(values: ProfileFormValues) {
+    const target = editingProfile;
+    setEditingProfile(null);
+    if (!target) return;
+    try {
+      await updateProfile(
+        target.id,
+        values.name,
+        values.process,
+        values.titleContains,
+        values.iconColor,
+      );
+      await refreshProfiles();
+      showToast(`已更新「${values.name || target.name}」的配置`);
+    } catch (err) {
+      showToast(`保存失败: ${err}`);
     }
   }
 
@@ -413,9 +454,9 @@ export function useMappingEditor() {
       await refreshProfiles();
       // 删掉的正好是当前正在看的那一份，就退回全局。
       if (scope === target.id) setScope(GLOBAL_SCOPE);
-      setSaveMsg(`已删除「${target.name}」的配置，它的按键回到全局`);
+      showToast(`已删除「${target.name}」的配置，它的按键回到全局`);
     } catch (err) {
-      setSaveMsg(`删除失败: ${err}`);
+      showToast(`删除失败: ${err}`);
     }
   }
 
@@ -438,9 +479,9 @@ export function useMappingEditor() {
       setCategory(COMBO_CATEGORY);
       setAction(CUSTOM_COMBO_ACTION);
       setComboTokens(keys);
-      setSaveMsg(`已保存快捷键「${name}」，再点「保存」绑给这个键`);
+      showToast(`已保存快捷键「${name}」，再点「保存」绑给这个键`);
     } catch (err) {
-      setSaveMsg(`保存快捷键失败: ${err}`);
+      showToast(`保存快捷键失败: ${err}`);
     }
   }
 
@@ -448,9 +489,9 @@ export function useMappingEditor() {
     setShortcutDialog({ open: false, editing: null });
     try {
       setShortcuts(await deleteShortcut(keys));
-      setSaveMsg("已删掉这条命名。已经绑上它的按键不受影响，只是不再显示名字");
+      showToast("已删掉这条命名。已经绑上它的按键不受影响，只是不再显示名字");
     } catch (err) {
-      setSaveMsg(`删除快捷键失败: ${err}`);
+      showToast(`删除快捷键失败: ${err}`);
     }
   }
 
@@ -470,7 +511,6 @@ export function useMappingEditor() {
     isGlobalScope,
     selected,
     setSelected,
-    selectedName,
     trigger,
     setTrigger,
     availableTriggers,
@@ -483,21 +523,17 @@ export function useMappingEditor() {
     actionLabel,
     comboTokens,
     setComboTokens,
-    saveMsg,
     save,
-    useGlobal,
     toggleBinding,
     clearBinding,
+    clearOverride,
     toast,
     dismissToast,
-    selectedOverride,
-    selectedGlobal,
     activeProfile,
     globalView,
     overrideView,
     newOpen,
     setNewOpen,
-    handleCreate,
     pendingDelete,
     setPendingDelete,
     handleDelete,
@@ -506,5 +542,10 @@ export function useMappingEditor() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
+    openProfileEditor,
+    editingProfile,
+    setEditingProfile,
+    handleUpdateProfile,
+    handleCreate,
   };
 }

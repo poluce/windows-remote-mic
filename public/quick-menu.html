@@ -66,6 +66,20 @@
       return '#' + to2(mix(r, nr)) + to2(mix(g, ng)) + to2(mix(b, nb));
     }
 
+    // 简标文字该用白字还是深色字：色卡里既有深紫也有亮黄，统一白字会在亮底上糊掉。
+    function readableTextColor(hex) {
+      if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return '#ffffff';
+      const channel = (offset) => {
+        const v = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      const luminance =
+        0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+      const contrastWhite = 1.05 / (luminance + 0.05);
+      const contrastDark = (luminance + 0.05) / 0.058;
+      return contrastWhite >= contrastDark ? '#ffffff' : '#131a24';
+    }
+
     const CX = 420;
     const CY = 420;
     const OUTER_R = 350;
@@ -237,7 +251,8 @@
           const label = String(item.label || '?');
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#ffffff';
+          // 文字色跟着降饱和后的底色走，亮黄/黄绿上用深色字
+          ctx.fillStyle = readableTextColor(muteBrandColor(item.color || '#5c6979'));
           ctx.font =
             '700 ' +
             (label.length > 2 ? 12 : label.length > 1 ? 15 : 19) +
@@ -421,8 +436,14 @@
       saveMenuState();
     }
 
-    function switchRing() {
-      ring = ring === 'outer' ? 'inner' : 'outer';
+    function switchRing(next) {
+      // 上下键切换内环/外环：给明确目标环；不传参时保留来回切换的旧行为。
+      if (next === 'outer' || next === 'inner') {
+        if (ring === next) return;
+        ring = next;
+      } else {
+        ring = ring === 'outer' ? 'inner' : 'outer';
+      }
       renderFrame();
       wakeVsync();
       saveMenuState();
@@ -524,21 +545,26 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        e.preventDefault();
-        switchRing();
-      } else if (e.key === 'ArrowDown') {
+      if (e.key === 'ArrowLeft') {
         e.preventDefault();
         scrollCurrent(-1);
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         scrollCurrent(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        switchRing('outer');
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        switchRing('inner');
       }
     });
 
     // 菜单独占模式：遥控器按键经后端直接路由到这里（无需窗口焦点）。
     // 打开菜单时所有遥控器按键都只驱动本菜单，关闭菜单后恢复正常映射。
     // 事件契约：payload = { key: 'up'|'down'|'left'|'right'|'ok'|'close', pressed: bool }。
+    // 方向语义：左右 = 当前环内滚动（右下一个、左上一个，按住连发）；
+    //           上下 = 切换内环/外环（上 = 外环，下 = 内环）。
     // 关闭（close）由后端直接执行，本页收到 close 只做清理，不要再次调用
     // toggle_quick_menu，否则会与后端形成「关闭→重新打开」的双重开关。
     if (window.__TAURI__ && window.__TAURI__.event) {
@@ -566,16 +592,15 @@
             return;
           }
           if (key === 'left' || key === 'right') {
-            if (pressed) {
-              switchRing();
-            }
+            // 左右 = 在当前环内滚动：右 = 下一个（+1），左 = 上一个（−1），按住连发。
+            const dir = key === 'right' ? 1 : -1;
+            if (pressed) startMenuRepeat(dir);
+            else stopMenuRepeat();
             return;
           }
           if (key === 'up' || key === 'down') {
-            // 与原键盘方向一致：上 = +1，下 = −1。
-            const dir = key === 'up' ? 1 : -1;
-            if (pressed) startMenuRepeat(dir);
-            else stopMenuRepeat();
+            // 上下 = 切换环：上 = 外环，下 = 内环。
+            if (pressed) switchRing(key === 'up' ? 'outer' : 'inner');
             return;
           }
           if (key === 'ok') {

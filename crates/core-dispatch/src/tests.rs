@@ -877,7 +877,7 @@ fn profile_overrides_global_mapping() {
 }
 
 #[test]
-fn profile_falls_back_to_global_when_not_covered() {
+fn profile_does_not_fall_back_to_global() {
     let mapping = MappingConfig::default();
     let profile = profile_with(vec![binding(
         ButtonId::Ok,
@@ -885,18 +885,20 @@ fn profile_falls_back_to_global_when_not_covered() {
         ActionKind::Escape,
     )]);
 
-    // 配置只覆盖了 Ok 的单击；其它按键与其它手势都沿用全局映射。
+    // 全局与每份配置是两套独立的表：配置里没写的格子就是「没动作」，不回落到全局。
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::SingleClick),
         Some(ActionKind::Escape)
     );
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::DoubleClick),
-        mapping.resolve(ButtonId::Ok, Trigger::DoubleClick).cloned()
+        None,
+        "配置没写 Ok 的双击，就不该借用全局的双击"
     );
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Up, Trigger::SingleClick),
-        mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        None,
+        "配置没写「上」，这个应用里「上」就不该有动作"
     );
 }
 
@@ -959,9 +961,9 @@ fn empty_registry_has_no_foreground_lookup() {
     assert!(foreground_profile(&registry).is_none());
 }
 
-/// 快捷菜单内圈：只列配了 icon 的配置，顺序与声明一致。
+/// 快捷菜单内圈：列出全部配置，没有 icon 的用自动简标兜底，顺序与声明一致。
 #[test]
-fn menu_apps_lists_only_profiles_with_icon() {
+fn menu_apps_lists_all_profiles_with_auto_icons() {
     let dispatcher = KeyDispatcher::new(MappingConfig::default(), &HashMap::new());
     let mut registry = ProfileRegistry::default();
 
@@ -995,15 +997,24 @@ fn menu_apps_lists_only_profiles_with_icon() {
     dispatcher.set_profiles(registry);
     let apps = dispatcher.menu_apps();
 
-    assert_eq!(apps.len(), 2, "没有 icon 的配置不该出现在菜单里");
-    assert_eq!(apps[0].id, "first");
-    assert_eq!(apps[0].name, "第一个");
-    assert_eq!(apps[0].label, "1st");
-    assert_eq!(apps[0].color, "#111111");
-    assert_eq!(apps[1].id, "second");
-    assert_eq!(apps[1].name, "第二个");
-    // 这两个进程都不存在，所以都是「点了会启动」。
-    assert!(!apps[0].open && !apps[1].open);
+    // 三份配置全部进内环：新建的应用不需要额外配 icon 也能切。
+    assert_eq!(apps.len(), 3, "没写 icon 的配置也要出现在菜单里");
+    assert_eq!(apps[0].id, "no-icon");
+    assert_eq!(apps[0].name, "没有图标");
+    assert_eq!(apps[0].label, "没有", "自动简标取展示名前两个字");
+    assert!(
+        apps[0].color.starts_with('#') && apps[0].color.len() == 7,
+        "自动简标要有颜色：{}",
+        apps[0].color
+    );
+    assert_eq!(apps[1].id, "first");
+    assert_eq!(apps[1].name, "第一个");
+    assert_eq!(apps[1].label, "1st");
+    assert_eq!(apps[1].color, "#111111");
+    assert_eq!(apps[2].id, "second");
+    assert_eq!(apps[2].name, "第二个");
+    // 这些进程都不存在，所以都是「点了会启动」。
+    assert!(apps.iter().all(|a| !a.open));
 
     // 按 id 能取回配置副本，供 open_app_profile 使用。
     assert!(dispatcher.profile_by_id("second").is_some());
@@ -1047,10 +1058,10 @@ fn foreground_profile_matches_real_foreground_process() {
         resolve_action(&mapping, Some(hit), ButtonId::Menu, Trigger::SingleClick),
         Some(ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]))
     );
-    // 未覆盖的按键仍走全局映射。
+    // 每份配置是独立的一套：它没写的按键在这个应用里就是没动作。
     assert_eq!(
         resolve_action(&mapping, Some(hit), ButtonId::Up, Trigger::SingleClick),
-        mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        None
     );
 }
 
