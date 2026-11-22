@@ -40,15 +40,11 @@ export function MappingPage() {
     setAction,
     comboTokens,
     setComboTokens,
-    saveMsg,
     save,
-    useGlobal,
     toggleBinding,
     clearBinding,
     toast,
     dismissToast,
-    selectedOverride,
-    selectedGlobal,
     activeProfile,
     globalView,
     overrideView,
@@ -203,26 +199,13 @@ export function MappingPage() {
                 </div>
               </div>
 
-              {/* 下半：覆盖说明与保存钉在这一栏底部，按钮墙再长也够得着 */}
+              {/* 保存钉在这一栏底部，按钮墙再长也够得着 */}
               <div className="wizard-foot">
-                {selectedOverride && (
-                  <p className="hint override-note">
-                    这一格已改成「{selectedOverride.action}」，全局是「
-                    {selectedGlobal?.action ?? "未绑定"}」。
-                  </p>
-                )}
-
                 <div className="actions">
                   <button className="btn primary" onClick={save} disabled={!isTauri()}>
                     {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
                   </button>
-                  {!isGlobalScope && selectedOverride && (
-                    <button className="btn" onClick={useGlobal}>
-                      改用全局
-                    </button>
-                  )}
                 </div>
-                {saveMsg && <p className="hint">{saveMsg}</p>}
               </div>
             </div>
 
