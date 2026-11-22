@@ -76,6 +76,13 @@ pub struct Config {
     /// 用于 UI / MCP 的乐观并发与撤销校验。旧配置读成 0。
     #[serde(default)]
     pub revision: u64,
+    /// 应用配置是否已切换成**独立的一套**按键表（迁移标记，见 `load_app_profiles`）。
+    ///
+    /// 旧版本里应用配置只存「改过的几格」、其余沿用全局；改造后每份配置是一整套。
+    /// 首次启动时按当时的全局快照把缺的格子补进每份配置，然后把这里置 true，
+    /// 之后不再动它们。默认 false（旧配置）。
+    #[serde(default)]
+    pub profiles_standalone: bool,
     /// 是否允许外部智能体通过 MCP 接口配置本应用。默认关闭。
     #[serde(default)]
     pub agent_api_enabled: bool,
@@ -111,6 +118,7 @@ impl Default for Config {
             shortcuts: Vec::new(),
             last_update_check_at: 0,
             revision: 0,
+            profiles_standalone: false,
             agent_api_enabled: false,
         }
     }

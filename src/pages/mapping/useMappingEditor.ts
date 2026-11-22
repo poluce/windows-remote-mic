@@ -378,10 +378,10 @@ export function useMappingEditor() {
   }
 
   /**
-   * 取消这一格在**当前应用配置**里的覆盖，退回沿用全局。
+   * 取消这一格在**当前应用配置**里的绑定：这个应用里该键不再有动作。
    *
-   * 和全局作用域的「取消关联」（删掉全局绑定）是两件事：这里只动
-   * `app-profiles/<id>.json` 里这条覆盖，全局配置原样保留。
+   * 和全局作用域的「取消关联」（删掉全局绑定）是两张独立的表：这里只动
+   * `app-profiles/<id>.json`，全局配置原样保留。
    */
   async function clearOverride(button: string, trig: string) {
     if (!isTauri() || isGlobalScope) return;
@@ -390,7 +390,7 @@ export function useMappingEditor() {
     try {
       await clearProfileBinding(scope, button, trig);
       await refreshProfiles();
-      showToast(`「${where}」已回到沿用全局`);
+      showToast(`「${where}」已取消关联（这个应用里不再有动作）`);
     } catch (err) {
       showToast(`取消失败: ${err}`);
     }
@@ -407,7 +407,7 @@ export function useMappingEditor() {
       );
       await refreshProfiles();
       setScope(id);
-      showToast("已新建这份配置，改过的按键会自动覆盖全局");
+      showToast("已新建这份配置：按键已按当前全局复制，之后两边互不影响");
     } catch (err) {
       showToast(`新建失败: ${err}`);
     }

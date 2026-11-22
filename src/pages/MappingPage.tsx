@@ -291,7 +291,7 @@ export function MappingPage() {
         title="删除这份配置？"
         desc={
           pendingDelete
-            ? `「${pendingDelete.name}」将不再有专属配置，所有按键沿用全局。`
+            ? `「${pendingDelete.name}」将不再有专属配置，这个应用改用全局那一套。`
             : undefined
         }
         confirmLabel="删除"

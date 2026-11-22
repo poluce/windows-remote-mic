@@ -11,7 +11,7 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  * - **已绑定（启用）**：文字微绿；悬停 / 选中时右上角出现红色 ×；
  * - **已禁用**：红色填充（动作保留，点格子恢复）；
  * - **未绑定**：`—`，点击选中后在左侧选动作保存；
- * - **应用档案覆盖**：蓝底（沿用全局的格子不带蓝底）。
+ * - **全局与每份应用配置是两套独立的表**：当前作用域只看自己那张，不跨表兜底。
  *
  * 交互（仅全局作用域开启，`interactive`）：
  * - 点击已绑定格 = 切换禁用 / 启用，并把它设为编辑目标；
@@ -87,30 +87,27 @@ export function MappingMatrix({
               <span className="matrix-key">{button.name}</span>
               {triggers.map((t) => {
                 const key = cellKey(button.key, t.key);
+                // 全局与每份应用配置是两张独立的表：当前作用域读哪张，
+                // 就只看哪张，不跨表兜底。
                 const own = override.get(key);
-                const entry = own ?? global.get(key);
+                const entry = interactive ? own ?? global.get(key) : own;
                 const enabled = entry?.enabled !== false;
                 const isSelected =
                   selected.button === button.key && selected.trigger === t.key;
                 const cls = [
                   "matrix-cell",
                   entry ? (enabled ? "on" : "off") : "empty",
-                  own ? "own" : "",
                   isSelected ? "sel" : "",
                 ]
                   .filter(Boolean)
                   .join(" ");
 
                 const title = entry
-                  ? own
-                    ? `这份配置改过：${entry.action}${
-                        interactive
-                          ? enabled
-                            ? "（点击禁用）"
-                            : "（已禁用，点击恢复）"
-                          : "（点右上角 × 回到沿用全局）"
+                  ? interactive
+                    ? `${entry.action}${
+                        enabled ? "（点击禁用）" : "（已禁用，点击恢复）"
                       }`
-                    : `沿用全局：${entry.action}`
+                    : `${entry.action}（点右上角 × 取消这一格）`
                   : "未绑定：点击选中，再从左侧选动作保存";
 
                 return (
@@ -132,16 +129,12 @@ export function MappingMatrix({
                         {entry?.action || "—"}
                       </span>
                     </span>
-                    {/* 全局：删掉全局绑定；应用配置：只删「这一格的覆盖」，回到沿用全局 */}
-                    {(onClear && (interactive ? Boolean(entry) : Boolean(own))) && (
+                    {/* 当前作用域里这一格有绑定才出现：删掉它 = 这个键在这里不再有动作 */}
+                    {onClear && entry && (
                       <button
                         type="button"
                         className="matrix-cell-x"
-                        title={
-                          interactive
-                            ? `取消关联：${entry?.action}`
-                            : `取消这份配置的覆盖：${own?.action}`
-                        }
+                        title={`取消关联：${entry.action}`}
                         aria-label={`取消关联 ${button.name} · ${t.label}`}
                         onClick={(e) => {
                           e.stopPropagation();

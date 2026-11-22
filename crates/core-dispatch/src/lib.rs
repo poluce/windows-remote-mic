@@ -884,7 +884,11 @@ fn release_job(
     build_job(mapping, profile, button, Trigger::Release, rt)
 }
 
-/// 解析 (按键, 触发) 对应的**可执行**动作：应用配置优先，未覆盖时回落到全局映射。
+/// 解析 (按键, 触发) 对应的**可执行**动作。
+///
+/// 全局与每份应用配置是**两套独立的按键表**：命中应用配置时只用它自己那一套，
+/// 没写的格子就是「这个应用里没有动作」，**不回落到全局**。语音键（`Mic`）例外，
+/// 按住说话是全局长按语义，始终读全局。
 ///
 /// 禁用（`enabled: false`）或旧的 `Disabled` 动作一律视为「没有动作」——
 /// 与未绑定完全一致：不触发，也不参与单击/双击/长按的手势判定。
@@ -894,8 +898,13 @@ fn resolve_action(
     button: ButtonId,
     trigger: Trigger,
 ) -> Option<ActionKind> {
-    let binding =
-        profile_binding(profile, button, trigger).or_else(|| mapping.binding(button, trigger))?;
+    let binding = match profile {
+        Some(p) if button != ButtonId::Mic => p
+            .bindings
+            .iter()
+            .find(|b| b.button == button && b.trigger == trigger)?,
+        _ => mapping.binding(button, trigger)?,
+    };
     if !binding.enabled || binding.action == ActionKind::Disabled {
         return None;
     }
@@ -931,24 +940,6 @@ fn effective_press_semantics(
         }
     }
     semantics
-}
-
-/// 应用配置里对该 (按键, 触发) 的原始覆盖项（含 `enabled`）。
-///
-/// 约定：**不覆盖 `Mic`**。语音 / 按住说话是全局长按语义、与具体应用无关，
-/// 让某份配置改掉它只会让该应用里的语音静默失效。
-fn profile_binding(
-    profile: Option<&AppProfile>,
-    button: ButtonId,
-    trigger: Trigger,
-) -> Option<&core_mapping::KeyBinding> {
-    if button == ButtonId::Mic {
-        return None;
-    }
-    profile?
-        .bindings
-        .iter()
-        .find(|b| b.button == button && b.trigger == trigger)
 }
 
 /// 取当前前台应用命中的配置；没有加载任何配置时不查前台窗口。

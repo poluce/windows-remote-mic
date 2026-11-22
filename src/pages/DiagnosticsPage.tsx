@@ -285,7 +285,7 @@ export function DiagnosticsPage() {
           <div className="check-row">
             <span>命中的应用配置</span>
             <span className="hint">
-              {foreground?.profile ?? "未命中，沿用全局映射"}
+              {foreground?.profile ?? "未命中，使用全局映射"}
             </span>
           </div>
           <div className="check-row">

@@ -58,7 +58,7 @@ export type AppProfileView = {
   /** 这个颜色是不是用户手挑的（false = 自动生成）。 */
   icon_color_custom: boolean;
   note: string;
-  /** 这份配置覆盖了哪些 (按键, 触发)；没列出的格子沿用全局。 */
+  /** 这份配置自己的一整套 (按键, 触发)；没列出的格子在这个应用里没有动作。 */
   bindings: MappingEntry[];
 };
 

@@ -28,7 +28,7 @@ pub struct AppProfileView {
     /// 颜色选择器用它决定「自动」这一档要不要显示为选中状态。
     pub icon_color_custom: bool,
     pub note: String,
-    /// 这份配置覆盖了哪些 (按键, 触发)。没列出的格子沿用全局。
+    /// 这份配置自己的一整套 (按键, 触发)。没列出的格子在这个应用里没有动作。
     pub bindings: Vec<crate::MappingEntry>,
 }
 
@@ -117,6 +117,9 @@ pub fn create_app_profile(
         name: name.trim().to_string(),
         window_title_contains: titles,
         icon,
+        // 应用配置是独立的一整套：新建时把当前全局快照复制进来当起点，
+        // 之后两边互不影响（不想要哪格直接在矩阵里删掉）。
+        bindings: crate::services::mapping::global_bindings(),
         ..Default::default()
     };
 

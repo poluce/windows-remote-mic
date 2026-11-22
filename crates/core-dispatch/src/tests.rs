@@ -877,7 +877,7 @@ fn profile_overrides_global_mapping() {
 }
 
 #[test]
-fn profile_falls_back_to_global_when_not_covered() {
+fn profile_does_not_fall_back_to_global() {
     let mapping = MappingConfig::default();
     let profile = profile_with(vec![binding(
         ButtonId::Ok,
@@ -885,18 +885,20 @@ fn profile_falls_back_to_global_when_not_covered() {
         ActionKind::Escape,
     )]);
 
-    // 配置只覆盖了 Ok 的单击；其它按键与其它手势都沿用全局映射。
+    // 全局与每份配置是两套独立的表：配置里没写的格子就是「没动作」，不回落到全局。
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::SingleClick),
         Some(ActionKind::Escape)
     );
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Ok, Trigger::DoubleClick),
-        mapping.resolve(ButtonId::Ok, Trigger::DoubleClick).cloned()
+        None,
+        "配置没写 Ok 的双击，就不该借用全局的双击"
     );
     assert_eq!(
         resolve_action(&mapping, Some(&profile), ButtonId::Up, Trigger::SingleClick),
-        mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        None,
+        "配置没写「上」，这个应用里「上」就不该有动作"
     );
 }
 
@@ -1056,10 +1058,10 @@ fn foreground_profile_matches_real_foreground_process() {
         resolve_action(&mapping, Some(hit), ButtonId::Menu, Trigger::SingleClick),
         Some(ActionKind::KeyCombo(vec!["lctrl".into(), "k".into()]))
     );
-    // 未覆盖的按键仍走全局映射。
+    // 每份配置是独立的一套：它没写的按键在这个应用里就是没动作。
     assert_eq!(
         resolve_action(&mapping, Some(hit), ButtonId::Up, Trigger::SingleClick),
-        mapping.resolve(ButtonId::Up, Trigger::SingleClick).cloned()
+        None
     );
 }
 

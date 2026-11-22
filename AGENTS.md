@@ -198,7 +198,8 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 关键字段：`mapping`、`key_calibrations`、`selected_device_id`、`hid_tap_eat`、
     `long_press_ms`（默认 550）、`double_click_ms`（默认 250）、`voice_target`、`shortcuts`、
     `last_update_check_at`（上次成功检查更新的 Unix 秒，自动更新节流用）、`revision`（配置写版本号）、
-    `agent_api_enabled`（是否允许外部智能体接入，默认 false）。
+    `agent_api_enabled`（是否允许外部智能体接入，默认 false）、
+    `profiles_standalone`（应用配置是否已迁移成独立按键表，迁移标记）。
 - 触发方式（5 种）：**单击 / 双击 / 长按 / 按下 / 松开**；麦克风只有「按下 / 松开」（PTT）。
 - **单击时序**：只有显式绑定了双击的按键才会等双击窗口确认单击；**没有双击绑定的按键在松开
   瞬间立即执行**（快速连按每次都生效，不会被合并成双击吞掉）。绑了不同动作的长按仍按阈值触发一次。
@@ -213,7 +214,10 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   - 13 个按键（顺序与前端矩阵一致：电源、麦克风、上、左、确定、右、下、返回、音量+、主页、音量−、菜单、TV）；
   - 5 种触发；2 个动作分类（系统 / 自定义，「自定义」用哨兵值 `custom_combo`）；
   - 默认绑定列表（14 条），前端只负责渲染。
-- **应用档案（app profile）**：按前台窗口进程（`process` / `window_title_contains`）匹配一套按键绑定与快捷键。
+- **应用档案（app profile）**：按前台窗口进程（`process` / `window_title_contains`）匹配**独立的一整套**
+  按键绑定与快捷键。全局是一套、每份配置是另一套，命中应用配置时**不再回落到全局**
+  （语音键 `Mic` 例外，始终读全局）；新建配置时把当前全局快照复制进来当起点，
+  旧数据在升级后的首次加载时按当时的全局快照补全一次（`config.json` 的 `profiles_standalone` 标记）。
   - 用户目录：`%LOCALAPPDATA%\RemoteMic\RC003\app-profiles\*.json`；
   - 种子模板：仓库根 `profiles/*.json`，首次启动播种到用户目录；
   - 前端作用域切换在映射页顶部（`pages/mapping/ScopeBar.tsx`）；

@@ -507,13 +507,6 @@
   background: var(--rm-err);
 }
 
-/* 这一格被当前这份应用配置覆盖过——蓝底，和「沿用全局」区分开 */
-.matrix-cell.own {
-  background: var(--rm-accent-tint);
-  color: var(--rm-accent-strong);
-  font-weight: 600;
-}
-
 .matrix-cell.sel {
   box-shadow: inset 0 0 0 1.5px var(--rm-accent);
   border-radius: 3px;

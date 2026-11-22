@@ -174,7 +174,7 @@ pub fn run() {
                 dispatcher.set_trigger_timing(cfg.long_press_ms, cfg.double_click_ms);
                 // 语音识别目标随配置恢复（旧配置缺省为 Windows 语音）。
                 dispatcher.set_voice_target(cfg.voice_target);
-                // 应用专属配置：命中前台进程时覆盖对应按键，未覆盖的沿用全局映射。
+                // 应用专属配置：命中前台进程时整份换成它自己那一套按键。
                 dispatcher.set_profiles(load_app_profiles());
                 // 应用事件出口：开关快捷菜单、菜单独占模式的按键直转，
                 // 统一交给 commands::quick_menu::handle_app_event 处理。
