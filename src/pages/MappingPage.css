@@ -302,6 +302,25 @@
   color: var(--text-2);
 }
 
+/* 自建配置：整颗胶囊用它的内环颜色填充。
+   字色由行内样式按底色亮度选黑/白；选中态用一圈「字色」描边，
+   深浅底上都看得见，也不会和填充色打架。 */
+.scope-pill.filled {
+  border-color: transparent;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
+.scope-pill.filled:hover {
+  filter: brightness(1.06);
+}
+
+.scope-pill.filled.active {
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, currentColor 65%, transparent),
+    0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
 /* 圆点颜色来自后端应用档案（profiles/*.json），互相之间色相差异很大。
    在展示层统一降饱和并加一圈细边，避免一屏出现多个跳眼的色点。 */
 .scope-dot {
