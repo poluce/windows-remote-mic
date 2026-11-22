@@ -81,6 +81,9 @@ fn handle(
     dispatcher: &core_dispatch::KeyDispatcher,
     limiter: &RateLimiter,
 ) -> Result<(), String> {
+    // Windows 上 accept 出来的套接字会继承监听套接字的非阻塞模式：不显式改回阻塞，
+    // 第一次 read 就直接返回 WSAEWOULDBLOCK（10035），请求被当成失败、连接被关掉。
+    let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 

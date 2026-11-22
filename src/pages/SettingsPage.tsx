@@ -368,34 +368,28 @@ export function SettingsPage() {
       </section>
 
       <section className="card form-card settings-card">
-        <div className="card-title">智能体接入</div>
+        <div className="card-title">智能体接入（MCP）</div>
         <div className="form-row">
           <div className="form-text">
-            <div className="form-label">允许智能体配置（MCP）</div>
+            <div className="form-label">允许智能体配置</div>
             <p className="hint">
-              仅本机可访问。开启后智能体可修改按键映射与触发时间，立即生效。默认关闭。
+              仅本机可访问，改动立即生效。
+              {agentStatus && (
+                <span className="agent-state">
+                  {agentStatus.running
+                    ? ` · 运行中 127.0.0.1:${agentStatus.port}`
+                    : agentStatus.enabled
+                      ? " · 启动失败，请关闭后重试"
+                      : " · 未启用"}
+                </span>
+              )}
             </p>
-            {agentStatus && (
-              <p className="hint">
-                状态：
-                {agentStatus.running
-                  ? `运行中（127.0.0.1:${agentStatus.port}）`
-                  : agentStatus.enabled
-                    ? "已停止（启动失败，请关闭开关后重试）"
-                    : "已停止；开启后生成 token"}
-              </p>
-            )}
-            {agentStatus?.running && (
-              <p className="hint">
-                MCP sidecar：<code>{agentStatus.sidecar_path}</code>
-              </p>
-            )}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={agentStatus?.enabled === true}
-            aria-label="允许智能体配置（MCP）"
+            aria-label="允许智能体配置"
             className={`switch${agentStatus?.enabled ? " on" : ""}`}
             onClick={toggleAgentApi}
             disabled={!isTauri() || agentBusy || !agentStatus}
@@ -409,8 +403,7 @@ export function SettingsPage() {
             <div className="form-text">
               <div className="form-label">MCP 配置</div>
               <p className="hint">
-                把下面这段加入智能体的 MCP 配置（Claude Code / Codex / DSH 等）。
-                应用重启后 token 会轮换，sidecar 会自动读取新的发现文件。
+                把下面这段加进智能体的 MCP 配置；应用重启后 token 会轮换，sidecar 自动读取新的发现文件。
               </p>
               <pre className="agent-config-code">{agentConfig}</pre>
               <div className="actions">

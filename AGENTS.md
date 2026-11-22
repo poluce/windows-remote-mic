@@ -452,6 +452,9 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
 
 - 用户界面：通用设置 →「智能体接入」卡片，**明确的开关**，默认关闭；开启后显示端口、
   MCP 配置片段、复制配置 / 重新生成 token。
+- Windows 注意：监听套接字设了 `set_nonblocking(true)` 之后，`accept` 出来的连接会**继承**
+  非阻塞模式；`handle` 里必须先 `set_nonblocking(false)`，否则第一次 read 就是
+  `WSAEWOULDBLOCK(10035)`，请求会被静默丢弃。
 - 应用内：`src-tauri/src/agent_api/` 在 `127.0.0.1` 随机端口起一个极简 HTTP JSON-RPC，
   32 字节 token 写入 `%LOCALAPPDATA%\RemoteMic\RC003\agent-api.json`；只接受 POST /rpc，
   校验 token / Host / 拒绝 Origin / 限流 / 64 KiB 上限。

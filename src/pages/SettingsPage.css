@@ -51,3 +51,8 @@
   color: var(--rm-text-2);
   white-space: pre;
 }
+
+/* 智能体接入：状态跟在说明后面，不再单独占一行 */
+.agent-state {
+  color: var(--rm-text-3);
+}
