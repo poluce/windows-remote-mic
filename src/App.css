@@ -862,13 +862,6 @@ button {
   white-space: pre-wrap;
 }
 
-.current-key {
-  text-align: center;
-  font-weight: 600;
-  color: var(--rm-accent-strong);
-  font-size: var(--rm-fs-14);
-}
-
 /* ---------- 诊断页的两种紧凑行（虚拟声卡 / 操作按钮） ---------- */
 .vbcable-card {
   display: flex;

@@ -30,7 +30,6 @@ export function MappingPage() {
     isGlobalScope,
     selected,
     setSelected,
-    selectedName,
     trigger,
     setTrigger,
     availableTriggers,
@@ -89,10 +88,7 @@ export function MappingPage() {
   return (
     <div className="page page-fill">
       <div className="page-head page-head-compact">
-        <div>
-          <h1>按键映射</h1>
-          <p>为 13 个按键配置单击 / 双击 / 长按 / 按下 / 松开，可按前台应用切换作用范围。</p>
-        </div>
+        <h1>按键映射</h1>
       </div>
 
       {/* 作用范围条是工具条而不是内容卡：用轻卡（无扩散阴影），
@@ -114,7 +110,6 @@ export function MappingPage() {
           <div className="remote-art" ref={remoteArtRef}>
             <Xiaomi2ProRemote selected={selected} onSelect={setSelected} />
           </div>
-          <p className="hint current-key">{selectedName}</p>
         </section>
 
         {/* 向导与映射表合并成一张卡，左右水平排布 */}

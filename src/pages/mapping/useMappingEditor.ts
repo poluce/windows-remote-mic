@@ -507,7 +507,6 @@ export function useMappingEditor() {
     isGlobalScope,
     selected,
     setSelected,
-    selectedName,
     trigger,
     setTrigger,
     availableTriggers,
