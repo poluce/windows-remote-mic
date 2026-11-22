@@ -353,28 +353,35 @@
   outline-offset: 1px;
 }
 
-/* 选中应用配置时多出来的「内环颜色」行：贴在作用范围胶囊下面，同一张轻卡里 */
-.scope-color-row {
+/* 自建配置左上角的编辑角标：和右上角的删除 × 对称 */
+.scope-edit {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--rm-solid);
+  background: var(--rm-raise);
+  color: var(--rm-text-3);
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--rm-line);
+  justify-content: center;
+  cursor: pointer;
 }
 
-.scope-color-label {
-  font-size: var(--rm-fs-12);
-  color: var(--rm-text-2);
-  margin-right: 2px;
+.scope-edit:hover {
+  background: var(--rm-accent-soft);
+  color: var(--rm-accent-strong);
+  border-color: var(--rm-accent-line);
 }
 
-/* 这一行是工具栏，比新建对话框里那个预览小一号 */
-.scope-color-row .icon-preview {
-  width: 24px;
-  height: 24px;
-  font-size: 10px;
+.scope-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ---------- 按键矩阵（行＝按键，列＝单击/双击/长按） ---------- */

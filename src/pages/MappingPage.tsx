@@ -1,14 +1,16 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 
 import { Xiaomi2ProRemote } from "../components/Xiaomi2ProRemote";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { NewProfileDialog } from "../components/NewProfileDialog";
+import {
+  ProfileDialog,
+  type ProfileFormValues,
+} from "../components/ProfileDialog";
 import { ShortcutDialog } from "../components/ShortcutDialog";
 import { MappingMatrix } from "./mapping/MappingMatrix";
 import { ScopeBar } from "./mapping/ScopeBar";
 import { COMBO_CATEGORY, formatComboDisplay } from "./mapping/combo";
-import { previewLabel } from "./mapping/iconColor";
 import { keysId } from "./mapping/shortcuts";
 import { useRemoteZoom } from "./mapping/useRemoteZoom";
 import { useMappingEditor } from "./mapping/useMappingEditor";
@@ -62,9 +64,25 @@ export function MappingPage() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
-    iconPalette,
-    handleSetIconColor,
+    openProfileEditor,
+    editingProfile,
+    setEditingProfile,
+    handleUpdateProfile,
   } = useMappingEditor();
+
+  // 编辑弹窗的初始值：只在「编辑的是哪一份」变化时重算，
+  // 否则每次渲染都是新对象，表单会被 effect 反复重置。
+  const editInitial = useMemo<ProfileFormValues | null>(() => {
+    if (!editingProfile) return null;
+    return {
+      name: editingProfile.name,
+      process: editingProfile.process,
+      titleContains: editingProfile.title_contains.join("，"),
+      iconColor: editingProfile.icon_color_custom
+        ? editingProfile.icon_color
+        : null,
+    };
+  }, [editingProfile]);
 
   const { buttons, categories } = catalog;
 
@@ -84,55 +102,11 @@ export function MappingPage() {
           items={scopeItems}
           active={scope}
           onSelect={setScope}
+          onEdit={openProfileEditor}
           onRemove={onRemoveScope}
           onNew={() => setNewOpen(true)}
         />
 
-        {/* 选中某份应用配置时，就地调整它在快捷菜单内环里的简标颜色。
-            颜色同样走「后端写文件 → 重载 → 读回快照」，与内环保持单一事实来源。 */}
-        {!isGlobalScope && activeProfile && (
-          <div className="scope-color-row">
-            <span
-              className="icon-preview"
-              style={
-                activeProfile.icon_color
-                  ? { background: activeProfile.icon_color }
-                  : undefined
-              }
-              title="快捷菜单内环上的样子"
-              aria-hidden
-            >
-              {previewLabel(activeProfile.name)}
-            </span>
-            <span className="scope-color-label">内环颜色</span>
-            <button
-              type="button"
-              className={`icon-swatch auto${
-                activeProfile.icon_color_custom ? "" : " active"
-              }`}
-              title="自动（按配置 id 分配）"
-              onClick={() => handleSetIconColor(null)}
-            >
-              自动
-            </button>
-            {iconPalette.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className={`icon-swatch${
-                  activeProfile.icon_color_custom &&
-                  activeProfile.icon_color?.toLowerCase() === color.toLowerCase()
-                    ? " active"
-                    : ""
-                }`}
-                style={{ background: color }}
-                title={color}
-                aria-label={`选择颜色 ${color}`}
-                onClick={() => handleSetIconColor(color)}
-              />
-            ))}
-          </div>
-        )}
       </section>
 
       <div className="mapping-wizard">
@@ -316,10 +290,21 @@ export function MappingPage() {
         </div>
       )}
 
-      <NewProfileDialog
+      <ProfileDialog
         open={newOpen}
+        mode="create"
+        initial={null}
         onCancel={() => setNewOpen(false)}
-        onCreate={handleCreate}
+        onSubmit={handleCreate}
+      />
+
+      {/* 编辑和新建共用同一张表单：改名 / 改匹配规则 / 改内环颜色都在弹窗里 */}
+      <ProfileDialog
+        open={editingProfile !== null}
+        mode="edit"
+        initial={editInitial}
+        onCancel={() => setEditingProfile(null)}
+        onSubmit={handleUpdateProfile}
       />
 
       <ConfirmDialog

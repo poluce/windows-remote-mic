@@ -56,12 +56,21 @@ export async function createProfile(
   });
 }
 
-/** 设置某份配置的内环简标颜色；传 null 表示恢复自动色。 */
-export async function setProfileIconColor(
+/** 修改一份已存在的配置（展示名 / 匹配规则 / 内环颜色）。 */
+export async function updateProfile(
   id: string,
-  color: string | null,
+  name: string,
+  process: string,
+  titleContains: string,
+  iconColor: string | null,
 ): Promise<void> {
-  await invoke("set_profile_icon_color", { id, color });
+  await invoke("update_app_profile", {
+    id,
+    name,
+    process,
+    windowTitleContains: titleContains,
+    iconColor,
+  });
 }
 
 /**

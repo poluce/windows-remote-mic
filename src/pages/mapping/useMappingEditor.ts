@@ -15,11 +15,11 @@ import {
   clearProfileBinding,
   createProfile as createProfileRequest,
   deleteProfile,
-  loadIconPalette,
   loadProfiles,
   saveProfileBinding,
-  setProfileIconColor,
+  updateProfile,
 } from "./profile";
+import type { ProfileFormValues } from "../../components/ProfileDialog";
 import {
   comboLabel,
   deleteShortcut,
@@ -46,8 +46,6 @@ export function useMappingEditor() {
     FALLBACK_CATALOG.default_bindings,
   );
   const [profiles, setProfiles] = useState<AppProfileView[]>([]);
-  /** 内环简标的可选颜色（后端 `app_icon_palette`，不在前端再存一份真值）。 */
-  const [iconPalette, setIconPalette] = useState<string[]>([]);
   const [shortcuts, setShortcuts] = useState<NamedShortcut[]>([]);
   const [scope, setScope] = useState<ScopeId>(GLOBAL_SCOPE);
   const [selected, setSelected] = useState("ok");
@@ -57,6 +55,10 @@ export function useMappingEditor() {
   const [comboTokens, setComboTokens] = useState<string[]>([]);
   const [saveMsg, setSaveMsg] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  /** 正在编辑的那份配置；null = 没打开编辑弹窗。 */
+  const [editingProfile, setEditingProfile] = useState<AppProfileView | null>(
+    null,
+  );
   const [pendingDelete, setPendingDelete] = useState<AppProfileView | null>(null);
   /** 快捷键对话框：`editing` 为 null 表示新建。 */
   const [shortcutDialog, setShortcutDialog] = useState<{
@@ -168,7 +170,6 @@ export function useMappingEditor() {
     })();
     refreshProfiles();
     loadShortcuts().then(setShortcuts);
-    void loadIconPalette().then(setIconPalette);
   }, [refreshProfiles, refreshMappings]);
 
   // ---- 目录派生值（唯一事实来源：catalog） ----
@@ -397,15 +398,15 @@ export function useMappingEditor() {
     }
   }
 
-  async function handleCreate(
-    name: string,
-    process: string,
-    title: string,
-    iconColor: string | null,
-  ) {
+  async function handleCreate(values: ProfileFormValues) {
     setNewOpen(false);
     try {
-      const id = await createProfileRequest(name, process, title, iconColor);
+      const id = await createProfileRequest(
+        values.name,
+        values.process,
+        values.titleContains,
+        values.iconColor,
+      );
       await refreshProfiles();
       setScope(id);
       setSaveMsg("已新建这份配置，改过的按键会自动覆盖全局");
@@ -414,21 +415,29 @@ export function useMappingEditor() {
     }
   }
 
-  /**
-   * 改当前应用配置在内环里的简标颜色；`null` = 恢复自动色。
-   *
-   * 和保存绑定一样走「后端写文件 → 重载调度器 → 读回快照」，前端不自己拼颜色。
-   */
-  async function handleSetIconColor(color: string | null) {
-    if (isGlobalScope) return;
+  /** 打开某份配置的编辑弹窗（和「新建应用」共用同一张表单）。 */
+  function openProfileEditor(item: ScopeItem) {
+    const target = profiles.find((p) => p.id === item.id);
+    if (target) setEditingProfile(target);
+  }
+
+  /** 保存编辑结果：改名 / 改匹配规则 / 改内环颜色一次写回。 */
+  async function handleUpdateProfile(values: ProfileFormValues) {
+    const target = editingProfile;
+    setEditingProfile(null);
+    if (!target) return;
     try {
-      await setProfileIconColor(scope, color);
-      await refreshProfiles();
-      setSaveMsg(
-        color ? `已把内环颜色改为 ${color}` : "内环颜色已改回自动",
+      await updateProfile(
+        target.id,
+        values.name,
+        values.process,
+        values.titleContains,
+        values.iconColor,
       );
+      await refreshProfiles();
+      setSaveMsg(`已更新「${values.name || target.name}」的配置`);
     } catch (err) {
-      setSaveMsg(`改颜色失败: ${err}`);
+      setSaveMsg(`保存失败: ${err}`);
     }
   }
 
@@ -525,7 +534,6 @@ export function useMappingEditor() {
     overrideView,
     newOpen,
     setNewOpen,
-    handleCreate,
     pendingDelete,
     setPendingDelete,
     handleDelete,
@@ -534,7 +542,10 @@ export function useMappingEditor() {
     handleSaveShortcut,
     handleDeleteShortcut,
     onRemoveScope,
-    iconPalette,
-    handleSetIconColor,
+    openProfileEditor,
+    editingProfile,
+    setEditingProfile,
+    handleUpdateProfile,
+    handleCreate,
   };
 }

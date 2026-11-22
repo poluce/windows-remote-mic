@@ -419,7 +419,7 @@ pub fn run() {
             commands::app_profile::menu::open_app_profile,
             commands::app_profile::menu::reload_app_profiles,
             commands::app_profile::editor::create_app_profile,
-            commands::app_profile::editor::set_profile_icon_color,
+            commands::app_profile::editor::update_app_profile,
             commands::app_profile::editor::save_profile_binding,
             commands::app_profile::editor::clear_profile_binding,
             commands::app_profile::editor::delete_app_profile,

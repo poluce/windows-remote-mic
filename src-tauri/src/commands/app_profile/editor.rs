@@ -129,20 +129,44 @@ pub fn create_app_profile(
     Ok(id)
 }
 
-/// 设置某份配置在快捷菜单内环的简标颜色；`color` 为空字符串 / None 表示恢复自动色。
+/// 修改一份已存在的应用配置：展示名、匹配规则、内环颜色。
 ///
-/// 只动 `icon.color`，简标文字保持原样（留空则继续按展示名自动取）——
-/// 用户改颜色不该顺带把「CC」「DS」这种手写简标改掉。
+/// 「新建应用」和「编辑应用」共用同一张表单，所以这里一次性写回全部字段，
+/// 而不是拆成一堆单字段命令——前端只在一处提交，少一次「改了名字但颜色没跟上」
+/// 的中间态。
+///
+/// `icon_color` 为空表示恢复自动色：只清颜色、保留用户手写的简标文字。
 #[tauri::command]
-pub fn set_profile_icon_color(
+pub fn update_app_profile(
     id: String,
-    color: Option<String>,
+    name: String,
+    process: String,
+    window_title_contains: String,
+    icon_color: Option<String>,
     state: State<AppState>,
 ) -> Result<(), String> {
     let dir = config_dir()?;
     let mut profile = find_profile(&state, &id)?;
 
-    match color.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+    let processes = split_list(&process);
+    let titles = split_list(&window_title_contains);
+    if processes.is_empty() && titles.is_empty() {
+        return Err("进程名和窗口标题关键字至少要填一个，否则这份配置永远不会生效".into());
+    }
+
+    profile.name = name.trim().to_string();
+    profile.process = match processes.len() {
+        0 => core_app_profile::ProcessSpec::Many(Vec::new()),
+        1 => core_app_profile::ProcessSpec::One(processes[0].clone()),
+        _ => core_app_profile::ProcessSpec::Many(processes),
+    };
+    profile.window_title_contains = titles;
+
+    match icon_color
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         Some(color) => {
             let color = core_app_profile::IconSpec::parse_color(color)?;
             let label = profile
@@ -152,17 +176,18 @@ pub fn set_profile_icon_color(
                 .unwrap_or_default();
             profile.icon = Some(core_app_profile::IconSpec { label, color });
         }
-        None => {
-            // 恢复自动色：只清颜色，保留手写简标文字。
-            match profile.icon.as_mut() {
-                Some(icon) if !icon.label.trim().is_empty() => icon.color.clear(),
-                _ => profile.icon = None,
-            }
-        }
+        None => match profile.icon.as_mut() {
+            Some(icon) if !icon.label.trim().is_empty() => icon.color.clear(),
+            _ => profile.icon = None,
+        },
     }
 
     core_app_profile::save_profile(&dir, &profile).map_err(|e| format!("写入配置失败：{e}"))?;
     reload_profiles(&state);
+    core_log::log_info(&format!(
+        "[app-profile] 已更新应用配置 {id}（{}）",
+        profile.display_name()
+    ));
     Ok(())
 }
 

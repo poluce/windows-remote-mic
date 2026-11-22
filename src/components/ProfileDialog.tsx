@@ -14,7 +14,15 @@ type ForegroundCandidate = {
   title: string | null;
 };
 
-/** 自定义取色器的初始值（点开时停在这里，没选过就用它）。 */
+/** 表单提交出来的一份配置。`iconColor` 为 null 表示内环颜色走自动规则。 */
+export type ProfileFormValues = {
+  name: string;
+  process: string;
+  titleContains: string;
+  iconColor: string | null;
+};
+
+/** 自定义取色的初始值（还没拖过滑杆时停在这里）。 */
 const DEFAULT_CUSTOM_COLOR = "#4d6bfe";
 
 /** 进程名去掉 `.exe` 后缀，用作展示名的默认值（`ZCode.exe` → `ZCode`）。 */
@@ -23,33 +31,31 @@ function processStem(process: string): string {
 }
 
 /**
- * 新建一份应用配置。
+ * 应用配置表单：**新建与编辑共用**同一张弹窗。
  *
- * 三件必答的事（展示名、进程名、内环颜色）按「先认应用、再定外观」的顺序排；
- * 「按窗口标题匹配」是少数情况才需要的高级项，默认收起，避免把每个用户都按
- * Chrome 网页应用的场景吓一遍。
+ * 两件事（认应用、定外观）按顺序排：展示名 + 进程名 → 内环颜色（收在展示名左侧
+ * 圆圈里，点开是浮层）；「按窗口标题匹配」是少数情况才需要的高级项，默认收起。
  *
  * # 为什么不提供「当前前台」
  *
- * 用户是点本页的「+ 新建应用」进来的，此刻前台窗口必然是 Remote Mic 自己，
+ * 用户是点本页的「新建 / 编辑应用」进来的，此刻前台窗口必然是 Remote Mic 自己，
  * 「当前前台」填进去只会得到 `remote-mic.exe`——一份只匹配本应用、永远命中
  * 不了目标应用的死配置。真正要填的是「刚才还在用、现在被本应用盖住」的那个
  * 应用，所以给的是后端记录的最近前台历史（已排除本应用自己）。
  */
-export function NewProfileDialog({
+export function ProfileDialog({
   open,
+  mode,
+  initial,
   onCancel,
-  onCreate,
+  onSubmit,
 }: {
   open: boolean;
+  mode: "create" | "edit";
+  /** 编辑时的初始值；新建时传 null。 */
+  initial: ProfileFormValues | null;
   onCancel: () => void;
-  /** `iconColor` 为 null 表示内环简标颜色交给自动规则。 */
-  onCreate: (
-    name: string,
-    process: string,
-    titleContains: string,
-    iconColor: string | null,
-  ) => void;
+  onSubmit: (values: ProfileFormValues) => void;
 }) {
   const [name, setName] = useState("");
   const [process, setProcess] = useState("");
@@ -59,17 +65,17 @@ export function NewProfileDialog({
   const [palette, setPalette] = useState<string[]>([]);
   /** 「按窗口标题匹配」默认收起：只有网页应用 / WSL 服务才用得上。 */
   const [titleOpen, setTitleOpen] = useState(false);
-  /** 左上角圆圈点开的颜色浮层。 */
+  /** 展示名左侧圆圈点开的颜色浮层。 */
   const [colorOpen, setColorOpen] = useState(false);
 
-  // 每次打开都重置：上一次的草稿不该出现在新的一份配置里。
+  // 每次打开都按「新建 / 编辑哪一份」重置，避免带上一轮的残留。
   useEffect(() => {
     if (!open) return;
-    setName("");
-    setProcess("");
-    setTitle("");
-    setIconColor(null);
-    setTitleOpen(false);
+    setName(initial?.name ?? "");
+    setProcess(initial?.process ?? "");
+    setTitle(initial?.titleContains ?? "");
+    setIconColor(initial?.iconColor ?? null);
+    setTitleOpen(Boolean(initial?.titleContains?.trim()));
     setColorOpen(false);
     void loadIconPalette().then(setPalette);
     if (!isTauri()) {
@@ -79,7 +85,7 @@ export function NewProfileDialog({
     invoke<ForegroundCandidate[]>("app_profile_foreground_candidates")
       .then((list) => setCandidates(Array.isArray(list) ? list : []))
       .catch(() => setCandidates([]));
-  }, [open]);
+  }, [open, mode, initial]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,22 +104,23 @@ export function NewProfileDialog({
 
   if (!open) return null;
 
-  const canCreate = process.trim().length > 0 || title.trim().length > 0;
+  const editing = mode === "edit";
+  const canSubmit = process.trim().length > 0 || title.trim().length > 0;
   const label = name.trim() ? previewLabel(name) : "";
   /** 当前颜色不在预设色卡里 = 用户用滑杆调出来的自定义色。 */
   const isCustomColor =
     iconColor !== null &&
     !palette.some((color) => color.toLowerCase() === iconColor.toLowerCase());
   // 滑杆回显：停在当前颜色上（自动时停在默认色，拖动即转成自定义色）
-  const currentHsl =
-    hexToHsl(iconColor ?? DEFAULT_CUSTOM_COLOR) ?? {
-      h: 220,
-      s: 70,
-      l: 58,
-    };
+  const currentHsl = hexToHsl(iconColor ?? DEFAULT_CUSTOM_COLOR) ?? {
+    h: 220,
+    s: 70,
+    l: 58,
+  };
   const hueTrack =
     "linear-gradient(90deg, hsl(0 70% 58%), hsl(60 70% 58%), hsl(120 70% 58%), hsl(180 70% 58%), hsl(240 70% 58%), hsl(300 70% 58%), hsl(360 70% 58%))";
   const lightTrack = `linear-gradient(90deg, #111, hsl(${currentHsl.h} ${currentHsl.s}% 50%), #fff)`;
+
   function applyHsl(h: number, s: number, l: number) {
     setIconColor(hslToHex(h, s, l));
   }
@@ -124,13 +131,22 @@ export function NewProfileDialog({
     if (!name.trim()) setName(processStem(candidate.process));
   }
 
+  function submit() {
+    onSubmit({
+      name: name.trim(),
+      process: process.trim(),
+      titleContains: title.trim(),
+      iconColor,
+    });
+  }
+
   return (
     <div className="dialog-mask open" onClick={onCancel}>
       <div
         className="dialog dialog-profile"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>新建应用配置</h3>
+        <h3>{editing ? "编辑应用配置" : "新建应用配置"}</h3>
 
         <div className="field">
           <label htmlFor="np-name">展示名</label>
@@ -196,7 +212,6 @@ export function NewProfileDialog({
                         }}
                       />
                     ))}
-
                   </div>
 
                   {/* 自定义颜色：不弹二级窗口，直接在浮层里拖滑杆 */}
@@ -285,7 +300,7 @@ export function NewProfileDialog({
             </div>
           ) : (
             <div className="tip">
-              先切到目标应用、再回来新建，这里会列出最近用过的进程名。
+              先切到目标应用、再回来这里，会列出最近用过的进程名。
             </div>
           )}
         </div>
@@ -335,10 +350,10 @@ export function NewProfileDialog({
           <button
             type="button"
             className="btn primary"
-            disabled={!canCreate}
-            onClick={() => onCreate(name, process, title, iconColor)}
+            disabled={!canSubmit}
+            onClick={submit}
           >
-            创建
+            {editing ? "保存" : "创建"}
           </button>
         </div>
       </div>
