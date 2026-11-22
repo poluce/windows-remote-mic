@@ -403,7 +403,8 @@ export function SettingsPage() {
             <div className="form-text">
               <div className="form-label">MCP 配置</div>
               <p className="hint">
-                把下面这段加进智能体的 MCP 配置；应用重启后 token 会轮换，sidecar 自动读取新的发现文件。
+                把下面这段加进智能体的 MCP 配置。应用每次启动都会换新端口和访问令牌，
+                sidecar 每次调用都会重新读取，所以这段配置不用跟着改。
               </p>
               <pre className="agent-config-code">{agentConfig}</pre>
               <div className="actions">

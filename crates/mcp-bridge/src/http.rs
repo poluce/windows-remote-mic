@@ -176,9 +176,9 @@ pub fn call_rpc(method: &str, params: Value) -> Result<Value, RpcCallError> {
         "401" => {
             return Err(RpcCallError::new(
                 "unauthorized",
-                "token 无效（应用可能已重启并轮换 token）",
+                "token 无效：应用可能刚刚重启、令牌已轮换",
             )
-            .with_hint("重启 MCP 客户端，或重新复制 MCP 配置"))
+            .with_hint("重试一次即可；sidecar 每次调用都会重新读 agent-api.json"))
         }
         "429" => {
             return Err(RpcCallError::new(
