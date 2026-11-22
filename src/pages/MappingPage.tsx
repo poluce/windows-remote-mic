@@ -204,7 +204,7 @@ export function MappingPage() {
               <div className="wizard-foot">
                 <div className="actions">
                   <button className="btn primary" onClick={save} disabled={!isTauri()}>
-                    {isGlobalScope ? "保存此键" : `保存到「${activeProfile?.name}」`}
+                    保存
                   </button>
                 </div>
               </div>
