@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 import { loadIconPalette } from "../pages/mapping/profile";
-import { previewLabel } from "../pages/mapping/iconColor";
+import {
+  hexToHsl,
+  hslToHex,
+  previewLabel,
+} from "../pages/mapping/iconColor";
 
 /** `app_profile_foreground_candidates` 返回的一项：一个最近出现过的前台应用。 */
 type ForegroundCandidate = {
@@ -96,10 +100,23 @@ export function NewProfileDialog({
 
   const canCreate = process.trim().length > 0 || title.trim().length > 0;
   const label = name.trim() ? previewLabel(name) : "";
-  /** 当前颜色不在预设色卡里 = 用户用取色器挑的自定义色。 */
+  /** 当前颜色不在预设色卡里 = 用户用滑杆调出来的自定义色。 */
   const isCustomColor =
     iconColor !== null &&
     !palette.some((color) => color.toLowerCase() === iconColor.toLowerCase());
+  // 滑杆回显：停在当前颜色上（自动时停在默认色，拖动即转成自定义色）
+  const currentHsl =
+    hexToHsl(iconColor ?? DEFAULT_CUSTOM_COLOR) ?? {
+      h: 220,
+      s: 70,
+      l: 58,
+    };
+  const hueTrack =
+    "linear-gradient(90deg, hsl(0 70% 58%), hsl(60 70% 58%), hsl(120 70% 58%), hsl(180 70% 58%), hsl(240 70% 58%), hsl(300 70% 58%), hsl(360 70% 58%))";
+  const lightTrack = `linear-gradient(90deg, #111, hsl(${currentHsl.h} ${currentHsl.s}% 50%), #fff)`;
+  function applyHsl(h: number, s: number, l: number) {
+    setIconColor(hslToHex(h, s, l));
+  }
 
   /** 点最近前台：填进程名；展示名还空着时顺手按进程名给个默认值。 */
   function useCandidate(candidate: ForegroundCandidate) {
@@ -180,33 +197,53 @@ export function NewProfileDialog({
                       />
                     ))}
 
-                    {/* 自定义：点开系统取色器，可调任意颜色 */}
-                    <label
-                      className={`icon-swatch custom${
-                        isCustomColor ? " active" : ""
-                      }`}
-                      title={
-                        isCustomColor && iconColor
-                          ? `自定义颜色 ${iconColor}`
-                          : "自定义颜色…"
-                      }
-                    >
-                      <span
-                        className="custom-fill"
-                        style={
-                          isCustomColor && iconColor
-                            ? { background: iconColor }
-                            : undefined
+                  </div>
+
+                  {/* 自定义颜色：不弹二级窗口，直接在浮层里拖滑杆 */}
+                  <div className="color-pop-divider" />
+                  <div className="color-custom">
+                    <div className="color-custom-head">
+                      <span>自定义</span>
+                      <span className="color-custom-value">
+                        {isCustomColor && iconColor ? iconColor : "自动"}
+                      </span>
+                    </div>
+                    <label className="color-slider">
+                      <span>色相</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={360}
+                        step={1}
+                        value={currentHsl.h}
+                        aria-label="色相"
+                        style={{ background: hueTrack }}
+                        onChange={(e) =>
+                          applyHsl(
+                            Number(e.target.value),
+                            currentHsl.s,
+                            currentHsl.l,
+                          )
                         }
                       />
+                    </label>
+                    <label className="color-slider">
+                      <span>明度</span>
                       <input
-                        type="color"
-                        value={iconColor ?? DEFAULT_CUSTOM_COLOR}
-                        aria-label="自定义颜色"
-                        onChange={(e) => {
-                          setIconColor(e.target.value.toLowerCase());
-                          setColorOpen(false);
-                        }}
+                        type="range"
+                        min={18}
+                        max={88}
+                        step={1}
+                        value={currentHsl.l}
+                        aria-label="明度"
+                        style={{ background: lightTrack }}
+                        onChange={(e) =>
+                          applyHsl(
+                            currentHsl.h,
+                            currentHsl.s,
+                            Number(e.target.value),
+                          )
+                        }
                       />
                     </label>
                   </div>
