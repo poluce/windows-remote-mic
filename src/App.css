@@ -363,6 +363,22 @@ button {
   letter-spacing: 0.01em;
 }
 
+/* 带标题的表单卡：标题就是卡名（基础 / 语音链路 …），不再用页面级分组标签 */
+.settings-card {
+  padding: 14px 18px 8px;
+}
+
+.settings-card .card-title {
+  margin: 0 0 2px;
+  font-size: var(--rm-fs-13);
+  color: var(--rm-text);
+}
+
+/* 卡片标题本身已经和第一行分开，第一行不再需要额外上边距 */
+.settings-card .card-title + .form-row {
+  border-top: none;
+}
+
 /* 功能分区标签（尚未迁移页头的页面继续用） */
 .section-label {
   margin: 22px 4px 8px;
