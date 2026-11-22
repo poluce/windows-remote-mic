@@ -151,11 +151,11 @@ export function MappingMatrix({
       <div className="matrix-legend">
         <span className="lg">
           <i className="sw on" />
-          已绑定（文字微绿）
+          已绑定
         </span>
         <span className="lg">
           <i className="sw off" />
-          已禁用（点击恢复）
+          已禁用
         </span>
         <span className="lg">
           <i className="sw empty" />
@@ -164,7 +164,7 @@ export function MappingMatrix({
         {interactive && (
           <span className="lg">
             <i className="sw x">×</i>
-            取消关联（悬停 / 选中显示）
+            取消关联
           </span>
         )}
       </div>

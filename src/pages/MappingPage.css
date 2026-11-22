@@ -698,13 +698,17 @@
 
 
 /* ---------- 映射矩阵图例 ---------- */
+/* 图例固定一行：全局与分析范围切换时多一项「取消关联」，
+   换行会让整张卡片高度跳一下——这里宁可挤一点也不折行。 */
 .matrix-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  flex-wrap: nowrap;
+  gap: 6px 14px;
   margin-top: 10px;
   font-size: 11.5px;
   color: var(--rm-text-3);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .matrix-legend .lg {
