@@ -19,7 +19,6 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  * - 点右上角 × = 取消关联（删除绑定，`onClear`）。
  */
 export function MappingMatrix({
-  title,
   buttons,
   triggers,
   global,
@@ -30,7 +29,6 @@ export function MappingMatrix({
   onCellClick,
   onClear,
 }: {
-  title: string;
   buttons: RemoteButton[];
   triggers: TriggerOption[];
   global: Map<string, MappingEntry>;
@@ -52,8 +50,6 @@ export function MappingMatrix({
 
   return (
     <>
-      <div className="wizard-label">{title}</div>
-
       <div className="matrix">
         <div className="matrix-row head">
           <span className="matrix-key">按键</span>

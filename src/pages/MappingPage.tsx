@@ -46,7 +46,6 @@ export function MappingPage() {
     clearOverride,
     toast,
     dismissToast,
-    activeProfile,
     globalView,
     overrideView,
     newOpen,
@@ -212,7 +211,6 @@ export function MappingPage() {
 
             <div className="merged-col">
               <MappingMatrix
-                title={isGlobalScope ? "映射表" : `映射表 · ${activeProfile?.name ?? ""}`}
                 buttons={buttons}
                 triggers={matrixTriggers}
                 global={globalView}
