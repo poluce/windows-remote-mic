@@ -237,6 +237,9 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
     `app_icon_palette`（唯一色卡，别在前端硬编码第二份），传 `null` 恢复自动色，
     且不会动用户手写的简标文字。预设色卡含亮黄/黄绿时，简标文字会按底色亮度自动切黑或白。
   - 设计说明见 [docs/design/app-profile-mapping.html](docs/design/app-profile-mapping.html)。
+- **组合键键名**：`core-mapping/src/combo.rs` 的别名表同时接受字母 / 数字 / F1–F12 / 方向与功能键，
+  以及 `slash comma period backquote minus equal semicolon quote leftbracket rightbracket backslash`
+  （也可直接写 `/ , . \` - = ; ' [ ] \\`）；`core-input/src/hid_kbd.rs` 负责对应到 HID usage。
 - **自定义快捷键（NamedShortcut）**：名字只是显示层，绑定里存的是 `combo:lctrl+k` 原始写法；
   改 / 删名字不影响已有绑定（显示时回退原始按键）。
 - **语音目标 `voice_target`**：默认 `windows_voice`（Win+H）；`ime_wechat / ime_doubao / ime_sogou`
