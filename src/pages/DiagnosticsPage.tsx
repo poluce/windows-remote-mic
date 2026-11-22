@@ -190,132 +190,175 @@ export function DiagnosticsPage() {
     invoke("toggle_quick_menu");
   }
 
+  const testTotal = selfTests?.length ?? 0;
+  const testPass = selfTests?.filter((t) => t.status === "pass").length ?? 0;
+  const testFail = selfTests?.filter((t) => t.status === "fail").length ?? 0;
+
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1>诊断</h1>
-          <p>检查虚拟声卡、虚拟 HID、语音链路与按键测试。</p>
+          <p>检查虚拟声卡、虚拟键盘与语音链路，出问题时在这里生成报告。</p>
         </div>
       </div>
 
-      <div className="section-label">状态与自检</div>
-      <div className="diag-grid">
-      <section className="card vbcable-card">
-        <span className="vbcable-title">虚拟声卡（VB-CABLE）</span>
-        <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          {data.has_vb_cable ? "正常" : "未就绪"}
-        </span>
-        <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          CABLE 输入
-        </span>
-        <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
-          <span className="pill-dot" />
-          CABLE 输出
-        </span>
-        {checked && !data.has_vb_cable && (
-          <button className="btn primary" onClick={installVbCable} disabled={installing || !isTauri()}>
-            {installing ? "正在下载…" : "下载并安装 VB-CABLE"}
-          </button>
-        )}
-        {checked && !data.has_vb_cable && (
-          <span className="hint vbcable-msg">
-            需网络与管理员权限；安装完成后需重启电脑，重启后点「重新检测」。
-          </span>
-        )}
-        {installMsg && <span className="hint vbcable-msg">{installMsg}</span>}
-      </section>
+      <section className="card diag-card">
+        <div className="diag-head">
+          <div className="diag-head-text">
+            <div className="diag-title">系统状态与自检</div>
+            <div className="diag-status">
+              {status}
+              {selfTests && (
+                <span className="diag-status-meta">
+                  共 {testTotal} 项 · 通过 {testPass}
+                  {testFail > 0 ? ` · 需处理 ${testFail}` : ""}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="diag-head-actions">
+            <button className="btn primary" onClick={runSelfTest}>
+              <IconSearch size={14} />
+              运行全自检
+            </button>
+            <button className="btn" onClick={generateReport}>
+              生成报告
+            </button>
+          </div>
+        </div>
 
-      <section className="card diag-actions-card">
-        <button className="btn primary" onClick={runSelfTest}>
-          <IconSearch size={14} />
-          运行系统全自检
-        </button>
-        <button className="btn primary" onClick={generateReport}>
-          生成诊断报告
-        </button>
-        <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
-          打开报告目录
-        </button>
-        <button className="btn" onClick={loopTone} disabled={looping}>
-          {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
-        </button>
-        <button className="btn" onClick={toggleQuickMenu}>
-          打开/关闭快捷菜单
-        </button>
-        <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
-          {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
-        </button>
-        {vhidMsg && <span className="hint diag-actions-msg multiline">{vhidMsg}</span>}
-        {reportMsg && <span className="hint diag-actions-msg multiline">{reportMsg}</span>}
-        {status && <span className="hint diag-actions-msg">{status}</span>}
-        {selfTests && (
-          <div className="check-list diag-actions-list">
-            {selfTests.map((t) => (
-              <div key={t.name} className="check-row">
-                <span>{t.name}</span>
-                <div>
-                  <span className={`pill ${t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"}`}>
-                    {t.status.toUpperCase()}
+        <div className="diag-rows">
+          <div className="diag-row">
+            <span className="diag-row-label">虚拟声卡（VB-CABLE）</span>
+            <span className="diag-row-value">
+              <span className={`pill ${data.has_vb_cable ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                {data.has_vb_cable ? "正常" : "未就绪"}
+              </span>
+              <span className={`pill ${data.cable_input_present ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                CABLE 输入
+              </span>
+              <span className={`pill ${data.cable_output_present ? "ok" : "warn"}`}>
+                <span className="pill-dot" />
+                CABLE 输出
+              </span>
+              {checked && !data.has_vb_cable && (
+                <button
+                  className="btn small"
+                  onClick={installVbCable}
+                  disabled={installing || !isTauri()}
+                >
+                  {installing ? "正在下载…" : "下载并安装"}
+                </button>
+              )}
+            </span>
+          </div>
+
+          {selfTests ? (
+            selfTests.map((t) => (
+              <div className="diag-row" key={t.name}>
+                <span className="diag-row-label">{t.name}</span>
+                <span className="diag-row-value">
+                  {t.detail && <span className="diag-row-detail">{t.detail}</span>}
+                  <span
+                    className={`pill ${
+                      t.status === "pass" ? "ok" : t.status === "fail" ? "err" : "warn"
+                    }`}
+                  >
+                    {t.status === "pass" ? "通过" : t.status === "fail" ? "失败" : "跳过"}
                   </span>
-                  {t.detail && <span className="hint multiline"> {t.detail}</span>}
-                </div>
+                </span>
               </div>
-            ))}
+            ))
+          ) : (
+            <div className="diag-empty">
+              还没跑过自检。点右上角「运行全自检」，会检查音频端点、虚拟声卡、虚拟键盘、
+              语音链路等 10 项。
+            </div>
+          )}
+        </div>
+
+        {checked && !data.has_vb_cable && (
+          <div className="diag-note">
+            装好 VB-CABLE 后需要重启电脑，回来再点「运行全自检」。
           </div>
         )}
-      </section>
-      </div>
+        {installMsg && <div className="diag-note">{installMsg}</div>}
+        {vhidMsg && <div className="diag-note">{vhidMsg}</div>}
+        {reportMsg && <div className="diag-note">{reportMsg}</div>}
 
-      <div className="section-label">应用专属映射</div>
-      <section className="card">
-        <div className="check-list">
-          <div className="check-row">
-            <span>当前前台进程</span>
-            <span className="hint">
-              {foreground?.process ?? "（读不到前台窗口）"}
+        <div className="diag-tools">
+          <button className="btn" onClick={openReportDir} disabled={!isTauri()}>
+            打开报告目录
+          </button>
+          <button className="btn" onClick={loopTone} disabled={looping}>
+            {looping ? "循环播放中…" : "循环播放测试音（3 次）"}
+          </button>
+          <button className="btn" onClick={toggleQuickMenu}>
+            打开 / 关闭快捷菜单
+          </button>
+          <button className="btn" onClick={installVhidDriver} disabled={vhidBusy || !isTauri()}>
+            {vhidBusy ? "正在安装…" : "安装 / 修复虚拟键盘驱动"}
+          </button>
+        </div>
+      </section>
+
+      <section className="card diag-card">
+        <div className="diag-head">
+          <div className="diag-head-text">
+            <div className="diag-title">应用专属映射</div>
+            <div className="diag-status">
+              当前{foreground?.profile ? `命中「${foreground.profile}」` : "使用全局映射"}
+              <span className="diag-status-meta">
+                已加载 {foreground?.profile_count ?? 0} 份配置
+              </span>
+            </div>
+          </div>
+          <div className="diag-head-actions">
+            <button className="btn" onClick={refreshForeground}>
+              刷新
+            </button>
+            <button className="btn" onClick={reloadProfiles}>
+              重载配置
+            </button>
+          </div>
+        </div>
+
+        <div className="diag-rows">
+          <div className="diag-row">
+            <span className="diag-row-label">当前前台进程</span>
+            <span className="diag-row-value diag-mono">
+              {foreground?.process ?? "读不到前台窗口"}
             </span>
           </div>
-          <div className="check-row">
-            <span>当前窗口标题</span>
-            <span className="hint">{foreground?.title ?? "—"}</span>
-          </div>
-          <div className="check-row">
-            <span>命中的应用配置</span>
-            <span className="hint">
-              {foreground?.profile ?? "未命中，使用全局映射"}
+          <div className="diag-row">
+            <span className="diag-row-label">当前窗口标题</span>
+            <span className="diag-row-value diag-ellipsis" title={foreground?.title ?? ""}>
+              {foreground?.title ?? "—"}
             </span>
           </div>
-          <div className="check-row">
-            <span>覆盖的按键</span>
-            <span className="hint">
+          <div className="diag-row">
+            <span className="diag-row-label">命中的应用配置</span>
+            <span className="diag-row-value">
+              {foreground?.profile ?? "未命中"}
+            </span>
+          </div>
+          <div className="diag-row">
+            <span className="diag-row-label">覆盖的按键</span>
+            <span className="diag-row-value diag-ellipsis">
               {foreground?.overridden_buttons.length
                 ? foreground.overridden_buttons.join("、")
                 : "—"}
             </span>
           </div>
-          <div className="check-row">
-            <span>已加载配置</span>
-            <span className="hint">{foreground?.profile_count ?? 0} 份</span>
-          </div>
         </div>
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button className="btn" onClick={refreshForeground}>
-            刷新
-          </button>
-          <button className="btn" onClick={reloadProfiles}>
-            重载配置文件
-          </button>
-        </div>
-        {profileMsg && <p className="hint multiline">{profileMsg}</p>}
-        <p className="hint">
-          切到目标应用后点「刷新」，这里显示的进程名就是写进
-          <code> profiles/*.json </code>的 <code>process</code> 值。
-          进程名认不出来的目标（Chrome 里的网页应用、跑在 WSL 里的服务）改用
-          <code> window_title_contains </code>匹配窗口标题。
-          用户自定义配置放在 <code>&lt;配置目录&gt;/app-profiles/</code>。
+
+        {profileMsg && <div className="diag-note">{profileMsg}</div>}
+        <p className="diag-help">
+          切到目标应用后点「刷新」：这里的进程名就是配置里的 <code>process</code>；
+          网页应用或跑在 WSL 里的服务认不出进程，改用 <code>window_title_contains</code> 匹配标题。
         </p>
       </section>
 

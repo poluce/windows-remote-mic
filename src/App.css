@@ -862,47 +862,6 @@ button {
   white-space: pre-wrap;
 }
 
-/* ---------- 诊断页的两种紧凑行（虚拟声卡 / 操作按钮） ---------- */
-.vbcable-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-}
-
-.vbcable-title {
-  font-weight: 600;
-  font-size: var(--rm-fs-13);
-  color: var(--rm-text);
-  white-space: nowrap;
-  margin-right: 4px;
-}
-
-/* 说明文字强制独占一行，避免和按钮挤在一行里重叠 */
-.vbcable-msg {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-}
-
-.diag-actions-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-}
-
-.diag-actions-msg {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-}
-
-.diag-actions-list {
-  flex-basis: 100%;
-  margin-top: 8px;
-}
-
 /* 映射页页头更紧凑（这一页必须一屏放下，不允许整页滚动） */
 .page-head-compact {
   margin-bottom: 12px;
