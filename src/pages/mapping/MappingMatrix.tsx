@@ -20,7 +20,6 @@ import type { MappingEntry, RemoteButton, TriggerOption } from "./types";
  */
 export function MappingMatrix({
   title,
-  hint,
   buttons,
   triggers,
   global,
@@ -32,7 +31,6 @@ export function MappingMatrix({
   onClear,
 }: {
   title: string;
-  hint?: string;
   buttons: RemoteButton[];
   triggers: TriggerOption[];
   global: Map<string, MappingEntry>;
@@ -55,7 +53,6 @@ export function MappingMatrix({
   return (
     <>
       <div className="wizard-label">{title}</div>
-      {hint && <p className="hint matrix-hint">{hint}</p>}
 
       <div className="matrix">
         <div className="matrix-row head">

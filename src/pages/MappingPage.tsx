@@ -229,11 +229,6 @@ export function MappingPage() {
             <div className="merged-col">
               <MappingMatrix
                 title={isGlobalScope ? "映射表" : `映射表 · ${activeProfile?.name ?? ""}`}
-                hint={
-                  isGlobalScope
-                    ? undefined
-                    : `蓝底 ＝ 这份配置改过的，其余沿用全局`
-                }
                 buttons={buttons}
                 triggers={matrixTriggers}
                 global={globalView}
