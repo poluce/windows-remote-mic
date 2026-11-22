@@ -11,11 +11,21 @@
     "kind": "url",
     "value": "http://127.0.0.1:3088"
   },
-  "note": "DSH（DeepSeek Harness）的 Web/Windows 默认键位：Ctrl+/ 快捷键速查、Ctrl+Alt+, 设置、Ctrl+Alt+N 新建会话、Ctrl+Alt+K 搜索会话、Ctrl+Alt+B / Ctrl+Shift+B 左右侧栏、Ctrl+Alt+Enter 全屏、Ctrl+Alt+W 关闭页面。遥控器：上下翻页（长按到顶/到底），左/右开合左右侧栏，确定=Enter，返回=Esc，主页=新会话，菜单=快捷键速查（长按=设置），TV=搜索会话；音量键保持系统音量，电源不绑定以免误关页面；麦克风仍走全局按住说话。",
+  "note": "DSH 快捷键（Web/Windows 默认）：Ctrl+/ 速查、Ctrl+Alt+, 设置、Ctrl+Alt+N 新建会话、Ctrl+Alt+K 搜索会话、Ctrl+Alt+B / Ctrl+Shift+B 左右侧栏。遥控器：上下短按=方向键（列表/会话搜索里选择），长按=PageUp/PageDown 翻页；左右开合侧栏；确定=Enter；返回=Esc；主页=新会话；菜单=速查（长按=设置）；TV=搜索会话；音量键保留系统音量，电源不绑定。",
   "bindings": [
     {
       "button": "Up",
       "trigger": "SingleClick",
+      "action": {
+        "KeyCombo": [
+          "up"
+        ]
+      },
+      "enabled": true
+    },
+    {
+      "button": "Up",
+      "trigger": "LongPress",
       "action": {
         "KeyCombo": [
           "pageup"
@@ -24,21 +34,11 @@
       "enabled": true
     },
     {
-      "button": "Up",
-      "trigger": "LongPress",
-      "action": {
-        "KeyCombo": [
-          "home"
-        ]
-      },
-      "enabled": true
-    },
-    {
       "button": "Down",
       "trigger": "SingleClick",
       "action": {
         "KeyCombo": [
-          "pagedown"
+          "down"
         ]
       },
       "enabled": true
@@ -48,7 +48,7 @@
       "trigger": "LongPress",
       "action": {
         "KeyCombo": [
-          "end"
+          "pagedown"
         ]
       },
       "enabled": true

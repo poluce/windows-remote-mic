@@ -41,6 +41,9 @@
   `set_nonblocking(false)` 再读；健康检查、映射目录与 MCP sidecar 工具调用均已实测通过。
 
 ### 变更
+- **DSH 上下键改成「短按方向键、长按翻页」**：会话搜索（Ctrl+Alt+K）是命令面板，
+  只认 ↑/↓ 选择；原来上下直接发 PageUp/PageDown，在面板里选不动。短按现在发方向键
+  （列表 / 面板里可移动），长按仍是 PageUp/PageDown 用于聊天区翻页。
 - **DSH 应用配置按真实键位重写**：种子 `profiles/deepseek-harness.json` 从「只放通用键」改成
   按 DSH Web/Windows 的默认快捷键适配——上下翻页（长按到顶/到底）、左右开合左右侧栏、
   确定 Enter、返回 Esc、主页新建会话、菜单快捷键速查（长按设置）、TV 搜索会话；
