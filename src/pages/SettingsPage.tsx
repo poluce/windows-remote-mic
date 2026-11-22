@@ -332,7 +332,7 @@ export function SettingsPage() {
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">长按判定</div>
-            <p className="hint">按住多久算长按；麦克风的「按住说话」也用它。</p>
+            <p className="hint">按住多久算长按。</p>
           </div>
           <select
             className="select timing-select"
@@ -350,7 +350,7 @@ export function SettingsPage() {
         <div className="form-row">
           <div className="form-text">
             <div className="form-label">双击间隔</div>
-            <p className="hint">只有绑定了双击的按键才会等这个窗口。</p>
+            <p className="hint">两次按下间隔多短算双击。</p>
           </div>
           <select
             className="select timing-select"
