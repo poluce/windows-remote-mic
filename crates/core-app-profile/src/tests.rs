@@ -22,13 +22,10 @@ fn profile(process: &str, name: &str) -> AppProfile {
 }
 
 #[test]
-fn seed_profiles_are_embedded_and_parse() {
+fn seed_profiles_parse_when_present() {
     let registry = ProfileRegistry::from_seeds();
-    // build.rs 会把仓库根 profiles/*.json 编进来；仓库里至少要有 Codex 这份。
-    assert!(
-        !registry.profiles().is_empty(),
-        "没有编译进任何应用配置种子，检查 profiles/ 与 build.rs"
-    );
+    // 仓库**不再内置种子**（见 profiles/README.md），所以编译进来 0 份是正常状态。
+    // 但只要有人往 profiles/ 放了 JSON（本地自用构建），就必须能解析且字段完整。
     for p in registry.profiles() {
         assert!(
             !p.process.is_empty() || !p.window_title_contains.is_empty(),
@@ -158,6 +155,11 @@ fn missing_user_dir_is_not_an_error() {
 
 #[test]
 fn seed_user_dir_materializes_seeds_once() {
+    // 仓库不再内置种子（见 profiles/README.md）：没有种子时不落地、也不建目录。
+    // 种子机制本身仍然保留，所以「有种子」时下面这些断言照旧生效。
+    if seed_templates().is_empty() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let config_dir = dir.path();
 

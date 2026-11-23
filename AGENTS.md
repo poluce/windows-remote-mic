@@ -78,7 +78,7 @@ Remote Mic 是一个 Windows 桌面应用，目标是把「小米蓝牙语音遥
 │   ├── core-input            # 按键注入、Win+H、单实例互斥等 Windows 输入能力
 │   ├── core-app-profile      # 前台应用档案（按进程 exe 匹配、种子模板）
 │   └── mcp-bridge            # 外部智能体接口：MCP stdio sidecar（remote-mic-mcp.exe）
-├── profiles/                 # 应用档案种子模板（*.json，首次启动播种到用户目录）
+├── profiles/                 # 应用档案说明（**不再内置种子模板**，见其 README）
 ├── public/quick-menu.html    # 快捷菜单窗口（独立 Canvas 页面）
 ├── scripts/                  # PowerShell 辅助脚本（构建 / 驱动 / VB-CABLE / Tap）
 ├── .agent/skills/            # HOGP 旁路逆向 skill（hogp-report-path-re）
@@ -219,7 +219,8 @@ v0.7.5 基线 + MCP：workspace 测试 **212** 个（含 mcp-bridge 3 个）、a
   （语音键 `Mic` 例外，始终读全局）；新建配置时把当前全局快照复制进来当起点，
   旧数据在升级后的首次加载时按当时的全局快照补全一次（`config.json` 的 `profiles_standalone` 标记）。
   - 用户目录：`%LOCALAPPDATA%\RemoteMic\RC003\app-profiles\*.json`；
-  - 种子模板：仓库根 `profiles/*.json`，首次启动播种到用户目录；
+  - **不再内置种子模板**：`profiles/` 早期预置的 Codex / Claude Code Desktop / DeepSeek Harness / ZCode
+    四份已移除；应用配置一律由用户在应用内「+ 新建应用」自建，写进用户目录；
   - 前端作用域切换在映射页顶部（`pages/mapping/ScopeBar.tsx`）；
   - 后端命令：`app_profile_status / app_profile_foreground_candidates / app_profile_catalog /
     app_menu_apps / create_app_profile / update_app_profile / save_profile_binding /

@@ -2,6 +2,21 @@
 
 本项目的版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Changed
+
+- **不再内置应用档案种子**：移除 `profiles/` 下的 Codex / Claude Code Desktop / DeepSeek Harness / ZCode 四份模板，
+  新装用户的应用档案目录为空，需要哪个应用就自己「+ 新建应用」。
+  理由：各应用的快捷键常被用户改过、部分绑定还依赖第三方插件，预置配置容易「按了没反应」且难以排查；
+  种子只在首次启动落地一次，改模板对老用户也不生效。
+  种子机制本身保留（`profiles/*.json` 仍会被编进二进制），本地自用构建可以自己放。
+
+### Fixed
+
+- **DSH 应用配置的键位说明**：设计稿与旧种子按 Web 端默认键（`Ctrl+Alt+B` 等）书写，
+  桌面端实际默认是 `Ctrl+B` / `Ctrl+K` / `Ctrl+N` / `Ctrl+,`；相关内容已从仓库移除，文档不再引用错误的默认值。
+
 ## 发版流程
 
 发版 = 更新版本号 + 打 tag → CI 自动出 Release。

@@ -446,7 +446,9 @@ mod tests {
         eprintln!("聚焦结果：{:?}", focus(&window));
     }
 
-    /// 真机冒烟：用**种子配置**走一遍「点图标」，两条分支都要能验。
+    /// 真机冒烟：用一份**临时构造的 ZCode 配置**走一遍「点图标」，两条分支都要能验。
+    ///
+    /// 仓库不再内置种子模板，所以这里就地构造配置，不依赖 `profiles/`。
     ///
     /// - ZCode 已打开 → `find_window` 必须命中（验证 EnumWindows + exe 名解析 + 进程名匹配）；
     /// - 没打开 → `launch` 必须真把它拉起来（验证 ShellExecuteW + `shell:AppsFolder`）。
@@ -456,18 +458,21 @@ mod tests {
     #[test]
     #[ignore = "需要桌面上已安装 ZCode"]
     fn open_zcode_smoke() {
-        let registry = crate::ProfileRegistry::from_seeds();
-        let p = registry
-            .profiles()
-            .iter()
-            .find(|p| p.display_name() == "ZCode")
-            .expect("种子配置里应有 ZCode");
+        let p: crate::AppProfile = serde_json::from_str(
+            r#"{
+                "name": "ZCode",
+                "process": "ZCode.exe",
+                "window_title_contains": ["ZCode"],
+                "launch": { "kind": "appid", "value": "dev.zcode.app" }
+            }"#,
+        )
+        .expect("ZCode 冒烟配置应可解析");
 
         eprintln!("配置：{} / {:?}", p.display_name(), p.process);
         eprintln!("启动方式：{:?}", p.launch);
         eprintln!("当前前台：{:?}", foreground_summary());
 
-        match open_profile(p) {
+        match open_profile(&p) {
             Ok(OpenOutcome::Focused { process, title }) => {
                 assert_eq!(
                     process.to_lowercase(),
@@ -481,7 +486,7 @@ mod tests {
                 let mut found = None;
                 for _ in 0..40 {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    if let Some(w) = find_window(p) {
+                    if let Some(w) = find_window(&p) {
                         found = Some(w);
                         break;
                     }
@@ -492,7 +497,7 @@ mod tests {
             Ok(OpenOutcome::NotFound) => panic!("既没找到窗口，也没配置启动方式"),
             Err(WindowError::FocusDenied) => {
                 // 预期内的环境限制：后台进程抢不到前台。窗口本身必须还在。
-                let w = find_window(p).expect("窗口应该还在，只是切不到前台");
+                let w = find_window(&p).expect("窗口应该还在，只是切不到前台");
                 eprintln!(
                     "结果：窗口在（{} | {}），但前台锁拒绝切换——从后台进程调用时的已知限制",
                     w.process, w.title
